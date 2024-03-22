@@ -116,7 +116,7 @@ if (!module.parent) {
 const { promisify } = require("util")
 const rfc6902 = require('rfc6902')
 
-var THREE = require("./three-onlymath.min.js")
+var THREE = require("three")
 
 const QuickEntityVersion = 2.0
 

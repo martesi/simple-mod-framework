@@ -13,13 +13,8 @@
 		"dev:electron": "electron src/electron.cjs",
 		"build": "cross-env NODE_ENV=production npm run build:svelte && npm run build:electron",
 		"build:svelte": "vite build",
-		"build:electron": "electron-builder -w --dir --config build.config.json",
+		"build:electron": "electron-builder --win --config build.config.json",
 		"start": "vite start"
-	},
-	"engines": {
-		"npm": ">=7",
-		"pnpm": "use npm - https://github.com/FractalHQ/sveltekit-electron/issues/12#issuecomment-1068399385",
-		"yarn": "use npm - https://github.com/FractalHQ/sveltekit-electron/issues/12#issuecomment-1068399385"
 	},
 	"browserslist": [
 		"Chrome 89"
@@ -80,8 +75,8 @@
 		"concurrently": "^7.3.0",
 		"cross-env": "^7.0.3",
 		"dotenv": "^8.6.0",
-		"electron": "^26.6.10",
-		"electron-builder": "^23.3.3",
+		"electron": "^29.1.5",
+		"electron-builder": "^24.13.3",
 		"electron-connect": "^0.6.3",
 		"electron-packager": "^15.4.0",
 		"electron-updater": "^4.6.5",

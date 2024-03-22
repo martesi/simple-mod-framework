@@ -118,7 +118,7 @@ const deepMerge = require('lodash.merge')
 const quickentity20 = require('./quickentity20')
 const quickentity1136 = require('./quickentity1136')
 
-var THREE = require("./three-onlymath.min.js")
+var THREE = require("three")
 
 const QuickEntityVersion = 2.1
 

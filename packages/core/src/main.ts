@@ -1,5 +1,5 @@
 // @ts-expect-error Need to assign on global because of QuickEntity
-global.THREE = require("./three-onlymath.min.js")
+global.THREE = require("three")
 
 import * as Sentry from "@sentry/node"
 import * as Tracing from "@sentry/tracing"

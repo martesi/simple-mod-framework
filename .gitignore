@@ -21,3 +21,4 @@ src/smf-rust.node
 src/smf-rust.d.ts
 .idea
 .turbo
+**/dist

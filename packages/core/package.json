@@ -2,11 +2,23 @@
   "name": "@smf/core",
   "version": "1.0.0",
   "type": "commonjs",
-  "main": "main.js",
+  "main": "dist/main.js",
   "scripts": {
-    "build": "rsbuild build"
+    "build": "rsbuild build && pkg package.json --targets node18-win-x64 --output ../../dist/Deploy.exe --compress Brotli"
+  },
+  "dependencies": {
+    "piscina": "3.1.0",
+    "three": "^0.162.0"
   },
   "devDependencies": {
-    "@rsbuild/core": "^0.5.2"
+    "@rsbuild/core": "^0.5.2",
+    "pkg": "^5.8.1"
+  },
+  "bin": "dist/main.js",
+  "pkg": {
+    "scripts": [
+      "node_modules/piscina/dist/src/worker.js",
+      "dist/patchWorker.js"
+    ]
   }
 }
