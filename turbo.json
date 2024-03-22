@@ -1,0 +1,15 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["compiled/**"]
+    },
+    "@smf/core#build": {
+      "dependsOn": ["@smf/rust#build"]
+    },
+    "@smf/mod-manager#build": {
+      "dependsOn": ["@smf/core#build"]
+    }
+  }
+}

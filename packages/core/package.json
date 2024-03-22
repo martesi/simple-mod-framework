@@ -1,0 +1,12 @@
+{
+  "name": "@smf/core",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "rsbuild build"
+  },
+  "devDependencies": {
+    "@rsbuild/core": "^0.5.2"
+  }
+}

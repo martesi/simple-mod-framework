@@ -20,3 +20,4 @@ rust/index.js
 src/smf-rust.node
 src/smf-rust.d.ts
 .idea
+.turbo

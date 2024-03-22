@@ -1,0 +1,25 @@
+{
+	"appId": "com.atampy26.simple-mod-framework.mod-manager",
+	"compression": "maximum",
+	"productName": "Mod Manager",
+	"electronVersion": "26.6.10",
+	"directories": {
+		"output": "dist",
+		"buildResources": "buildResources"
+	},
+	"files": [
+		"src/electron.cjs",
+		"src/preload.cjs",
+		"src/torchlight/**/*",
+		{
+			"from": "build",
+			"to": ""
+		}
+	],
+	"protocols": [
+		{
+			"name": "Simple Mod Framework",
+			"schemes": ["simple-mod-framework"]
+		}
+	]
+}
