@@ -86,6 +86,8 @@ core.config.platform = fs.existsSync(path.join(core.config.retailPath, "Runtime"
 	? gameHashes[md5File.sync(path.join(core.config.retailPath, "..", "MicrosoftGame.Config"))]
 	: gameHashes[md5File.sync(path.join(core.config.runtimePath, "..", "Retail", "HITMAN3.exe"))] // Platform detection
 
+core.config.platform ??= Platform.steam
+
 let sentryTransaction = {
 	startChild(...args) {
 		return {
