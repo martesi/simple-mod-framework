@@ -14,11 +14,30 @@ try {
 const serveURL = serve({ directory: "." })
 const port = process.env.PORT || 3000
 const dev = !app.isPackaged
+const deployExePath = path.join("..", "Deploy.exe")
+const deployScriptPath = path.join("..", "compiled", "main.js")
 /** @type BrowserWindow */
 let mainWindow
 
+function hasLocalDeployTarget() {
+	return fs.existsSync(deployExePath) || fs.existsSync(deployScriptPath)
+}
+
+function createDeployProcess() {
+	if (fs.existsSync(deployExePath)) {
+		return require("child_process").spawn("Deploy.exe", ["--doNotPause", "--colors"], {
+			shell: true,
+			cwd: ".."
+		})
+	}
+
+	return require("child_process").spawn(process.execPath, ["compiled/main.js", "--doNotPause", "--colors"], {
+		cwd: ".."
+	})
+}
+
 function createWindow() {
-	if (!fs.existsSync(path.join("..", "Deploy.exe"))) {
+	if (!hasLocalDeployTarget()) {
 		process.chdir(path.dirname(app.getPath("exe")))
 		app.relaunch({ execPath: app.getPath("exe"), args: process.argv })
 		app.exit()
@@ -125,10 +144,7 @@ if (!lock) {
 }
 
 ipcMain.on("deploy", () => {
-	let deployProcess = require("child_process").spawn("Deploy.exe --doNotPause --colors", ["--doNotPause --colors"], {
-		shell: true,
-		cwd: ".."
-	})
+	let deployProcess = createDeployProcess()
 
 	let deployOutput = ""
 
