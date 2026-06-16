@@ -11,8 +11,8 @@
 				"Type": { "type": "string" },
 				"Subtype": { "type": "string" },
 				"ImageId": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
-				"RMTPrice": { "type": "integer" },
-				"GamePrice": { "type": "integer" },
+				"RMTPrice": { "type": "number" },
+				"GamePrice": { "type": "number" },
 				"IsPurchasable": { "type": "boolean" },
 				"IsPublished": { "type": "boolean" },
 				"IsDroppable": { "type": "boolean" },
@@ -20,7 +20,7 @@
 				"Qualities": { "$ref": "#/definitions/Qualities" },
 				"Properties": { "$ref": "#/definitions/Properties" },
 				"Rarity": { "anyOf": [{ "type": "null" }, { "type": "string" }] },
-				"UnlockOrder": { "type": "integer" }
+				"UnlockOrder": { "type": "number" }
 			}
 		},
 		"Properties": {
@@ -35,9 +35,9 @@
 				"DlcImage": { "type": "string" },
 				"DlcName": { "type": "string" },
 				"IsLocked": { "type": "boolean" },
-				"Order": { "type": "integer" },
+				"Order": { "type": "number" },
 				"ProgressionKey": { "type": "string" },
-				"Season": { "type": "integer" },
+				"Season": { "type": "number" },
 				"RequiredResources": { "type": "array", "items": { "type": "string" } },
 				"Entitlements": { "type": "array", "items": { "type": "string" } },
 				"ParentLocation": { "type": "string" },
@@ -57,10 +57,10 @@
 				"LoadoutSlot": { "type": "string" },
 				"IsConsumable": { "type": "boolean" },
 				"RepositoryId": { "type": "string" },
-				"OrderIndex": { "type": "integer" },
+				"OrderIndex": { "type": "number" },
 				"Name": { "type": "string" },
 				"Description": { "type": "string" },
-				"UnlockOrder": { "type": "integer" },
+				"UnlockOrder": { "type": "number" },
 				"Location": { "type": "string" },
 				"UnlockedByDefault": { "type": "boolean" },
 				"Equip": { "type": "array", "items": { "type": "string" } },
@@ -80,7 +80,7 @@
 			"properties": { "GearSlotsEnabledCount": { "type": "integer" }, "GearSlotsAllowContainers": { "type": "boolean" }, "ConcealedWeaponSlotEnabled": { "type": "boolean" } }
 		},
 		"Qualities": { "type": "object" },
-		"Quality": { "anyOf": [{ "type": "integer" }, { "type": "string" }] }
+		"Quality": { "anyOf": [{ "type": "number" }, { "type": "string" }] }
 	},
 	"additionalProperties": false
 }
