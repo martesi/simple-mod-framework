@@ -1,0 +1,31 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "Simple Mod Framework",
+	"version": "0.1.0",
+	"identifier": "dev.martes.smf.modmanager",
+	"build": {
+		"frontendDist": "../build",
+		"devUrl": "http://localhost:5173",
+		"beforeDevCommand": "npm run dev",
+		"beforeBuildCommand": "npm run build"
+	},
+	"app": {
+		"windows": [
+			{
+				"title": "Simple Mod Framework",
+				"width": 1100,
+				"height": 700,
+				"resizable": true,
+				"label": "main"
+			}
+		],
+		"security": {
+			"csp": null
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"icon": []
+	}
+}

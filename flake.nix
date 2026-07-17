@@ -2,9 +2,10 @@
   # Usage: nix develop   (or: nix --extra-experimental-features "nix-command flakes" develop
   #        if flakes/nix-command aren't enabled in your nix.conf)
   #
-  # Root CLI:    npm install && npm run build:linux   (or build:win on Windows)
-  # Mod Manager: cd "Mod Manager" && npm install && npm run build:linux
-  description = "Dev environment for simple-mod-framework (CLI + Mod Manager Electron GUI)";
+  # Root CLI:           npm install && npm run build:linux   (or build:win on Windows)
+  # Mod Manager:        cd "Mod Manager" && npm install && npm run build:linux
+  # Mod Manager (Tauri): cd mod-manager-tauri && npm run tauri dev
+  description = "Dev environment for simple-mod-framework (CLI + Mod Manager GUIs)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
@@ -58,6 +59,17 @@
           xorg.libxcb
           xorg.libxshmfence
         ];
+
+        # Libraries required to build and run the Tauri-based mod manager.
+        # webkit2gtk/libsoup provide the webview; the rest are GTK + icon rendering.
+        tauriLibs = with pkgs; [
+          webkitgtk_4_1
+          libsoup_3
+          librsvg
+          libayatana-appindicator
+          openssl
+          glib-networking
+        ];
       in
       {
         devShells.default = pkgs.mkShell {
@@ -79,9 +91,9 @@
             xvfb-run
             xorg.xwd
             imagemagick
-          ] ++ electronRuntimeLibs;
+          ] ++ electronRuntimeLibs ++ tauriLibs;
 
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath electronRuntimeLibs;
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (electronRuntimeLibs ++ tauriLibs);
 
           shellHook = ''
             export PATH="$PWD/node_modules/.bin:$PATH"
