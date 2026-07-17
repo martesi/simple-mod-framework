@@ -11,9 +11,12 @@
 		"dev:all": "concurrently -n=svelte,electron -c='#ff3e00',blue \"npm run dev:svelte\" \"npm run dev:electron\"",
 		"dev:svelte": "vite dev",
 		"dev:electron": "electron src/electron.cjs",
-		"build": "cross-env NODE_ENV=production npm run build:svelte && npm run build:electron",
+		"build": "npm run build:win",
+		"build:win": "cross-env NODE_ENV=production npm run build:svelte && npm run build:electron:win",
+		"build:linux": "cross-env NODE_ENV=production npm run build:svelte && npm run build:electron:linux",
 		"build:svelte": "vite build",
-		"build:electron": "electron-builder -w --dir --config build.config.json",
+		"build:electron:win": "electron-builder -w --dir --config build.config.json",
+		"build:electron:linux": "electron-builder -l --dir --config build.config.json",
 		"start": "vite start"
 	},
 	"engines": {

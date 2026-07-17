@@ -42,11 +42,24 @@
     "@typescript-eslint/eslint-plugin": "^5.33.0",
     "@typescript-eslint/parser": "^5.33.0",
     "eslint": "^8.31.0",
+    "pkg": "^5.8.1",
     "prettier": "^2.7.1",
     "prettier-eslint": "^15.0.1"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "node scripts/stage-piscina.js",
+    "build:rust": "cd rust && node .yarn/releases/yarn-3.6.0.cjs install && node .yarn/releases/yarn-3.6.0.cjs build",
+    "stage:rust:src": "node scripts/stage-rust.js src",
+    "stage:rust:compiled": "node scripts/stage-rust.js compiled",
+    "build:tsc": "node scripts/tsc-lenient.js",
+    "build:cli": "npm run stage:rust:src && npm run build:tsc && npm run stage:rust:compiled",
+    "build:exe:win": "pkg package.json --targets node18-win-x64 --output Deploy.exe --compress Brotli",
+    "build:exe:linux": "pkg package.json --targets node18-linux-x64 --output Deploy.exe --compress Brotli",
+    "build:win": "npm run build:rust && npm run build:cli && npm run build:exe:win",
+    "build:linux": "npm run build:rust && npm run build:cli && npm run build:exe:linux",
+    "assemble:win": "node scripts/assemble-dist.js win",
+    "assemble:linux": "node scripts/assemble-dist.js linux"
   },
   "bin": "compiled/main.js",
   "pkg": {

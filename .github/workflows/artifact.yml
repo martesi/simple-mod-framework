@@ -44,28 +44,15 @@ jobs:
         run: |
           npm install
 
-      - name: Prep
-        run: |
-          npm install -g pkg typescript @napi-rs/cli
-
-      - name: Build Rust code
-        run: |
-          cd rust
-          yarn
-          yarn build
-          cd ../
-          copy ./rust/index.d.ts ./src/smf-rust.d.ts
-          copy ./rust/rust.win32-x64-msvc.node ./src/smf-rust.node
-
+      # All build steps below run through package.json scripts (build:rust,
+      # build:cli, build:exe:win) rather than ad hoc shell commands, so that
+      # `npm run build:win` does the same thing here as it does locally -
+      # nothing is installed globally on the runner.
       - name: Build EXE
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
-          New-Item -ItemType Directory -Force -Path ./node_modules/piscina
-          robocopy ./piscina ./node_modules/piscina /E /is /it; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
-          tsc --noCheck
-          copy ./src/smf-rust.node ./compiled/smf-rust.node
-          pkg package.json --targets node18-win-x64 --output Deploy.exe --compress Brotli
+          npm run build:win
 
       - name: Install GUI dependencies
         if: steps.cache2.outputs.cache-hit != 'true'
@@ -77,25 +64,17 @@ jobs:
       - name: Build GUI
         run: |
           cd "Mod Manager"
-          npm run build
+          npm run build:win
           cd ../
 
-      - name: Ready for zip
+      - name: Assemble dist
         run: |
-          New-Item -ItemType Directory dist
-          New-Item -ItemType Directory dist/Third-Party
-          New-Item -ItemType Directory dist/Info
-          New-Item -ItemType Directory dist/API
-          New-Item -ItemType Directory "dist/Mod Manager"
+          npm run assemble:win
+
+      - name: Fetch hitman-hashes
+        run: |
           Invoke-WebRequest -Uri "https://github.com/glacier-modding/hitman-hashes/releases/latest/download/latest-hashes.7z" -OutFile "latest-hashes.7z"
           7z x "latest-hashes.7z" -o"./dist/Third-Party"
-          robocopy ./Third-Party ./dist/Third-Party /E; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
-          robocopy "./For Build" ./dist /E; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
-          robocopy ./docs ./dist/Info /E; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
-          robocopy ./compiled ./dist/API /E *.d.ts; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
-          robocopy ".\Mod Manager\dist\win-unpacked" "./dist/Mod Manager" /E; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
-          copy Deploy.exe dist
-          New-Item -Path dist -Name "Mod Manager.cmd" -ItemType "file" -Value "@echo off`ncd `"Mod Manager`"`nstart `"`" `"Mod Manager.exe`""
 
       - name: Zip
         uses: TheDoctor0/zip-release@4fb9e4ff72847dd3d1c111cf63834e353ed7cb3d
