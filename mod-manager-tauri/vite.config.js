@@ -8,7 +8,7 @@ export default defineConfig({
 	plugins: [sveltekit()],
 	clearScreen: false,
 	server: {
-		port: 5173,
+		port: 5555,
 		strictPort: true,
 		host: host || false,
 		hmr: host
