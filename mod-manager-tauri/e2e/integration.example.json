@@ -1,0 +1,6 @@
+{
+  "gamePath": "/path/to/HITMAN3",
+  "mods": [
+    "/path/to/SomeMod.zip"
+  ]
+}

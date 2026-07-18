@@ -33,6 +33,13 @@ Environment overrides:
 - `E2E_DRIVER_PORT` — tauri-driver port (default 4444)
 - `TAURI_DRIVER`, `WEBKIT_WEBDRIVER` — explicit driver binary paths
 
+## Integration tests (real game + real Deploy.exe)
+
+See [INTEGRATION.md](INTEGRATION.md) for the full plan.  The short version:
+create `e2e/integration.json` (gitignored) with your game path and mod zips —
+the `integration.test.js` suite will pick it up automatically and skip if the
+file is absent.
+
 ## What's covered / not covered
 
 Covered: launch + framework-root path resolution, mod discovery and listing,

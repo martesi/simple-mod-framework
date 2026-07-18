@@ -3,6 +3,7 @@ node_modules/
 .DS_Store
 .svelte/
 *.local
+e2e/integration.json
 build/
 dist/
 src-tauri/target/
