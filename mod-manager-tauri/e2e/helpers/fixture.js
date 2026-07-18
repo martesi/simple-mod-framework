@@ -6,7 +6,7 @@
  *     Retail/HITMAN3.exe
  *     framework/                  ← the framework root ("Simple Mod Framework")
  *       config.json
- *       Deploy.exe                ← stub script emitting SMF-style output
+ *       Deploy.exe                ← stub script (or real PE binary via deployBinary)
  *       Mods/…                    ← one framework mod, one RPKG-only mod
  *       Mod Manager/mod-manager   ← the app binary under test; the app derives
  *                                   the framework root from its own exe path
@@ -23,7 +23,16 @@ export const TEST_MOD_ID = "dev.e2e.test-mod"
 export const TEST_MOD_NAME = "E2E Test Mod"
 export const TEST_RPKG_MOD_NAME = "E2E RPKG Mod"
 
-export function createFixture(appBinary) {
+/**
+ * @param {string} appBinary - path to the compiled app binary
+ * @param {{ deployBinary?: string, appFilename?: string }} [opts]
+ *   deployBinary: a pre-built Deploy.exe to copy into the fixture instead of
+ *                 the default shell-script stub (required for Windows .exe tests
+ *                 since Windows can't exec a shell script)
+ *   appFilename:  filename to use inside "Mod Manager/" (default "mod-manager");
+ *                 pass "mod-manager-tauri.exe" for the Windows cross-compiled build
+ */
+export function createFixture(appBinary, { deployBinary, appFilename = "mod-manager" } = {}) {
 	const gameDir = join(e2eDir, ".runtime", "game")
 	rmSync(gameDir, { recursive: true, force: true })
 
@@ -38,7 +47,7 @@ export function createFixture(appBinary) {
 	// the app binary; framework root is resolved as the exe's grandparent dir
 	const appDir = join(root, "Mod Manager")
 	mkdirSync(appDir, { recursive: true })
-	const app = join(appDir, "mod-manager")
+	const app = join(appDir, appFilename)
 	cpSync(appBinary, app)
 	chmodSync(app, 0o755)
 
@@ -88,12 +97,17 @@ export function createFixture(appBinary) {
 	mkdirSync(rpkgDir, { recursive: true })
 	writeFileSync(join(rpkgDir, "e2e.rpkg"), "not a real rpkg")
 
-	// stub Deploy.exe: SMF-style tab-separated lines ending in "Done in …".
-	// The sleep must exceed the UI's 500 ms output-render throttle so the
-	// final line makes it into the rendered deploy log.
+	// Deploy.exe stub: either a pre-built PE binary (deployBinary option, used by
+	// the WSL interop test) or a shell script that emits SMF-style output.
+	// The sleep must exceed the UI's 500 ms output-render throttle.
 	const deploy = join(root, "Deploy.exe")
-	writeFileSync(deploy, "#!/bin/sh\nprintf 'INFO\\tLoading mods\\n'\nsleep 0.7\nprintf 'INFO\\tDone in 0.71s\\n'\n")
-	chmodSync(deploy, 0o755)
+	if (deployBinary) {
+		cpSync(deployBinary, deploy)
+		chmodSync(deploy, 0o755)
+	} else {
+		writeFileSync(deploy, "#!/bin/sh\nprintf 'INFO\\tLoading mods\\n'\nsleep 0.7\nprintf 'INFO\\tDone in 0.71s\\n'\n")
+		chmodSync(deploy, 0o755)
+	}
 
 	return { gameDir, root, app, configPath }
 }

@@ -87,6 +87,12 @@
           glib-networking
           xdg-utils
         ];
+        # winpthreads provides libpthread.a which Rust's x86_64-pc-windows-gnu
+        # std links against.  Without it the MinGW linker fails with
+        # "cannot find -l:libpthread.a".
+        # Referenced in shellHook for path substitution only (not in packages —
+        # it's a Windows cross-build artifact, not a native Linux binary).
+        winpthreads = pkgs.pkgsCross.mingwW64.windows.pthreads;
       in
       {
         devShells.default = pkgs.mkShell {
@@ -116,6 +122,8 @@
             export PATH="$PWD/node_modules/.bin:$PATH"
             # Tell cargo which linker to use when targeting Windows GNU.
             export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="x86_64-w64-mingw32-gcc"
+            # winpthreads lib dir — lets the MinGW linker find libpthread.a.
+            export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-L ${winpthreads}/lib"
             # Tauri's AppImage bundler hardcodes /usr/bin/xdg-open. On WSL2/Nix it isn't
             # there by default; symlink it once with: sudo ln -sf $(which xdg-open) /usr/bin/xdg-open
             # deb/rpm bundles work without this; only AppImage needs it.
