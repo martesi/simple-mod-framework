@@ -11,6 +11,8 @@
 		"build:win": "tauri build --target x86_64-pc-windows-msvc",
 		"build:linux": "tauri build --target x86_64-unknown-linux-gnu",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"test:e2e": "node --test \"e2e/**/*.test.js\"",
+		"test:e2e:build": "tauri build --debug --no-bundle",
 		"lint": "prettier --check . && eslint ."
 	},
 	"dependencies": {
@@ -70,6 +72,7 @@
 		"svelte-check": "^3.5.2",
 		"svelte-preprocess": "^5.0.4",
 		"typescript": "^4.7.4",
-		"vite": "^4.4.9"
+		"vite": "^4.4.9",
+		"webdriverio": "^9.29.1"
 	}
 }

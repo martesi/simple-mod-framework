@@ -7,3 +7,4 @@ build/
 dist/
 src-tauri/target/
 src-tauri/gen/
+e2e/.runtime/

@@ -15,8 +15,15 @@ function pathNormalize(p: string): string {
 	const parts = p.split(/[/\\]+/).filter(Boolean)
 	const result: string[] = []
 	for (const part of parts) {
-		if (part === "..") result.pop()
-		else if (part !== ".") result.push(part)
+		if (part === "..") {
+			// like Node's path.normalize: leading ".." segments of a relative
+			// path must be preserved, not dropped — the Rust side anchors them
+			// to the app dir ("../Mods" is the framework root's Mods folder)
+			if (result.length && result[result.length - 1] !== "..") result.pop()
+			else if (!absolute) result.push("..")
+		} else if (part !== ".") {
+			result.push(part)
+		}
 	}
 	return (absolute ? "/" : "") + result.join("/")
 }
@@ -25,7 +32,11 @@ export const path = {
 	join: (...parts: string[]): string => pathNormalize(parts.join("/")),
 	resolve: (...parts: string[]): string => pathNormalize(parts.join("/")),
 	basename: (p: string, ext?: string): string => {
-		const base = p.replace(/[/\\]+$/, "").split(/[/\\]/).pop() ?? p
+		const base =
+			p
+				.replace(/[/\\]+$/, "")
+				.split(/[/\\]/)
+				.pop() ?? p
 		if (ext && base.endsWith(ext)) return base.slice(0, -ext.length)
 		return base
 	},
@@ -45,7 +56,7 @@ export const path = {
 			.fill("..")
 			.concat(toParts.slice(common))
 			.join("/")
-	},
+	}
 }
 
 // ─── filesystem (invoke → Rust fs_bridge) ──────────────────────────────────
@@ -69,7 +80,7 @@ export const fs = {
 
 	ensureDirSync: (p: string): Promise<void> => invoke("fs_ensure_dir", { path: p }),
 
-	readJSONSync: async (p: string): Promise<unknown> => JSON.parse(await invoke<string>("fs_read_text", { path: p })),
+	readJSONSync: async (p: string): Promise<unknown> => JSON.parse(await invoke<string>("fs_read_text", { path: p }))
 }
 
 // ─── file metadata ──────────────────────────────────────────────────────────
@@ -78,20 +89,16 @@ export const isFile = (p: string): Promise<boolean> => invoke("fs_is_file", { pa
 
 // ─── directory walk (invoke → Rust klaw_walk) ──────────────────────────────
 
-export const klaw = (
-	dir: string,
-	opts?: { nodir?: boolean; depthLimit?: number }
-): Promise<{ path: string }[]> =>
+export const klaw = (dir: string, opts?: { nodir?: boolean; depthLimit?: number }): Promise<{ path: string }[]> =>
 	invoke("klaw_walk", {
 		path: dir,
 		nodir: opts?.nodir ?? false,
-		depthLimit: opts?.depthLimit ?? -1,
+		depthLimit: opts?.depthLimit ?? -1
 	})
 
 // ─── archive extraction ─────────────────────────────────────────────────────
 
-export const extractArchive = (archivePath: string, destDir: string): Promise<void> =>
-	invoke("extract_archive", { archivePath, destDir })
+export const extractArchive = (archivePath: string, destDir: string): Promise<void> => invoke("extract_archive", { archivePath, destDir })
 
 /**
  * Write raw binary (from a network fetch) to disk as a temp archive.
@@ -110,8 +117,7 @@ export const writeTempBytes = (p: string, data: Uint8Array): Promise<void> => {
 
 export const runDeploy = (): Promise<void> => invoke("run_deploy")
 
-export const onDeployOutput = (cb: (output: string) => void) =>
-	listen<string>("deploy-output", (e) => cb(e.payload))
+export const onDeployOutput = (cb: (output: string) => void) => listen<string>("deploy-output", (e) => cb(e.payload))
 
 export const onDeployFinished = (cb: () => void) => listen<void>("deploy-finished", () => cb())
 
@@ -131,7 +137,7 @@ export const openModFileDialog = (): Promise<string | null> =>
 		title: "Add a mod file",
 		filters: [{ name: "Mod Files", extensions: ["zip", "7z", "rar", "rpkg"] }],
 		multiple: false,
-		directory: false,
+		directory: false
 	}).then(pickFirst)
 
 export const openRpkgDialog = (): Promise<string | null> =>
@@ -139,7 +145,7 @@ export const openRpkgDialog = (): Promise<string | null> =>
 		title: "Select an RPKG file",
 		filters: [{ name: "RPKG Files", extensions: ["rpkg"] }],
 		multiple: false,
-		directory: false,
+		directory: false
 	}).then(pickFirst)
 
 export const openImageDialog = (): Promise<string | null> =>
@@ -148,11 +154,11 @@ export const openImageDialog = (): Promise<string | null> =>
 		filters: [
 			{
 				name: "Image Files",
-				extensions: ["png", "jpg", "apng", "gif", "webp", "svg", "jpeg", "jfif"],
-			},
+				extensions: ["png", "jpg", "apng", "gif", "webp", "svg", "jpeg", "jfif"]
+			}
 		],
 		multiple: false,
-		directory: false,
+		directory: false
 	}).then(pickFirst)
 
 // ─── shell / external links ─────────────────────────────────────────────────
