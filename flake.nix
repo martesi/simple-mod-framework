@@ -5,18 +5,33 @@
   # Root CLI:           npm install && npm run build:linux   (or build:win on Windows)
   # Mod Manager:        cd "Mod Manager" && npm install && npm run build:linux
   # Mod Manager (Tauri): cd mod-manager-tauri && npm run tauri dev
-  #                       cd mod-manager-tauri && npm run build:linux   (or build:win cross-compiled on Windows)
+  #                       cd mod-manager-tauri && npm run build:linux
+  #                       cd mod-manager-tauri && ./scripts/windows-test-deploy.sh  (cross-compile + WSL interop)
   description = "Dev environment for simple-mod-framework (CLI + Mod Manager GUIs)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     flake-utils.url = "github:numtide/flake-utils";
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, fenix }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+
+        # Rust toolchain that includes the Windows GNU cross-compilation std.
+        # fenix provides pre-built Rust components for arbitrary host+target combos.
+        rustToolchain = fenix.packages.${system}.combine [
+          fenix.packages.${system}.stable.cargo
+          fenix.packages.${system}.stable.rustc
+          fenix.packages.${system}.stable.clippy
+          fenix.packages.${system}.stable.rustfmt
+          fenix.packages.${system}.targets.x86_64-pc-windows-gnu.stable.rust-std
+        ];
 
         # Shared libraries the prebuilt Electron binary (downloaded by npm
         # into "Mod Manager/node_modules/electron") dynamically links against
@@ -79,17 +94,16 @@
 
           packages = with pkgs; [
             nodejs_22
-            rustc
-            cargo
+            rustToolchain
             cargo-tauri
-            rustfmt
-            clippy
             pkg-config
             python3
             p7zip
             curl
             zip
             unzip
+            # MinGW-w64 cross-compiler — linker for x86_64-pc-windows-gnu target.
+            pkgsCross.mingwW64.buildPackages.gcc
             # For launching/screenshotting the Electron GUI headlessly.
             xvfb-run
             xorg.xwd
@@ -100,6 +114,8 @@
 
           shellHook = ''
             export PATH="$PWD/node_modules/.bin:$PATH"
+            # Tell cargo which linker to use when targeting Windows GNU.
+            export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="x86_64-w64-mingw32-gcc"
             # Tauri's AppImage bundler hardcodes /usr/bin/xdg-open. On WSL2/Nix it isn't
             # there by default; symlink it once with: sudo ln -sf $(which xdg-open) /usr/bin/xdg-open
             # deb/rpm bundles work without this; only AppImage needs it.
