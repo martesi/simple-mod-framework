@@ -1,7 +1,10 @@
 import child_process from "child_process"
+import path from "path"
 import { logger } from "./core-singleton"
 
 // Shim for QuickEntity 3.1 executable
+
+const qnExe = path.join(process.cwd(), "Third-Party", "quickentity-rs.exe")
 
 const execCommand = function (command: string) {
 	void logger.verbose(`Executing QN 3.1 command ${command}`)
@@ -10,20 +13,20 @@ const execCommand = function (command: string) {
 
 export async function convert(game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) {
 	execCommand(
-		`"Third-Party\\quickentity-rs.exe" entity convert --input-factory "${TEMP}" --input-factory-meta "${TEMPmeta}" --input-blueprint "${TBLU}" --input-blueprint-meta "${TBLUmeta}" --output "${output}" --lossless`
+		`"${qnExe}" entity convert --input-factory "${TEMP}" --input-factory-meta "${TEMPmeta}" --input-blueprint "${TBLU}" --input-blueprint-meta "${TBLUmeta}" --output "${output}" --lossless`
 	)
 }
 
 export async function generate(game: string, input: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string) {
 	execCommand(
-		`"Third-Party\\quickentity-rs.exe" entity generate --input "${input}" --output-factory "${TEMP}" --output-factory-meta "${TEMPmeta}" --output-blueprint "${TBLU}" --output-blueprint-meta "${TBLUmeta}"`
+		`"${qnExe}" entity generate --input "${input}" --output-factory "${TEMP}" --output-factory-meta "${TEMPmeta}" --output-blueprint "${TBLU}" --output-blueprint-meta "${TBLUmeta}"`
 	)
 }
 
 export async function createPatchJSON(original: string, modified: string, output: string) {
-	execCommand(`"Third-Party\\quickentity-rs.exe" patch generate --input1 "${original}" --input2 "${modified}" --output "${output}" --format-fix`)
+	execCommand(`"${qnExe}" patch generate --input1 "${original}" --input2 "${modified}" --output "${output}" --format-fix`)
 }
 
 export async function applyPatchJSON(original: string, patch: string, output: string) {
-	execCommand(`"Third-Party\\quickentity-rs.exe" patch apply --input "${original}" --patch "${patch}" --output "${output}" --permissive --format-fix`)
+	execCommand(`"${qnExe}" patch apply --input "${original}" --patch "${patch}" --output "${output}" --permissive --format-fix`)
 }
