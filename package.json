@@ -58,8 +58,11 @@
     "build:exe:linux": "pkg package.json --targets node18-linux-x64 --output Deploy.exe --compress Brotli",
     "build:win": "npm run build:rust && npm run build:cli && npm run build:exe:win",
     "build:linux": "npm run build:rust && npm run build:cli && npm run build:exe:linux",
-    "assemble:win": "node scripts/assemble-dist.js win",
-    "assemble:linux": "node scripts/assemble-dist.js linux"
+    "fetch:hashes": "node scripts/fetch-hashes.js",
+    "assemble:win": "node scripts/assemble-dist.js win && node scripts/fetch-hashes.js",
+    "assemble:linux": "node scripts/assemble-dist.js linux && node scripts/fetch-hashes.js",
+    "dist:win": "npm install && npm run build:win && cd \"Mod Manager\" && npm install && npm run build:win && cd .. && npm run assemble:win",
+    "dist:linux": "npm install && npm run build:linux && cd \"Mod Manager\" && npm install && npm run build:linux && cd .. && npm run assemble:linux"
   },
   "bin": "compiled/main.js",
   "pkg": {
