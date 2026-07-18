@@ -1,0 +1,87 @@
+name: Tauri E2E Tests
+
+# Builds the CLI (Deploy.exe) and the new Tauri-based mod manager, then runs
+# the end-to-end test suite headlessly via tauri-driver + WebKitWebDriver.
+# All steps run inside `nix develop` so the toolchain (Node, Rust, cargo-tauri,
+# webkitgtk, xvfb-run) matches what developers use locally.
+
+on:
+  push
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            mod-manager-tauri/node_modules
+          key: tauri-e2e-npm-${{ hashFiles('package-lock.json', 'mod-manager-tauri/package-lock.json') }}
+
+      - name: Cache Cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/tauri-driver
+            mod-manager-tauri/src-tauri/target
+          key: tauri-e2e-cargo-${{ hashFiles('mod-manager-tauri/src-tauri/Cargo.lock') }}
+          restore-keys: tauri-e2e-cargo-
+
+      # ── Deploy.exe ──────────────────────────────────────────────────────────
+      # Build the real Linux CLI binary so the build pipeline is exercised even
+      # though the e2e fixture uses a stub script (for speed and hermeticity).
+
+      - name: Install root npm dependencies
+        run: nix develop --command npm install
+
+      - name: Build Deploy.exe (Linux)
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: nix develop --command npm run build:linux
+
+      # ── Tauri app ───────────────────────────────────────────────────────────
+
+      - name: Install Tauri app dependencies
+        run: nix develop --command bash -c 'cd mod-manager-tauri && npm install'
+
+      - name: Build Tauri debug binary
+        # --no-bundle skips the OS installer/AppImage step; we only need the
+        # raw ELF binary for tauri-driver to launch.
+        run: nix develop --command bash -c 'cd mod-manager-tauri && npm run test:e2e:build'
+
+      # ── tauri-driver ────────────────────────────────────────────────────────
+      # tauri-driver is not shipped as a Nix package yet; install it via Cargo
+      # once per cache key. The Cargo registry cache above amortises this cost.
+
+      - name: Install tauri-driver
+        run: |
+          nix develop --command bash -c '
+            if ! command -v tauri-driver &>/dev/null; then
+              cargo install tauri-driver --locked
+            fi
+          '
+
+      # ── E2E tests ───────────────────────────────────────────────────────────
+
+      - name: Run e2e tests (headless)
+        run: |
+          nix develop --command bash -c '
+            cd mod-manager-tauri
+            xvfb-run -a npm run test:e2e
+          '
