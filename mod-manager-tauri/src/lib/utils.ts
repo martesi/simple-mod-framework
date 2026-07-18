@@ -32,11 +32,53 @@ let _isFrameworkCache = new Map<string, boolean>()
 let _manifestCache = new Map<string, Manifest>()
 let _allModsCache: string[] | null = null
 
+// A single in-flight scan of the Mods directory shared by every lookup below.
+// Without it, getModFolder/getManifestFromModID each re-walk the whole Mods
+// folder, so resolving a load order of N mods costs O(N²) sequential native
+// fs round-trips — painfully slow on a real install over a slow mount (e.g.
+// WSL /mnt drvfs, ~45s to first render). Building the index does one readdir
+// plus a parallel manifest read per entry, and populates all caches at once.
+let _modIndex: Promise<void> | null = null
+
+function buildModIndex(): Promise<void> {
+	if (_modIndex) return _modIndex
+	_modIndex = (async () => {
+		const modsDir = native.path.join("..", "Mods")
+		const entries = await native.fs.readdirSync(modsDir)
+		// resolve every entry in parallel, but keep readdir order in the result
+		const ids = await Promise.all(
+			entries.map(async (entry) => {
+				if (entry === "Managed by SMF, do not touch") return null
+				const fullPath = native.path.resolve(native.path.join(modsDir, entry))
+				const manifestPath = native.path.join(fullPath, "manifest.json")
+				if (await native.fs.existsSync(manifestPath)) {
+					try {
+						const mf: Manifest = json5.parse(await native.fs.readFileSync(manifestPath, "utf8"))
+						_modFolderCache.set(mf.id, fullPath)
+						_manifestCache.set(mf.id, mf)
+						_isFrameworkCache.set(mf.id, true)
+						return mf.id
+					} catch {
+						// malformed manifest — fall through and treat as a bare folder
+					}
+				}
+				// no (valid) manifest: an RPKG / bare mod keyed by its folder name
+				_modFolderCache.set(entry, fullPath)
+				_isFrameworkCache.set(entry, false)
+				return entry
+			})
+		)
+		_allModsCache = ids.filter((id): id is string => id !== null)
+	})()
+	return _modIndex
+}
+
 export function clearModCache(): void {
 	_modFolderCache.clear()
 	_isFrameworkCache.clear()
 	_manifestCache.clear()
 	_allModsCache = null
+	_modIndex = null
 }
 
 // ─── config ──────────────────────────────────────────────────────────────────
@@ -73,14 +115,10 @@ export async function getConfig(): Promise<Config> {
 						modOptions: {
 							[mod]: [
 								...manifest.options
-									.filter((a) =>
-										a.type === "checkbox" || a.type === "select" ? a.enabledByDefault : false
-									)
-									.map((a) =>
-										a.type === "select" ? `${a.group}:${a.name}` : a.name
-									),
-							],
-						},
+									.filter((a) => (a.type === "checkbox" || a.type === "select" ? a.enabledByDefault : false))
+									.map((a) => (a.type === "select" ? `${a.group}:${a.name}` : a.name))
+							]
+						}
 					},
 					(orig: unknown, src: unknown) => (Array.isArray(orig) ? src : undefined)
 				)
@@ -89,38 +127,18 @@ export async function getConfig(): Promise<Config> {
 			// fill in default select options
 			config.modOptions[mod].push(
 				...manifest.options
-					.filter(
-						(a) =>
-							a.type === "select" &&
-							a.enabledByDefault &&
-							!config.modOptions[mod].some(
-								(b) => b.split(":").length > 1 && b.split(":")[0] !== a.name
-							)
-					)
+					.filter((a) => a.type === "select" && a.enabledByDefault && !config.modOptions[mod].some((b) => b.split(":").length > 1 && b.split(":")[0] !== a.name))
 					.map((a) => (a.type === "select" ? `${a.group}:${a.name}` : a.name))
 			)
 
 			// remove unknown / old-format options
 			for (let i = config.modOptions[mod].length - 1; i >= 0; i--) {
-				if (
-					!(
-						manifest.options.some(
-							(a) => a.type === "checkbox" && a.name === config.modOptions[mod][i]
-						) ||
-						manifest.options.some(
-							(a) =>
-								a.type === "select" && `${a.group}:${a.name}` === config.modOptions[mod][i]
-						)
-					)
-				) {
-					if (
-						manifest.options.some(
-							(a) => a.type === "select" && a.name === config.modOptions[mod][i]
-						)
-					) {
-						const found = manifest.options.find(
-							(a) => a.type === "select" && a.name === config.modOptions[mod][i]
-						)!
+				if (!(
+					manifest.options.some((a) => a.type === "checkbox" && a.name === config.modOptions[mod][i]) ||
+					manifest.options.some((a) => a.type === "select" && `${a.group}:${a.name}` === config.modOptions[mod][i])
+				)) {
+					if (manifest.options.some((a) => a.type === "select" && a.name === config.modOptions[mod][i])) {
+						const found = manifest.options.find((a) => a.type === "select" && a.name === config.modOptions[mod][i])!
 						// @ts-expect-error select has group
 						config.modOptions[mod][i] = `${found.group}:${found.name}`
 					} else {
@@ -132,10 +150,7 @@ export async function getConfig(): Promise<Config> {
 			// remove options whose requirements aren't met
 			for (let i = config.modOptions[manifest.id].length - 1; i >= 0; i--) {
 				const opt = manifest.options.find(
-					(a) =>
-						(a.type === "checkbox" && a.name === config.modOptions[manifest.id][i]) ||
-						(a.type === "select" &&
-							`${a.group}:${a.name}` === config.modOptions[manifest.id][i])
+					(a) => (a.type === "checkbox" && a.name === config.modOptions[manifest.id][i]) || (a.type === "select" && `${a.group}:${a.name}` === config.modOptions[manifest.id][i])
 				)
 				if (opt?.requirements) {
 					if (!opt.requirements.every((r) => config.loadOrder.includes(r))) {
@@ -144,11 +159,7 @@ export async function getConfig(): Promise<Config> {
 				}
 			}
 
-			merge(
-				config,
-				{ modOptions: config.modOptions },
-				(orig: unknown, src: unknown) => (Array.isArray(orig) ? src : undefined)
-			)
+			merge(config, { modOptions: config.modOptions }, (orig: unknown, src: unknown) => (Array.isArray(orig) ? src : undefined))
 		}
 	}
 
@@ -162,9 +173,7 @@ export async function setConfig(config: Config): Promise<void> {
 
 export async function mergeConfig(partial: Partial<Config>): Promise<Config> {
 	const config = await getConfig()
-	const merged = merge(config, partial, (orig: unknown, src: unknown) =>
-		Array.isArray(orig) ? src : undefined
-	) as Config
+	const merged = merge(config, partial, (orig: unknown, src: unknown) => (Array.isArray(orig) ? src : undefined)) as Config
 	await setConfig(merged)
 	return merged
 }
@@ -173,6 +182,9 @@ export async function mergeConfig(partial: Partial<Config>): Promise<Config> {
 
 export async function modIsFramework(id: string): Promise<boolean> {
 	if (_isFrameworkCache.has(id)) return _isFrameworkCache.get(id)!
+	await buildModIndex()
+	if (_isFrameworkCache.has(id)) return _isFrameworkCache.get(id)!
+	// id isn't a folder in Mods/ — fall back to per-id detection
 	const modsDir = native.path.join("..", "Mods")
 	const modDir = native.path.join(modsDir, id)
 	// An RPKG mod: the folder exists, has no manifest, and contains *.rpkg files
@@ -187,6 +199,9 @@ export async function modIsFramework(id: string): Promise<boolean> {
 
 export async function getModFolder(id: string): Promise<string> {
 	if (_modFolderCache.has(id)) return _modFolderCache.get(id)!
+	await buildModIndex()
+	if (_modFolderCache.has(id)) return _modFolderCache.get(id)!
+	// id isn't indexed — fall back to a per-id scan (also covers the throw case)
 	const modsDir = native.path.join("..", "Mods")
 
 	let folder: string | undefined
@@ -221,55 +236,32 @@ export async function getModFolder(id: string): Promise<string> {
 
 export async function getManifestFromModID(id: string): Promise<Manifest> {
 	if (_manifestCache.has(id)) return _manifestCache.get(id)!
+	await buildModIndex()
+	if (_manifestCache.has(id)) return _manifestCache.get(id)!
 	if (!(await modIsFramework(id))) {
 		throw new Error(`Mod ${id} is not a framework mod`)
 	}
 	const folder = await getModFolder(id)
-	const manifest: Manifest = json5.parse(
-		await native.fs.readFileSync(native.path.join(folder, "manifest.json"), "utf8")
-	)
+	const manifest: Manifest = json5.parse(await native.fs.readFileSync(native.path.join(folder, "manifest.json"), "utf8"))
 	_manifestCache.set(id, manifest)
 	return manifest
 }
 
 export async function getAllMods(): Promise<string[]> {
 	if (_allModsCache) return _allModsCache
-	const modsDir = native.path.join("..", "Mods")
-	const entries = await native.fs.readdirSync(modsDir)
-	const result: string[] = []
-	for (const entry of entries) {
-		if (entry === "Managed by SMF, do not touch") continue
-		const fullPath = native.path.resolve(native.path.join(modsDir, entry))
-		const manifestPath = native.path.join(fullPath, "manifest.json")
-		if (await native.fs.existsSync(manifestPath)) {
-			try {
-				const mf = json5.parse(await native.fs.readFileSync(manifestPath, "utf8"))
-				result.push(mf.id as string)
-			} catch {
-				result.push(entry)
-			}
-		} else {
-			result.push(entry)
-		}
-	}
-	_allModsCache = result
-	return result
+	await buildModIndex()
+	return _allModsCache!
 }
 
 export async function setModManifest(modID: string, manifest: Manifest): Promise<void> {
 	const folder = await getModFolder(modID)
-	await native.fs.writeFileSync(
-		native.path.join(folder, "manifest.json"),
-		JSON.stringify(manifest, undefined, "\t")
-	)
+	await native.fs.writeFileSync(native.path.join(folder, "manifest.json"), JSON.stringify(manifest, undefined, "\t"))
 	_manifestCache.delete(modID)
 }
 
 export async function alterModManifest(modID: string, data: Partial<Manifest>): Promise<void> {
 	const manifest = await getManifestFromModID(modID)
-	const merged = merge({ ...manifest }, data, (orig: unknown, src: unknown) =>
-		Array.isArray(orig) ? src : undefined
-	) as Manifest
+	const merged = merge({ ...manifest }, data, (orig: unknown, src: unknown) => (Array.isArray(orig) ? src : undefined)) as Manifest
 	await setModManifest(modID, merged)
 }
 
@@ -295,10 +287,10 @@ export async function sortMods(): Promise<boolean> {
 						config.modOptions[a].includes(`${x.group}:${x.name}`) ||
 						(x.type === OptionType.conditional &&
 							compileExpression(x.condition, {
-								customProp: useDotAccessOperatorAndOptionalChaining,
+								customProp: useDotAccessOperatorAndOptionalChaining
 							})({ config }))
 				)
-				.flatMap((o) => o.loadBefore ?? []),
+				.flatMap((o) => o.loadBefore ?? [])
 		]
 
 		const loadAfter_A: (string | [string, string])[] = [
@@ -310,10 +302,10 @@ export async function sortMods(): Promise<boolean> {
 						config.modOptions[a].includes(`${x.group}:${x.name}`) ||
 						(x.type === OptionType.conditional &&
 							compileExpression(x.condition, {
-								customProp: useDotAccessOperatorAndOptionalChaining,
+								customProp: useDotAccessOperatorAndOptionalChaining
 							})({ config }))
 				)
-				.flatMap((o) => o.loadAfter ?? []),
+				.flatMap((o) => o.loadAfter ?? [])
 		]
 
 		const loadBefore_B: (string | [string, string])[] = [
@@ -325,10 +317,10 @@ export async function sortMods(): Promise<boolean> {
 						config.modOptions[b].includes(`${x.group}:${x.name}`) ||
 						(x.type === OptionType.conditional &&
 							compileExpression(x.condition, {
-								customProp: useDotAccessOperatorAndOptionalChaining,
+								customProp: useDotAccessOperatorAndOptionalChaining
 							})({ config }))
 				)
-				.flatMap((o) => o.loadBefore ?? []),
+				.flatMap((o) => o.loadBefore ?? [])
 		]
 
 		const loadAfter_B: (string | [string, string])[] = [
@@ -340,10 +332,10 @@ export async function sortMods(): Promise<boolean> {
 						config.modOptions[b].includes(`${x.group}:${x.name}`) ||
 						(x.type === OptionType.conditional &&
 							compileExpression(x.condition, {
-								customProp: useDotAccessOperatorAndOptionalChaining,
+								customProp: useDotAccessOperatorAndOptionalChaining
 							})({ config }))
 				)
-				.flatMap((o) => o.loadAfter ?? []),
+				.flatMap((o) => o.loadAfter ?? [])
 		]
 
 		for (const lb of loadBefore_A) {
@@ -388,39 +380,26 @@ export async function validateModFolder(modFolder: string): Promise<[boolean, st
 	}
 
 	if (!validateManifest(manifest)) {
-		return [
-			false,
-			`Invalid manifest due to non-matching schema: ${new Ajv({ strict: false }).errorsText(validateManifest.errors)}`,
-		]
+		return [false, `Invalid manifest due to non-matching schema: ${new Ajv({ strict: false }).errorsText(validateManifest.errors)}`]
 	}
 
-	for (const contentFolder of [
-		...(manifest.contentFolders ?? []),
-		...(manifest.options ?? []).flatMap((a) => a.contentFolders ?? []),
-	]) {
+	for (const contentFolder of [...(manifest.contentFolders ?? []), ...(manifest.options ?? []).flatMap((a) => a.contentFolders ?? [])]) {
 		const cfPath = native.path.resolve(modFolder, contentFolder)
-		if (!(await native.fs.existsSync(cfPath)))
-			return [false, `Invalid content folder "${contentFolder}" due to nonexistent path`]
+		if (!(await native.fs.existsSync(cfPath))) return [false, `Invalid content folder "${contentFolder}" due to nonexistent path`]
 
 		const chunkFolders = await native.fs.readdirSync(cfPath)
 		if (chunkFolders.length === 0) return [false, `Empty content folder "${contentFolder}"`]
 
 		for (const chunkFolder of chunkFolders) {
-			if (!chunkFolder.match(/chunk([0-9]*)/))
-				return [false, `Invalid chunk folder "${chunkFolder}" in "${contentFolder}"`]
+			if (!chunkFolder.match(/chunk([0-9]*)/)) return [false, `Invalid chunk folder "${chunkFolder}" in "${contentFolder}"`]
 		}
 	}
 
-	for (const blobsFolder of [
-		...(manifest.blobsFolders ?? []),
-		...(manifest.options ?? []).flatMap((a) => a.blobsFolders ?? []),
-	]) {
+	for (const blobsFolder of [...(manifest.blobsFolders ?? []), ...(manifest.options ?? []).flatMap((a) => a.blobsFolders ?? [])]) {
 		const bfPath = native.path.resolve(modFolder, blobsFolder)
-		if (!(await native.fs.existsSync(bfPath)))
-			return [false, `Invalid blobs folder "${blobsFolder}" due to nonexistent path`]
+		if (!(await native.fs.existsSync(bfPath))) return [false, `Invalid blobs folder "${blobsFolder}" due to nonexistent path`]
 
-		if ((await native.fs.readdirSync(bfPath)).length === 0)
-			return [false, `Empty blobs folder "${blobsFolder}"`]
+		if ((await native.fs.readdirSync(bfPath)).length === 0) return [false, `Empty blobs folder "${blobsFolder}"`]
 	}
 
 	// validate select option groups
@@ -434,8 +413,7 @@ export async function validateModFolder(modFolder: string): Promise<[boolean, st
 	}
 	for (const [group, [members, enabledByDefault]] of Object.entries(groups)) {
 		if (members === 1) return [false, `Option group "${group}" has only one member`]
-		if (enabledByDefault > 1)
-			return [false, `Option group "${group}" has more than one member enabled by default`]
+		if (enabledByDefault > 1) return [false, `Option group "${group}" has more than one member enabled by default`]
 	}
 
 	// validate JSON file schemas
@@ -459,24 +437,18 @@ export async function validateModFolder(modFolder: string): Promise<[boolean, st
 			const ajv = new Ajv({ strict: false })
 			if (ext === "entity.json") {
 				const fc = fileContents as { quickEntityVersion?: number }
-				if (fc.quickEntityVersion === 3.1 && !validateEntity(fileContents))
-					return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateEntity.errors)}`]
+				if (fc.quickEntityVersion === 3.1 && !validateEntity(fileContents)) return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateEntity.errors)}`]
 			} else if (ext === "entity.patch.json") {
 				const fc = fileContents as { patchVersion?: number }
-				if (fc.patchVersion === 6 && !validateEntityPatch(fileContents))
-					return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateEntityPatch.errors)}`]
+				if (fc.patchVersion === 6 && !validateEntityPatch(fileContents)) return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateEntityPatch.errors)}`]
 			} else if (ext === "repository.json") {
-				if (!validateRepository(fileContents))
-					return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateRepository.errors)}`]
+				if (!validateRepository(fileContents)) return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateRepository.errors)}`]
 			} else if (ext === "unlockables.json") {
-				if (!validateUnlockables(fileContents))
-					return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateUnlockables.errors)}`]
+				if (!validateUnlockables(fileContents)) return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateUnlockables.errors)}`]
 			} else if (ext === "contract.json") {
-				if (!validateContract(fileContents))
-					return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateContract.errors)}`]
+				if (!validateContract(fileContents)) return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateContract.errors)}`]
 			} else if (ext === "JSON.patch.json") {
-				if (!validateJSONPatch(fileContents))
-					return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateJSONPatch.errors)}`]
+				if (!validateJSONPatch(fileContents)) return [false, `Invalid file ${filePath}: ${ajv.errorsText(validateJSONPatch.errors)}`]
 			}
 		}
 	}

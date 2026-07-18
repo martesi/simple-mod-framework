@@ -12,7 +12,9 @@
  *   - <frameworkRoot>/Deploy.exe                 ← only if `deployExe` override is
  *                                                  given (original restored)
  *   - <frameworkRoot>/Mods/<installed mods>      ← removed on teardown
- *   - <gamePath>/Output/                         ← removed on teardown
+ *   - <frameworkRoot>/Output                     ← Deploy.exe's output dir;
+ *                                                  removed on teardown (any
+ *                                                  pre-existing one restored)
  *
  * The game's Runtime/ and Retail/ are never written to.  outputToSeparateDirectory
  * guarantees Deploy.exe writes to Output/ rather than patching Runtime/ in place.
@@ -20,24 +22,41 @@
 import { execFileSync } from "node:child_process"
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { basename, dirname, extname, join } from "node:path"
+import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import json5 from "json5"
 
 const e2eDir = dirname(dirname(fileURLToPath(import.meta.url)))
+const projectDir = dirname(e2eDir)
+
+// Opt-in config; gitignored, so it's never accidentally committed.
 const integrationConfigPath = join(e2eDir, "integration.json")
 
 /**
- * Load e2e/integration.json.  Returns null when the file is absent so the suite
- * can self-skip (see INTEGRATION.md — integration tests are opt-in).
+ * Load the integration config.  Returns null when it's absent so the suite can
+ * self-skip (see INTEGRATION.md — integration tests are opt-in).  Relative paths
+ * in the config are resolved against the mod-manager-tauri dir.
  */
 export function loadIntegrationConfig() {
 	if (!existsSync(integrationConfigPath)) return null
 	const raw = json5.parse(readFileSync(integrationConfigPath, "utf8"))
-	if (!raw.gamePath) throw new Error("integration.json: missing required 'gamePath'")
-	if (!Array.isArray(raw.mods) || raw.mods.length === 0) throw new Error("integration.json: 'mods' must be a non-empty array")
-	return raw
+	const configPath = integrationConfigPath
+	if (!raw.gamePath) throw new Error(`${basename(configPath)}: missing required 'gamePath'`)
+	if (!Array.isArray(raw.mods) || raw.mods.length === 0) throw new Error(`${basename(configPath)}: 'mods' must be a non-empty array`)
+
+	const abs = (p) => (p ? (isAbsolute(p) ? p : resolve(projectDir, p)) : p)
+	return {
+		...raw,
+		gamePath: abs(raw.gamePath),
+		frameworkPath: abs(raw.frameworkPath),
+		deployExe: abs(raw.deployExe),
+		mods: raw.mods.map(abs),
+		// startup/UI waits: a real install on a slow mount (e.g. WSL /mnt drvfs)
+		// can take ~45s to first render as getConfig walks the whole load order
+		startupTimeoutMs: raw.startupTimeoutMs ?? 120_000,
+		deployTimeoutMs: raw.deployTimeoutMs ?? 300_000
+	}
 }
 
 /**
@@ -137,8 +156,12 @@ function installMod(frameworkRoot, archive) {
 export function createIntegrationFixture(appBinary, cfg) {
 	const frameworkRoot = resolveFrameworkRoot(cfg)
 	const gamePath = cfg.gamePath
-	const outputDir = join(gamePath, "Output")
 	const runtimeChunk = join(gamePath, "Runtime", "chunk0.rpkg")
+
+	// Deploy.exe always writes to <cwd>/Output, and run_deploy sets cwd to the
+	// framework root — so the deploy output lands at <frameworkRoot>/Output.
+	// The teardown below deletes it (restoring any pre-existing Output/).
+	const outputDir = join(frameworkRoot, "Output")
 
 	const undo = [] // teardown steps, run in reverse
 
@@ -187,11 +210,24 @@ export function createIntegrationFixture(appBinary, cfg) {
 	const config = json5.parse(originalConfigRaw)
 	config.outputToSeparateDirectory = true
 	config.knownMods = [...new Set([...(config.knownMods ?? []), ...mods.map((m) => m.id)])]
+	// A real install's config uses Windows-style backslash separators (e.g.
+	// "..\\Runtime"). A Linux Deploy.exe treats "\" as a literal character and
+	// mis-resolves the path ("dist/Retail/HITMAN3.exe" instead of the game's
+	// Retail/), so normalize the separators for the deploy.
+	for (const key of ["runtimePath", "retailPath"]) {
+		if (typeof config[key] === "string") config[key] = config[key].replace(/\\/g, "/")
+	}
 	writeFileSync(configPath, JSON.stringify(config, null, "\t"))
 	undo.push(() => writeFileSync(configPath, originalConfigRaw))
 
-	// Output/ is a build artifact — always cleaned on teardown.
-	undo.push(() => rmSync(outputDir, { recursive: true, force: true }))
+	// move any pre-existing <frameworkRoot>/Output aside; restore it on teardown
+	// so a prior real deploy's output isn't clobbered or mistaken for ours
+	const outputBackup = existsSync(outputDir) ? `${outputDir}.e2e-bak` : null
+	if (outputBackup) renameSync(outputDir, outputBackup)
+	undo.push(() => {
+		rmSync(outputDir, { recursive: true, force: true }) // this run's Output
+		if (outputBackup) renameSync(outputBackup, outputDir)
+	})
 
 	function teardown() {
 		for (const step of undo.reverse()) {
@@ -203,7 +239,18 @@ export function createIntegrationFixture(appBinary, cfg) {
 		}
 	}
 
-	return { app, frameworkRoot, gamePath, configPath, outputDir, runtimeChunk, mods, teardown }
+	return {
+		app,
+		frameworkRoot,
+		gamePath,
+		configPath,
+		outputDir,
+		runtimeChunk,
+		mods,
+		startupTimeoutMs: cfg.startupTimeoutMs ?? 120_000,
+		deployTimeoutMs: cfg.deployTimeoutMs ?? 300_000,
+		teardown
+	}
 }
 
 /** config.json is rewritten by the app as JSON5, so parse it as JSON5. */

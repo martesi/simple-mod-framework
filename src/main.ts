@@ -82,9 +82,17 @@ if (fs.existsSync(path.join(core.config.retailPath, "Runtime", "chunk0.rpkg"))) 
 	}
 }
 
-core.config.platform = fs.existsSync(path.join(core.config.retailPath, "Runtime", "chunk0.rpkg"))
+const detectedPlatform = fs.existsSync(path.join(core.config.retailPath, "Runtime", "chunk0.rpkg"))
 	? gameHashes[md5File.sync(path.join(core.config.retailPath, "..", "MicrosoftGame.Config"))]
 	: gameHashes[md5File.sync(path.join(core.config.runtimePath, "..", "Retail", "HITMAN3.exe"))] // Platform detection
+
+// PATCH: an unrecognised game hash (e.g. after a game update) normally aborts the
+// deploy with "Unknown game version". Instead, fall back to Steam so deploys keep
+// working on updated/unknown builds. See PATCH_NOTICE.md.
+core.config.platform = detectedPlatform ?? Platform.steam
+if (typeof detectedPlatform === "undefined") {
+	void core.logger.warn("Unknown game version — assuming Steam (patched fallback, see PATCH_NOTICE.md). If deploy misbehaves, the framework likely needs updating for this game build.")
+}
 
 let sentryTransaction = {
 	startChild(...args) {

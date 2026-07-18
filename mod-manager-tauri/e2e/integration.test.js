@@ -64,7 +64,7 @@ if (!integrationConfig) {
 		})
 
 		test("startup resolves the framework root without a config error", async () => {
-			await browser.$('a[href="/modList"]').waitForExist({ timeout: 20_000 })
+			await browser.$('a[href="/modList"]').waitForExist({ timeout: fixture.startupTimeoutMs })
 			// a broken framework-root resolution surfaces a "can't find config" modal
 			const modals = await browser.$$(".bx--modal.is-visible")
 			for (const modal of modals) {
@@ -76,11 +76,13 @@ if (!integrationConfig) {
 		test("installed mods appear in the Available Mods list", async () => {
 			const base = await browser.getUrl()
 			await browser.url(new URL("/modList", base).href)
-			await browser.$("h1=Available Mods").waitForExist({ timeout: 20_000 })
+			// navigation forces a reload (data-sveltekit-reload) → getConfig +
+			// getAllMods run again, slow on a real install; allow startup budget
+			await browser.$("h1=Available Mods").waitForExist({ timeout: fixture.startupTimeoutMs })
 
 			for (const mod of fixture.mods) {
 				await browser.$(`h4=${mod.name}`).waitForExist({
-					timeout: 10_000
+					timeout: fixture.startupTimeoutMs
 				})
 			}
 		})
@@ -102,9 +104,9 @@ if (!integrationConfig) {
 
 		test("deploy runs the real Deploy.exe and writes only to Output/", async () => {
 			await click("button=Apply")
-			await browser.$("h3=Applying your mods").waitForExist({ timeout: 10_000 })
+			await browser.$("h3=Applying your mods").waitForExist({ timeout: fixture.startupTimeoutMs })
 
-			// real deploys are slow — wait up to 2 min for success or failure
+			// real deploys are slow — wait up to deployTimeoutMs for success/failure
 			await browser.waitUntil(
 				async () => {
 					if (await browser.$("span=Deploy successful").isExisting()) return true
@@ -117,7 +119,7 @@ if (!integrationConfig) {
 					}
 					return false
 				},
-				{ timeout: 120_000, interval: 1_000, timeoutMsg: "Deploy.exe did not finish within 120s" }
+				{ timeout: fixture.deployTimeoutMs, interval: 1_000, timeoutMsg: `Deploy.exe did not finish within ${fixture.deployTimeoutMs}ms` }
 			)
 
 			// Output/ populated

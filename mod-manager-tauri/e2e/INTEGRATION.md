@@ -27,22 +27,25 @@ can work with a minimal stub chunk, but most framework mods cannot.
 
 ## Opt-in config file
 
-Integration tests only run when `e2e/integration.json` exists. That file is
-already gitignored by the `*.local` rule in `.gitignore`, so it is never
-accidentally committed.
+Integration tests only run when `e2e/integration.json` exists. It (and the whole
+`tests/` dir) is gitignored, so nothing here is accidentally committed.
 
 Create it by copying the example and filling in your paths:
 
 ```sh
 cp e2e/integration.example.json e2e/integration.json
-# fill in gamePath, mods, and optionally deployExe
+# fill in gamePath, mods, and optionally frameworkPath / deployExe
 ```
+
+Relative paths in the config are resolved against the `mod-manager-tauri`
+directory, so repo-local inputs (e.g. `tests/env/...`) can be written as short
+relative paths; game paths are typically absolute.
 
 ### Schema
 
 ```jsonc
 {
-  // Absolute path to the directory that contains Runtime/, Retail/, etc.
+  // Path to the directory that contains Runtime/, Retail/, etc.
   // This is the parent of the framework root — the same folder you point
   // the existing Mod Manager at.
   "gamePath": "/path/to/HITMAN3",
@@ -52,20 +55,27 @@ cp e2e/integration.example.json e2e/integration.json
   // Listed mods are installed in order; each must be a framework mod
   // (has a manifest.json at the archive root) unless it ends in .rpkg.
   "mods": [
-    "/path/to/SomeMod.zip",
-    "/path/to/AnotherMod.zip"
+    "tests/env/SomeMod.zip",
+    "/absolute/path/to/AnotherMod.zip"
   ],
 
   // Optional: the framework root inside gamePath (the folder holding
   // config.json + Deploy.exe + Mods/).  Auto-detected when omitted — the
   // fixture scans gamePath's children for it (real installs name it
-  // "Simple Mod Framework").  Set this only if auto-detection fails.
-  "frameworkPath": "/path/to/HITMAN3/Simple Mod Framework",
+  // "Simple Mod Framework"; some name it "dist"/"Release").  Set this
+  // explicitly when gamePath holds more than one framework root.
+  "frameworkPath": "/path/to/HITMAN3/dist",
 
   // Optional: a pre-built Deploy.exe to swap in for the test run.  When
   // omitted, the install's existing Deploy.exe is used as-is.  When set, the
   // original is backed up and restored on teardown.
-  "deployExe": "/path/to/Deploy.exe"
+  "deployExe": "/path/to/Deploy.exe",
+
+  // Optional timeouts (ms).  startupTimeoutMs covers first render + the
+  // getConfig/getAllMods walk, which is slow on a real install over a WSL
+  // /mnt drvfs mount (~45s).  deployTimeoutMs bounds the real Deploy.exe run.
+  "startupTimeoutMs": 120000,
+  "deployTimeoutMs": 600000
 }
 ```
 
@@ -93,20 +103,47 @@ Each integration test run exercises the full UI path through the real binary:
    assertion as the stub test).
 
 4. **Deploy → Output/** — the Apply button is clicked. The real `Deploy.exe` is
-   spawned (not the stub). Test waits up to 120 s for the "Deploy successful"
-   or "Deploy unsuccessful" span to appear (a failure span fails the test with
-   the deploy log), then against `<gamePath>/Output`:
-   - asserts `Output/` exists and is non-empty
-   - asserts `Output/packagedefinition.txt` exists
-   - asserts at least one `chunk*patch<N>.rpkg` is present in `Output/`
-   - asserts `Runtime/chunk0.rpkg` mtime is unchanged (game files untouched)
+   spawned (not the stub). Test waits up to `deployTimeoutMs` for the "Deploy
+   successful" or "Deploy unsuccessful" span (a failure span fails the test with
+   the deploy log). `Deploy.exe` writes to `<frameworkRoot>/Output` (its cwd is
+   the framework root), and assertions run against it:
+   - asserts it exists and is non-empty
+   - asserts `packagedefinition.txt` exists
+   - asserts at least one `chunk*patch<N>.rpkg` is present
+   - asserts `<gamePath>/Runtime/chunk0.rpkg` mtime is unchanged (game untouched)
 
 5. **Cleanup** — the fixture teardown unwinds every mutation in reverse:
-   `<gamePath>/Output/` is deleted, `Mods/` entries installed during the test
-   are removed, `config.json` is restored verbatim (undoing the
-   `outputToSeparateDirectory` / `knownMods` edits), any `Deploy.exe` override
-   is reverted, and the app binary is removed (restoring a pre-existing one from
-   backup). The game directory is left exactly as it started.
+   `<frameworkRoot>/Output/` is deleted (any pre-existing one restored), `Mods/`
+   entries installed during the test are removed, `config.json` is restored
+   verbatim (undoing the `outputToSeparateDirectory` / `knownMods` edits), any
+   `Deploy.exe` override is reverted, and the app binary is removed (restoring a
+   pre-existing one from backup). The game directory is left exactly as it
+   started.
+
+### Deploy step prerequisites
+
+Step 4 runs the install's real `Deploy.exe`. Two things gate it:
+
+- **Game version.** Deploy identifies the game by hashing `HITMAN3.exe` /
+  `MicrosoftGame.Config`; an unrecognised hash (e.g. after a game update)
+  normally aborts with `ERROR Deploy Unknown game version`. The repo carries a
+  local patch (see `../../PATCH_NOTICE.md`) that falls back to Steam instead, so
+  a rebuilt `Deploy.exe` clears this gate.
+
+- **Native toolchain (platform-specific).** Deploy shells out to native tools in
+  `<frameworkRoot>/Third-Party` (`rpkg-cli`, `ResourceTool`, `ResourceLib_*`,
+  `quickentity*`). A **Windows** install ships only `.exe`/`.dll` there, so a
+  **Linux** `Deploy.exe` fails with `spawn …/Third-Party/rpkg-cli ENOENT` — it
+  needs Linux builds of those tools, which a Windows install doesn't provide.
+  `config.json`'s `runtimePath`/`retailPath` also use Windows `\` separators; the
+  fixture rewrites them to `/` so a Linux Deploy can resolve `Runtime`/`Retail`.
+
+Net effect on WSL against a Windows install: steps 1–3 pass, but step 4 can't
+complete — the Windows `Deploy.exe` runs via interop (slow, minutes) and a
+Linux-rebuilt `Deploy.exe` lacks the Linux `Third-Party` tools. Run the deploy
+on Windows (patched `Deploy.exe` + the install's Windows tools) or assemble a
+full Linux framework (`npm run assemble:linux`, which stages Linux tools) to
+exercise step 4.
 
 ## Running locally
 
