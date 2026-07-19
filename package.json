@@ -43,8 +43,8 @@
     "@types/semver": "^7.3.13",
     "@typescript-eslint/eslint-plugin": "^5.33.0",
     "@typescript-eslint/parser": "^5.33.0",
+    "@yao-pkg/pkg": "^6.21.0",
     "eslint": "^8.31.0",
-    "pkg": "^5.8.1",
     "prettier": "^2.7.1",
     "prettier-eslint": "^15.0.1",
     "rust-just": "^1.57.0"
@@ -56,7 +56,7 @@
     "build:tsc": "node scripts/tsc-lenient.js",
     "build:cli": "npm run build:tsc",
     "dev:deploy": "node scripts/tsc-lenient.js --watch --preserveWatchOutput",
-    "build:exe:win": "pkg package.json --targets node18-win-x64 --output build/Deploy.exe --compress Brotli",
+    "build:exe:win": "pkg package.json --targets node22-win-x64 --output build/Deploy.exe --compress Brotli",
     "build:win": "npm run build:cli && npm run build:exe:win",
     "fetch:hashes": "node scripts/fetch-hashes.js dist",
     "assemble:win": "node scripts/assemble-dist.js && node scripts/fetch-hashes.js dist",
