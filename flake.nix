@@ -108,6 +108,7 @@
             curl
             zip
             unzip
+            just # `just dist` runs the build graph in ./justfile (needs >= 1.42 for [parallel])
             # MinGW-w64 cross-compiler — linker for x86_64-pc-windows-gnu target.
             pkgsCross.mingwW64.buildPackages.gcc
             # For launching/screenshotting the Electron GUI headlessly.

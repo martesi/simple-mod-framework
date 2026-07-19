@@ -1,18 +1,17 @@
 // Assembles the ./dist release folder from the various build outputs.
 //
 // Replaces the block of `robocopy`/`New-Item` PowerShell steps duplicated
-// across the CI workflows so the same logic runs identically in CI (Windows
-// or Linux) and locally.
+// across CI so the same logic runs identically in CI and locally.
 //
-// Usage: node scripts/assemble-dist.js <win|linux>
+// Windows-only: Deploy.exe and the Mod Manager are both Windows binaries
+// (built with the x86_64-pc-windows-msvc toolchain) - Linux users run this
+// same Windows build under Proton, there's no separate Linux artifact to
+// assemble. See .github/workflows/linux-build.yml and tauri-e2e.yml for the
+// (unmaintained, reference-only) Linux/cross-compile exploration.
+//
+// Usage: node scripts/assemble-dist.js
 const fs = require("fs")
 const path = require("path")
-
-const platform = process.argv[2]
-if (platform !== "win" && platform !== "linux") {
-	console.error("Usage: node scripts/assemble-dist.js <win|linux>")
-	process.exit(1)
-}
 
 const root = path.join(__dirname, "..")
 const dist = path.join(root, "dist")
@@ -42,17 +41,10 @@ for (const file of fs.readdirSync(path.join(root, "build", "compiled"))) {
 	}
 }
 
-const unpackedDir = platform === "win" ? "win-unpacked" : "linux-unpacked"
-fs.cpSync(path.join(root, "Mod Manager", "dist", unpackedDir), path.join(dist, "Mod Manager"), { recursive: true })
+fs.cpSync(path.join(root, "Mod Manager", "dist", "win-unpacked"), path.join(dist, "Mod Manager"), { recursive: true })
 
 fs.copyFileSync(path.join(root, "build", "Deploy.exe"), path.join(dist, "Deploy.exe"))
 
-if (platform === "win") {
-	fs.writeFileSync(path.join(dist, "Mod Manager.cmd"), '@echo off\r\ncd "Mod Manager"\r\nstart "" "Mod Manager.exe"\r\n')
-} else {
-	const launcher = path.join(dist, "Mod Manager.sh")
-	fs.writeFileSync(launcher, '#!/bin/sh\ncd "$(dirname "$0")/Mod Manager"\nexec ./modmanager "$@"\n')
-	fs.chmodSync(launcher, 0o755)
-}
+fs.writeFileSync(path.join(dist, "Mod Manager.cmd"), '@echo off\r\ncd "Mod Manager"\r\nstart "" "Mod Manager.exe"\r\n')
 
-console.log(`Assembled dist/ for ${platform}`)
+console.log("Assembled dist/")

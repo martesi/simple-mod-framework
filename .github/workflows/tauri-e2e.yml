@@ -1,12 +1,19 @@
 name: Tauri E2E Tests
 
+# NOT PART OF THE MAINTAINED PIPELINE - reference only.
+#
+# Predates the current build setup, isn't run automatically (workflow_dispatch
+# only), and isn't being kept in sync with it. mod-manager-tauri is still WIP
+# (see mod-manager-tauri/PLAN.md); this is left in place as a reference for
+# the e2e approach in case that work is picked back up later.
+#
 # Builds the CLI (Deploy.exe) and the new Tauri-based mod manager, then runs
 # the end-to-end test suite headlessly via tauri-driver + WebKitWebDriver.
 # All steps run inside `nix develop` so the toolchain (Node, Rust, cargo-tauri,
 # webkitgtk, xvfb-run) matches what developers use locally.
 
 on:
-  push
+  workflow_dispatch
 
 jobs:
   e2e:

@@ -31,8 +31,8 @@
 // respectively), and linking them would mean local state gets written
 // straight into the tracked "For Build/" source tree.
 //
-// Runs automatically via the root "postinstall" script, and is safe to
-// re-run - it clears and recreates the linked files/folders each time so
+// Runs automatically via scripts/setup.js (called by the root "postinstall"
+// script), and is safe to re-run - it clears and recreates the linked files/folders each time so
 // they can't go stale (e.g. a dangling link left over from a previous
 // machine/environment), but never touches an existing Mods/ or config.json.
 //

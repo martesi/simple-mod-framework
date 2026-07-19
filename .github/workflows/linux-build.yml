@@ -1,5 +1,14 @@
 name: Linux Build
 
+# NOT PART OF THE MAINTAINED PIPELINE - reference only.
+#
+# Predates the current build setup, isn't run automatically (workflow_dispatch
+# only), and isn't being kept in sync with it. The shipped CLI/Mod Manager are
+# Windows binaries (x86_64-pc-windows-msvc) - Linux users run that same build
+# under Proton, so there's no native Linux artifact to maintain here. Left in
+# place as a reference for the flake.nix devshell/cross-compile approach in
+# case that's picked back up later.
+#
 # Builds the CLI and the Mod Manager GUI for Linux, using the flake.nix
 # devshell as the sole source of toolchain versions (Node, Rust, Electron's
 # runtime libraries). Unlike the Windows workflows, nothing is ever installed
@@ -7,7 +16,7 @@ name: Linux Build
 # environment a contributor gets locally with `nix develop`.
 
 on:
-  push
+  workflow_dispatch
 
 jobs:
   build:

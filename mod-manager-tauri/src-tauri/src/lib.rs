@@ -4,6 +4,9 @@ mod paths;
 use commands::{archive, deploy, fs_bridge};
 
 pub fn run() {
+    #[cfg(debug_assertions)]
+    paths::debug_check_layout();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
