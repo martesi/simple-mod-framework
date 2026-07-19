@@ -19,12 +19,6 @@ jobs:
         with:
           node-version: 18
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: x86_64-pc-windows-msvc
-          default: true
-
       - name: Set up 7-Zip
         uses: milliewalky/setup-7-zip@ce4c26956d369e4cce6c1a7c114a4ed6c98f458f
 
@@ -47,8 +41,8 @@ jobs:
         run: |
           npm install
 
-      # All build steps below run through package.json scripts (build:rust,
-      # build:cli, build:exe:win) rather than ad hoc shell commands, so that
+      # All build steps below run through package.json scripts (build:cli,
+      # build:exe:win) rather than ad hoc shell commands, so that
       # `npm run build:win` does the same thing here as it does locally -
       # nothing is installed globally on the runner.
       - name: Build EXE

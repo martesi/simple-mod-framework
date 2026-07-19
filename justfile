@@ -2,10 +2,9 @@
 # the npm-script `&&` chains in package.json (build:cli, build:win, dist:win).
 #
 # Why: those chains are sequential end to end, but only *part* of the graph
-# actually has to be. The root CLI build is a true pipeline - build:rust ->
-# stage:rust:src -> build:tsc -> stage:rust:compiled -> build:exe:win, each
-# step consuming the last one's output (see scripts/stage-rust.js) - so that
-# part stays sequential here too. The Mod Manager GUI, though, is a fully
+# actually has to be. The root CLI build is a true pipeline - build-tsc ->
+# build-exe, each step consuming the last one's output - so that part stays
+# sequential here too. The Mod Manager GUI, though, is a fully
 # separate npm project (its own package.json/node_modules/vite/electron-builder)
 # that assemble-dist.js only reads from at the very end (Mod Manager/dist/win-unpacked).
 # It doesn't depend on the CLI build or vice versa, so the two can run side by
@@ -49,31 +48,20 @@ install-mm:
 
 # ---------------------------------------------------------------------------
 # Root CLI build - strictly sequential (each step needs the last step's
-# output on disk; see scripts/stage-rust.js for the src/ <-> build/compiled
-# handoff)
+# output on disk)
 # ---------------------------------------------------------------------------
 
-build-rust: install-root
-    cd rust && node .yarn/releases/yarn-3.6.0.cjs install && node .yarn/releases/yarn-3.6.0.cjs build
-
-stage-rust-src: build-rust
-    node scripts/stage-rust.js src
-
-build-tsc: stage-rust-src
+build-tsc: install-root
     node scripts/tsc-lenient.js
 
-stage-rust-compiled: build-tsc
-    node scripts/stage-rust.js compiled
-
-build-exe: stage-rust-compiled
+build-exe: build-tsc
     pkg package.json --targets node18-win-x64 --output build/Deploy.exe --compress Brotli
 
 # Whole CLI pipeline, e.g. `just cli` to build just the exe without the GUI
 cli: build-exe
 
-# TypeScript watch mode for local dev - only needs the rust addon staged
-# once, not the full build-exe chain
-dev-deploy: stage-rust-src
+# TypeScript watch mode for local dev
+dev-deploy: install-root
     node scripts/tsc-lenient.js --watch --preserveWatchOutput
 
 # ---------------------------------------------------------------------------
@@ -104,4 +92,4 @@ dist: assemble
 # ---------------------------------------------------------------------------
 
 clean:
-    rm -rf build dist rust/*.node src/smf-rust.d.ts src/smf-rust.node
+    rm -rf build dist

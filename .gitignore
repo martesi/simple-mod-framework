@@ -22,10 +22,4 @@ hash_list.txt
 # scripts/fetch-third-party.js downloads them there instead of duplicating
 # them in git history. Fully ignored, unlike Third-Party/ above.
 /For Build/Fetched Third-Party
-rust/npm/win32-x64-msvc/package.json
-rust/npm/win32-x64-msvc/README.md
-rust/index.d.ts
-rust/index.js
-src/smf-rust.node
-src/smf-rust.d.ts
 tests/mods
