@@ -10,7 +10,6 @@ import repositorySchema from "$lib/repository-schema.json"
 import unlockablesSchema from "$lib/unlockables-schema.json"
 import contractSchema from "$lib/contract-schema.json"
 import jsonPatchSchema from "$lib/json-patch-schema.json"
-import memoize from "lodash.memoize"
 import merge from "lodash.mergewith"
 import semver from "semver"
 
@@ -322,20 +321,87 @@ export function alterModManifest(modID: string, data: Partial<Manifest>) {
 	setModManifest(modID, manifest)
 }
 
-export function setModManifest(modID: string, manifest: Manifest) {
-	window.fs.writeFileSync(window.path.join(getModFolder(modID), "manifest.json"), JSON.stringify(manifest, undefined, "\t"))
+let _modFolderCache = new Map<string, string>()
+let _isFrameworkCache = new Map<string, boolean>()
+let _manifestCache = new Map<string, Manifest>()
+let _allModsCache: string[] | null = null
+let _isIndexed = false
+
+function buildModIndex(): void {
+	if (_isIndexed) return
+	const modsDir = window.path.join("..", "Mods")
+	if (!window.fs.existsSync(modsDir)) {
+		_allModsCache = []
+		_isIndexed = true
+		return
+	}
+	const entries = window.fs.readdirSync(modsDir)
+	const ids: string[] = []
+	for (const entry of entries) {
+		if (entry === "Managed by SMF, do not touch") continue
+		const fullPath = window.path.resolve(window.path.join(modsDir, entry))
+		const manifestPath = window.path.join(fullPath, "manifest.json")
+		if (window.fs.existsSync(manifestPath)) {
+			try {
+				const mf: Manifest = json5.parse(String(window.fs.readFileSync(manifestPath, "utf8")))
+				_modFolderCache.set(mf.id, fullPath)
+				_manifestCache.set(mf.id, mf)
+				_isFrameworkCache.set(mf.id, true)
+				ids.push(mf.id)
+				continue
+			} catch {
+				// malformed manifest — fall through and treat as a bare folder
+			}
+		}
+		// no (valid) manifest: an RPKG / bare mod keyed by its folder name
+		_modFolderCache.set(entry, fullPath)
+		_isFrameworkCache.set(entry, false)
+		ids.push(entry)
+	}
+	_allModsCache = ids
+	_isIndexed = true
 }
 
-export const getModFolder = memoize(function (id: string) {
-	const folder = modIsFramework(id)
-		? window.fs
-				.readdirSync(window.path.join("..", "Mods"))
-				.find(
-					(a) =>
-						window.fs.existsSync(window.path.join("..", "Mods", a, "manifest.json")) &&
-						json5.parse(String(window.fs.readFileSync(window.path.join("..", "Mods", a, "manifest.json"), "utf8"))).id === id
-				) // Find mod by ID
-		: window.path.join("..", "Mods", id) // Mod is an RPKG mod, use folder name
+export function clearModCache(): void {
+	_modFolderCache.clear()
+	_isFrameworkCache.clear()
+	_manifestCache.clear()
+	_allModsCache = null
+	_isIndexed = false
+}
+
+export function setModManifest(modID: string, manifest: Manifest) {
+	window.fs.writeFileSync(window.path.join(getModFolder(modID), "manifest.json"), JSON.stringify(manifest, undefined, "\t"))
+	_manifestCache.delete(modID)
+}
+
+export function getModFolder(id: string): string {
+	if (_modFolderCache.has(id)) return _modFolderCache.get(id)!
+	buildModIndex()
+	if (_modFolderCache.has(id)) return _modFolderCache.get(id)!
+	// id isn't indexed — fall back to a per-id scan (also covers the throw/alert case)
+	const modsDir = window.path.join("..", "Mods")
+
+	let folder: string | undefined
+	if (modIsFramework(id)) {
+		const entries = window.fs.readdirSync(modsDir)
+		for (const entry of entries) {
+			const manifestPath = window.path.join(modsDir, entry, "manifest.json")
+			if (window.fs.existsSync(manifestPath)) {
+				try {
+					const mf = json5.parse(String(window.fs.readFileSync(manifestPath, "utf8")))
+					if (mf.id === id) {
+						folder = entry
+						break
+					}
+				} catch {
+					// skip malformed manifest
+				}
+			}
+		}
+	} else {
+		folder = id
+	}
 
 	if (!folder) {
 		window.alert(`The mod ${id} couldn't be located! This will likely cause issues in parts of the framework. If you deleted a mod folder, use the Delete Mod option next time.`)
@@ -349,41 +415,46 @@ export const getModFolder = memoize(function (id: string) {
 		throw new Error(`Couldn't find mod ${id}`)
 	}
 
-	return window.path.resolve(window.path.join("..", "Mods", folder))
-})
+	const result = window.path.resolve(window.path.join(modsDir, folder))
+	_modFolderCache.set(id, result)
+	return result
+}
 
-export const modIsFramework = memoize(function (id: string) {
-	return !(
-		(
-			window.fs.existsSync(window.path.join("..", "Mods", id)) && // mod exists in folder
-			!window.fs.existsSync(window.path.join("..", "Mods", id, "manifest.json")) && // mod has no manifest
-			window
-				.klaw(window.path.join("..", "Mods", id), { nodir: true })
-				.map((a) => a.path)
-				.some((a) => a.endsWith(".rpkg"))
-		) // mod contains RPKG files
-	)
-})
+export function modIsFramework(id: string): boolean {
+	if (_isFrameworkCache.has(id)) return _isFrameworkCache.get(id)!
+	buildModIndex()
+	if (_isFrameworkCache.has(id)) return _isFrameworkCache.get(id)!
+	// id isn't a folder in Mods/ — fall back to per-id detection
+	const modsDir = window.path.join("..", "Mods")
+	const modDir = window.path.join(modsDir, id)
+	// An RPKG mod: the folder exists, has no manifest, and contains *.rpkg files
+	const isRpkg =
+		window.fs.existsSync(modDir) &&
+		!window.fs.existsSync(window.path.join(modDir, "manifest.json")) &&
+		window.klaw(modDir, { nodir: true }).map((a) => a.path).some((a) => a.endsWith(".rpkg"))
+	const result = !isRpkg
+	_isFrameworkCache.set(id, result)
+	return result
+}
 
-export const getManifestFromModID = memoize(function (id: string, dummy = 1): Manifest {
-	if (modIsFramework(id)) {
-		return json5.parse(String(window.fs.readFileSync(window.path.join(getModFolder(id), "manifest.json"), "utf8")))
-	} else {
+export function getManifestFromModID(id: string): Manifest {
+	if (_manifestCache.has(id)) return _manifestCache.get(id)!
+	buildModIndex()
+	if (_manifestCache.has(id)) return _manifestCache.get(id)!
+	if (!modIsFramework(id)) {
 		throw new Error(`Mod ${id} is not a framework mod`)
 	}
-})
+	const folder = getModFolder(id)
+	const manifest: Manifest = json5.parse(String(window.fs.readFileSync(window.path.join(folder, "manifest.json"), "utf8")))
+	_manifestCache.set(id, manifest)
+	return manifest
+}
 
-export const getAllMods = memoize(function () {
-	return window.fs
-		.readdirSync(window.path.join("..", "Mods"))
-		.filter((a) => a !== "Managed by SMF, do not touch")
-		.map((a) => window.path.resolve(window.path.join("..", "Mods", a)))
-		.map((a) =>
-			window.fs.existsSync(window.path.join(a, "manifest.json"))
-				? (json5.parse(String(window.fs.readFileSync(window.path.join(a, "manifest.json"), "utf8"))).id as string)
-				: a.split(window.path.sep).pop()!
-		)
-})
+export function getAllMods(): string[] {
+	if (_allModsCache) return _allModsCache
+	buildModIndex()
+	return _allModsCache!
+}
 
 export function validateModFolder(modFolder: string): [boolean, string] {
 	if (!window.fs.existsSync(window.path.join(modFolder, "manifest.json"))) {
