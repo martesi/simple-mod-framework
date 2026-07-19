@@ -33,7 +33,6 @@
 	import Edit from "carbon-icons-svelte/lib/Edit.svelte"
 	import Asterisk from "carbon-icons-svelte/lib/Asterisk.svelte"
 
-	let ready = false
 	let config: Config | null = null
 
 	let cannotFindConfig = false
@@ -86,7 +85,6 @@
 			config = await getConfig()
 		} catch {
 			cannotFindConfig = true
-			ready = true
 			return
 		}
 
@@ -169,8 +167,6 @@
 				invalidModOpen = true
 			}
 		}
-
-		ready = true
 
 		// kick off async checks
 		latestGithubRelease = checkForUpdates()
@@ -359,136 +355,134 @@
 	}
 </script>
 
-{#if ready}
-	<div class="w-full h-full overflow-y-auto flex items-center justify-center gap-96">
-		<div>
-			<h1 in:fade>Welcome to the Simple Mod Framework</h1>
-			<br />
-			<div class="inline" in:fade={{ delay: 400 }}>
-				<Button kind="primary" icon={List} href="/modList">Enable/disable mods</Button>
-			</div>
+<div class="w-full h-full overflow-y-auto flex items-center justify-center gap-96">
+	<div>
+		<h1 in:fade>Welcome to the Simple Mod Framework</h1>
+		<br />
+		<div class="inline" in:fade={{ delay: 400 }}>
+			<Button kind="primary" icon={List} href="/modList">Enable/disable mods</Button>
+		</div>
+		<div class="inline" in:fade={{ delay: 800 }}>
+			<Button kind="primary" icon={Settings} href="/settings">Configure mods</Button>
+		</div>
+		{#if config?.developerMode}
 			<div class="inline" in:fade={{ delay: 800 }}>
-				<Button kind="primary" icon={Settings} href="/settings">Configure mods</Button>
+				<Button kind="primary" icon={Edit} href="/authoring">Author mods</Button>
 			</div>
-			{#if config?.developerMode}
-				<div class="inline" in:fade={{ delay: 800 }}>
-					<Button kind="primary" icon={Edit} href="/authoring">Author mods</Button>
-				</div>
-			{/if}
-			<div class="inline" in:fade={{ delay: config?.developerMode ? 1200 : 800 }}>
-				<Button kind="primary" icon={Info} href="/info">More information</Button>
-			</div>
-			<p class="mt-4" in:fade={{ delay: 1600 }}>Need help using mods? Consult the pinned post on the Nexus Mods page.</p>
-			<p class="mt-2" in:fade={{ delay: 2000 }}>Need help making mods? There's extensive documentation available in the Info folder.</p>
+		{/if}
+		<div class="inline" in:fade={{ delay: config?.developerMode ? 1200 : 800 }}>
+			<Button kind="primary" icon={Info} href="/info">More information</Button>
+		</div>
+		<p class="mt-4" in:fade={{ delay: 1600 }}>Need help using mods? Consult the pinned post on the Nexus Mods page.</p>
+		<p class="mt-2" in:fade={{ delay: 2000 }}>Need help making mods? There's extensive documentation available in the Info folder.</p>
 
-			<div class="mt-4 bg-neutral-900 rounded-md p-4" in:fade={{ delay: 2400 }}>
-				{#await latestGithubRelease}
+		<div class="mt-4 bg-neutral-900 rounded-md p-4" in:fade={{ delay: 2400 }}>
+			{#await latestGithubRelease}
+				<div class="flex items-center">
+					<p class="flex-grow">Checking for framework updates...</p>
+					<div><InlineLoading /></div>
+				</div>
+			{:then { release }}
+				{#if semver.lt(FrameworkVersion, release.tag_name)}
 					<div class="flex items-center">
-						<p class="flex-grow">Checking for framework updates...</p>
-						<div><InlineLoading /></div>
+						<h3 class="flex-grow">
+							{{ patch: "Patch update available", minor: "Feature update available", major: "Major update available" }[semver.diff(FrameworkVersion, release.tag_name)] || "Update available"}
+						</h3>
+						<p>{FrameworkVersion} → {release.tag_name}</p>
 					</div>
-				{:then { release }}
-					{#if semver.lt(FrameworkVersion, release.tag_name)}
+					<hr class="bg-gray-500 border-none h-px" />
+					<div class="mt-2 markdown">{@html githubReleaseMarkdownBody}</div>
+					<br />
+					{#if canAutomaticallyUpdate}
+						<p class="text-neutral-400 text-sm">
+							An update is available. Download the latest release from GitHub and replace the executable to update.
+						</p>
+					{/if}
+				{:else}
+					<div class="flex items-center">
+						<p class="flex-grow">The framework is up to date (version {FrameworkVersion})</p>
+						<Checkmark />
+					</div>
+				{/if}
+			{:catch}
+				<div class="flex items-center">
+					<p class="flex-grow">Couldn't check for framework updates</p>
+					<div><InlineLoading status="error" /></div>
+				</div>
+			{/await}
+		</div>
+
+		<div class="mt-4 bg-neutral-900 rounded-md p-4" in:fade={{ delay: 2800 }}>
+			{#await modUpdates}
+				<div class="flex items-center">
+					<p class="flex-grow">Checking for mod updates...</p>
+					<div><InlineLoading /></div>
+				</div>
+			{:then updates}
+				{@const upToDateEntries = updates.filter(e => e.update && !semver.lt(e.manifest.version, getUpdate(e).version))}
+
+				{#each updates.filter(e => !e.update) as entry (entry.modID)}
+					<div class="flex items-center">
+						<p class="flex-grow">Couldn't check {entry.manifest.name} for updates</p>
+						<div><InlineLoading status="error" /></div>
+					</div>
+				{/each}
+
+				{#each updates.filter(e => e.update && (
+					!(trustedHosts.has(new URL(getUpdate(e).check_url).hostname) || new URL(getUpdate(e).check_url).hostname.split(".").slice(1).join(".") === "github.io") ||
+					!(trustedHosts.has(new URL(getUpdate(e).url).hostname) || new URL(getUpdate(e).url).hostname.split(".").slice(1).join(".") === "github.io")
+				)) as entry}
+					<div class="flex items-center">
+						<p class="flex-grow">The author of {entry.manifest.name} may be able to find which IPs have their mod downloaded</p>
+						<Asterisk />
+					</div>
+				{/each}
+
+				{#if upToDateEntries.length < 6}
+					{#each upToDateEntries as entry (entry.modID)}
 						<div class="flex items-center">
-							<h3 class="flex-grow">
-								{{ patch: "Patch update available", minor: "Feature update available", major: "Major update available" }[semver.diff(FrameworkVersion, release.tag_name)] || "Update available"}
-							</h3>
-							<p>{FrameworkVersion} → {release.tag_name}</p>
+							<p class="flex-grow">{entry.manifest.name} is up to date</p>
+							<Checkmark />
+						</div>
+					{/each}
+				{:else}
+					<div class="flex items-center">
+						<p class="flex-grow">{upToDateEntries.length !== updates.length ? upToDateEntries.length : "All"} mods are up to date</p>
+						<Checkmark />
+					</div>
+				{/if}
+
+				{#each updates.filter(e => e.update && semver.lt(e.manifest.version, getUpdate(e).version)) as entry (entry.modID)}
+					{@const upd = getUpdate(entry)}
+					<div class="my-4">
+						<div class="flex items-center">
+							<h3 class="flex-grow">{entry.manifest.name}</h3>
+							<p>{entry.manifest.version} → {upd.version}</p>
 						</div>
 						<hr class="bg-gray-500 border-none h-px" />
-						<div class="mt-2 markdown">{@html githubReleaseMarkdownBody}</div>
+						<div class="mt-2 markdown">{@html sanitizeHtml(markStr(upd.changelog))}</div>
 						<br />
-						{#if canAutomaticallyUpdate}
-							<p class="text-neutral-400 text-sm">
-								An update is available. Download the latest release from GitHub and replace the executable to update.
-							</p>
-						{/if}
-					{:else}
-						<div class="flex items-center">
-							<p class="flex-grow">The framework is up to date (version {FrameworkVersion})</p>
-							<Checkmark />
-						</div>
-					{/if}
-				{:catch}
-					<div class="flex items-center">
-						<p class="flex-grow">Couldn't check for framework updates</p>
-						<div><InlineLoading status="error" /></div>
+						<Button
+							kind="primary"
+							icon={Download}
+							on:click={() => {
+								updatingMod = { id: entry.modID, ...upd }
+								startModUpdate()
+							}}
+						>
+							Update
+						</Button>
 					</div>
-				{/await}
-			</div>
-
-			<div class="mt-4 bg-neutral-900 rounded-md p-4" in:fade={{ delay: 2800 }}>
-				{#await modUpdates}
-					<div class="flex items-center">
-						<p class="flex-grow">Checking for mod updates...</p>
-						<div><InlineLoading /></div>
-					</div>
-				{:then updates}
-					{@const upToDateEntries = updates.filter(e => e.update && !semver.lt(e.manifest.version, getUpdate(e).version))}
-
-					{#each updates.filter(e => !e.update) as entry (entry.modID)}
-						<div class="flex items-center">
-							<p class="flex-grow">Couldn't check {entry.manifest.name} for updates</p>
-							<div><InlineLoading status="error" /></div>
-						</div>
-					{/each}
-
-					{#each updates.filter(e => e.update && (
-						!(trustedHosts.has(new URL(getUpdate(e).check_url).hostname) || new URL(getUpdate(e).check_url).hostname.split(".").slice(1).join(".") === "github.io") ||
-						!(trustedHosts.has(new URL(getUpdate(e).url).hostname) || new URL(getUpdate(e).url).hostname.split(".").slice(1).join(".") === "github.io")
-					)) as entry}
-						<div class="flex items-center">
-							<p class="flex-grow">The author of {entry.manifest.name} may be able to find which IPs have their mod downloaded</p>
-							<Asterisk />
-						</div>
-					{/each}
-
-					{#if upToDateEntries.length < 6}
-						{#each upToDateEntries as entry (entry.modID)}
-							<div class="flex items-center">
-								<p class="flex-grow">{entry.manifest.name} is up to date</p>
-								<Checkmark />
-							</div>
-						{/each}
-					{:else}
-						<div class="flex items-center">
-							<p class="flex-grow">{upToDateEntries.length !== updates.length ? upToDateEntries.length : "All"} mods are up to date</p>
-							<Checkmark />
-						</div>
-					{/if}
-
-					{#each updates.filter(e => e.update && semver.lt(e.manifest.version, getUpdate(e).version)) as entry (entry.modID)}
-						{@const upd = getUpdate(entry)}
-						<div class="my-4">
-							<div class="flex items-center">
-								<h3 class="flex-grow">{entry.manifest.name}</h3>
-								<p>{entry.manifest.version} → {upd.version}</p>
-							</div>
-							<hr class="bg-gray-500 border-none h-px" />
-							<div class="mt-2 markdown">{@html sanitizeHtml(markStr(upd.changelog))}</div>
-							<br />
-							<Button
-								kind="primary"
-								icon={Download}
-								on:click={() => {
-									updatingMod = { id: entry.modID, ...upd }
-									startModUpdate()
-								}}
-							>
-								Update
-							</Button>
-						</div>
-					{/each}
-				{:catch}
-					<div class="flex items-center">
-						<p class="flex-grow">Couldn't check for mod updates</p>
-						<div><InlineLoading status="error" /></div>
-					</div>
-				{/await}
-			</div>
+				{/each}
+			{:catch}
+				<div class="flex items-center">
+					<p class="flex-grow">Couldn't check for mod updates</p>
+					<div><InlineLoading status="error" /></div>
+				</div>
+			{/await}
 		</div>
 	</div>
-{/if}
+</div>
 
 <Modal alert bind:open={cannotFindConfig} modalHeading="Can't find config.json" primaryButtonText="OK" on:submit={() => (cannotFindConfig = false)}>
 	<p>The framework wasn't installed correctly. Please re-read the installation instructions.</p>

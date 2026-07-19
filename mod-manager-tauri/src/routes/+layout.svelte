@@ -7,7 +7,6 @@
 	import { faBook, faCog, faEdit, faHome, faInfoCircle, faList } from "@fortawesome/free-solid-svg-icons"
 	import { getConfig } from "$lib/utils"
 
-	let ready = false
 	let developerMode = false
 
 	onMount(async () => {
@@ -17,39 +16,36 @@
 		} catch {
 			// config missing — startup page handles this
 		}
-		ready = true
 	})
 </script>
 
-{#if ready}
-	<div class="flex flex-row h-screen w-screen">
-		<div class="bg-neutral-900 w-16 h-full flex flex-col gap-16 items-center justify-center">
-			<a href="/" class="text-white">
-				<Icon icon={faHome} />
+<div class="flex flex-row h-screen w-screen">
+	<div class="bg-neutral-900 w-16 h-full flex flex-col gap-16 items-center justify-center">
+		<a href="/" class="text-white">
+			<Icon icon={faHome} />
+		</a>
+		<a href="/modList" class="text-white">
+			<Icon icon={faList} />
+		</a>
+		<a href="/settings" class="text-white">
+			<Icon icon={faCog} />
+		</a>
+		{#if developerMode}
+			<a href="/authoring" class="text-white">
+				<Icon icon={faEdit} />
 			</a>
-			<a href="/modList" class="text-white">
-				<Icon icon={faList} />
+			<a href="/docs/Index.md" class="text-white">
+				<Icon icon={faBook} />
 			</a>
-			<a href="/settings" class="text-white">
-				<Icon icon={faCog} />
-			</a>
-			{#if developerMode}
-				<a href="/authoring" class="text-white">
-					<Icon icon={faEdit} />
-				</a>
-				<a href="/docs/Index.md" class="text-white">
-					<Icon icon={faBook} />
-				</a>
-			{/if}
-			<a href="/info" class="text-white">
-				<Icon icon={faInfoCircle} />
-			</a>
-		</div>
-		<div class="col-span-11 px-16 py-8 w-full overflow-y-auto">
-			<slot />
-		</div>
+		{/if}
+		<a href="/info" class="text-white">
+			<Icon icon={faInfoCircle} />
+		</a>
 	</div>
-{/if}
+	<div class="col-span-11 px-16 py-8 w-full overflow-y-auto">
+		<slot />
+	</div>
+</div>
 
 <style>
 	:global(.bx--content) {

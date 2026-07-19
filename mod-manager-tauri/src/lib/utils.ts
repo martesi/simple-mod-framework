@@ -83,7 +83,25 @@ export function clearModCache(): void {
 
 // ─── config ──────────────────────────────────────────────────────────────────
 
+// The root layout and the page it renders both call getConfig() on startup,
+// within a tick or two of each other. Without dedup that's two full reads +
+// revalidation passes (including a getModFolder() lookup per load-order
+// entry) racing each other for no reason. Cache the in-flight promise only —
+// once it resolves the cache clears itself, so later calls (after mods are
+// installed/uninstalled, or on a later navigation) still hit disk fresh.
+let _configPromise: Promise<Config> | null = null
+
 export async function getConfig(): Promise<Config> {
+	if (_configPromise) return _configPromise
+	_configPromise = getConfigUncached()
+	try {
+		return await _configPromise
+	} finally {
+		_configPromise = null
+	}
+}
+
+async function getConfigUncached(): Promise<Config> {
 	const raw = await native.fs.readFileSync("../config.json", "utf8")
 	const config: Config = json5.parse(raw)
 
