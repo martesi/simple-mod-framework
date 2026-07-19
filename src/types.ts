@@ -108,7 +108,7 @@ export interface ManifestOptionData {
 
 	/** Localisation for each supported language. */
 	localisation?: {
-		[key in Language]: {
+		[key in Language]?: {
 			[k: LocalisationID]: string
 		}
 	}

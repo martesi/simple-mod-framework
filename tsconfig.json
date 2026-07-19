@@ -14,7 +14,8 @@
         "noEmitHelpers": true,
         "importHelpers": true,
         "declaration": true,
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "skipLibCheck": true
     },
     "include": [
         "./src/**/*"

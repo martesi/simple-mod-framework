@@ -3,7 +3,7 @@ import * as ts from "./typescript"
 
 import { FrameworkVersion, config, logger, rpkgInstance } from "./core-singleton"
 
-import { type Manifest, OptionType, ModScript } from "./types"
+import { type Manifest, Language, OptionType, ModScript } from "./types"
 import mergeWith from "lodash.mergewith"
 import fs from "fs-extra"
 import json5 from "json5"
@@ -105,7 +105,7 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 
 			await logger.verbose("Validating manifest")
 
-			for (const key of ["id", "name", "description", "authors", "version", "frameworkVersion"]) {
+			for (const key of ["id", "name", "description", "authors", "version", "frameworkVersion"] as const) {
 				if (typeof manifest[key] === "undefined") {
 					await logger.error(`Mod ${manifest.name} is missing required manifest field "${key}"!`)
 				}
@@ -439,8 +439,8 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 
 			/* ---------------------------------------- Localisation ---------------------------------------- */
 			if (manifest.localisation) {
-				for (const language of Object.keys(manifest.localisation)) {
-					for (const string of Object.entries(manifest.localisation[language])) {
+				for (const language of Object.keys(manifest.localisation) as Language[]) {
+					for (const string of Object.entries(manifest.localisation[language] ?? {})) {
 						manifestDependencies.push("00F5817876E691F1")
 						manifestAffected.push("00F5817876E691F1")
 					}

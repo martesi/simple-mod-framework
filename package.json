@@ -26,6 +26,7 @@
     "md5": "^2.3.0",
     "md5-file": "^5.0.0",
     "minimist": "^1.2.6",
+    "piscina": "5.0.0",
     "promisify-child-process": "^4.1.1",
     "rfc6902": "^5.0.1",
     "semver": "^7.3.8",
@@ -66,7 +67,7 @@
   "bin": "build/compiled/main.js",
   "pkg": {
     "scripts": [
-      "node_modules/piscina/dist/src/worker.js",
+      "node_modules/piscina/dist/worker.js",
       "build/compiled/patchWorker.js"
     ]
   },

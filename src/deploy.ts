@@ -1174,7 +1174,7 @@ export default async function deploy(
 							const allContracts = Object.fromEntries(
 								instruction.content
 									.map((a) => (a.source === "disk" && a.type === "contract.json" ? a.path : false))
-									.filter((a) => a)
+									.filter((a): a is string => a !== false)
 									.map((a) => [fs.readJSONSync(a).Metadata.Id, [a, fs.readJSONSync(a)]])
 							)
 
@@ -1735,7 +1735,7 @@ export default async function deploy(
 		let index = 0
 
 		const workerPool = new Piscina({
-			filename: "patchWorker.js",
+			filename: path.join(__dirname, "patchWorker.js"), // must be absolute - piscina's worker thread resolves this with a plain `require(filename)`, which can't find a bare relative name like "patchWorker.js"
 			maxThreads: Math.max(Math.ceil(os.cpus().length / 4), 2) // For an 8-core CPU with 16 logical processors there are 4 max threads
 		})
 
@@ -1889,59 +1889,48 @@ export default async function deploy(
 				portChunk1: boolean
 			}[] = []
 			for (const dependency of instruction.manifestSources.dependencies) {
+				const dependencyID = typeof dependency === "string" ? dependency : dependency.runtimeID
+				const dependencyChunk = typeof dependency === "string" ? 0 : dependency.toChunk || 0
+				const dependencyPortFromChunk1 = typeof dependency === "string" ? false : !!dependency.portFromChunk1
+
 				if (
-					!doneHashes.some((a) => a.id === (typeof dependency === "string" ? dependency : dependency.runtimeID) && a.chunk === (dependency.toChunk || 0)) ||
-					(doneHashes.filter((a) => a.id === (typeof dependency === "string" ? dependency : dependency.runtimeID) && a.chunk === (dependency.toChunk || 0)).every((a) => !a.portChunk1) &&
-						dependency.portFromChunk1)
+					!doneHashes.some((a) => a.id === dependencyID && a.chunk === dependencyChunk) ||
+					(doneHashes.filter((a) => a.id === dependencyID && a.chunk === dependencyChunk).every((a) => !a.portChunk1) && dependencyPortFromChunk1)
 				) {
 					doneHashes.push({
-						id: typeof dependency === "string" ? dependency : dependency.runtimeID,
-						chunk: dependency.toChunk || 0,
-						portChunk1: dependency.portFromChunk1
+						id: dependencyID,
+						chunk: dependencyChunk,
+						portChunk1: dependencyPortFromChunk1
 					})
 
 					// If cache hit
 					if (
 						fs.existsSync(
-							path.join(
-								process.cwd(),
-								"cache",
-								"global",
-								path.join("dependencies", typeof dependency === "string" ? `${dependency}-0` : `${dependency.runtimeID}-${dependency.portFromChunk1 ? 1 : 0}`)
-							)
+							path.join(process.cwd(), "cache", "global", path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`))
 						)
 					) {
-						await logger.debug(`Copying dependency ${typeof dependency === "string" ? dependency : dependency.runtimeID} from cache`)
+						await logger.debug(`Copying dependency ${dependencyID} from cache`)
 
 						rust_utils.stageDependenciesFrom(
-							path.join(
-								process.cwd(),
-								"cache",
-								"global",
-								path.join("dependencies", typeof dependency === "string" ? `${dependency}-0` : `${dependency.runtimeID}-${dependency.portFromChunk1 ? 1 : 0}`)
-							),
-							`chunk${dependency.toChunk || 0}`
+							path.join(process.cwd(), "cache", "global", path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`)),
+							`chunk${dependencyChunk}`
 						)
 					} else {
 						// no cache yet
 
-						await logger.debug(`Extracting dependency ${typeof dependency === "string" ? dependency : dependency.runtimeID}`)
+						await logger.debug(`Extracting dependency ${dependencyID}`)
 
 						fs.emptyDirSync(path.join(process.cwd(), "temp"))
 
 						await callRPKGFunction(
-							`-${dependency.portFromChunk1 ? "extract_non_boot_hash_depends_from" : "extract_non_base_hash_depends_from"} "${path.join(config.runtimePath)}" -filter "${
-								typeof dependency === "string" ? dependency : dependency.runtimeID
-							}" -output_path temp`
+							`-${
+								dependencyPortFromChunk1 ? "extract_non_boot_hash_depends_from" : "extract_non_base_hash_depends_from"
+							} "${path.join(config.runtimePath)}" -filter "${dependencyID}" -output_path temp`
 						)
 
-						await copyToCache(
-							"global",
-							path.join(process.cwd(), "temp"),
-							path.join("dependencies", typeof dependency === "string" ? `${dependency}-0` : `${dependency.runtimeID}-${dependency.portFromChunk1 ? 1 : 0}`)
-						)
+						await copyToCache("global", path.join(process.cwd(), "temp"), path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`))
 
-						rust_utils.stageDependenciesFrom("temp", `chunk${dependency.toChunk || 0}`)
+						rust_utils.stageDependenciesFrom("temp", `chunk${dependencyChunk}`)
 
 						fs.emptyDirSync(path.join(process.cwd(), "temp"))
 					}
