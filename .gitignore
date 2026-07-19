@@ -1,20 +1,27 @@
 node_modules
 hash_list.txt
-Deploy.exe
-Third-Party/ResourceLib_HM2.dll
-Third-Party/ResourceLib_HM2.pdb
-Third-Party/ResourceLib_HM2016.dll
-Third-Party/ResourceLib_HM2016.pdb
-Third-Party/ResourceLib_HM3.dll
-Third-Party/ResourceLib_HM3.pdb
-Third-Party/ResourceTool.exe
-Third-Party/ResourceTool.pdb
-compiled
-/Mods
+/build
 /dist
+/Third-Party
 /*.7z
 /*.zip
-config.json
+
+# For Build/Third-Party/ ships the tools Deploy.exe needs at runtime and is
+# tracked in git as regular (in a couple of cases multi-MB) blobs - this repo
+# is managed with jj, which as of writing doesn't support Git LFS or even
+# .gitattributes at all (https://github.com/jj-vcs/jj/issues/80), so there's
+# no way to avoid that. Tracking the larger files here needs
+# `jj config set --repo snapshot.max-new-file-size "20MiB"` once per clone -
+# jj's default 1MiB cap on new file snapshots will otherwise refuse them.
+# Don't ignore the whole directory here - that would stop git from tracking
+# the files that ARE meant to be committed too (gitignore doesn't look inside
+# a directory it's already ignoring).
+#
+# For Build/Fetched Third-Party/, a sibling folder, is the opposite: tools
+# that DO have a stable public release to pull from, so
+# scripts/fetch-third-party.js downloads them there instead of duplicating
+# them in git history. Fully ignored, unlike Third-Party/ above.
+/For Build/Fetched Third-Party
 rust/npm/win32-x64-msvc/package.json
 rust/npm/win32-x64-msvc/README.md
 rust/index.d.ts
@@ -22,4 +29,3 @@ rust/index.js
 src/smf-rust.node
 src/smf-rust.d.ts
 tests/mods
-Third-Party/

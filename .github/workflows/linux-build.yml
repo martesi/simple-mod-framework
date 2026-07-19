@@ -57,7 +57,7 @@ jobs:
             set -e
             mkdir -p "Mod Manager/dist/Mods" "Mod Manager/dist/Retail"
             echo "{ loadOrder: [], modOptions: {}, runtimePath: \"../Retail/Runtime\" }" > "Mod Manager/dist/config.json"
-            cp Deploy.exe "Mod Manager/dist/Deploy.exe"
+            cp build/Deploy.exe "Mod Manager/dist/Deploy.exe"
             cd "Mod Manager/dist/linux-unpacked"
             xvfb-run --auto-servernum -s "-screen 0 1280x800x24" \
               ./modmanager --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=9222 &

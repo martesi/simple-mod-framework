@@ -2,7 +2,7 @@
   "name": "simple-mod-framework",
   "version": "1.0.0",
   "description": "",
-  "main": "compiled/main.js",
+  "main": "build/compiled/main.js",
   "dependencies": {
     "@sentry/node": "^7.29.0",
     "@sentry/tracing": "^7.29.0",
@@ -48,18 +48,19 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "node scripts/stage-piscina.js",
+    "postinstall": "node scripts/stage-piscina.js && node scripts/fetch-third-party.js && node scripts/link-third-party.js",
     "build:rust": "cd rust && node .yarn/releases/yarn-3.6.0.cjs install && node .yarn/releases/yarn-3.6.0.cjs build",
     "stage:rust:src": "node scripts/stage-rust.js src",
     "stage:rust:compiled": "node scripts/stage-rust.js compiled",
     "build:tsc": "node scripts/tsc-lenient.js",
     "build:cli": "npm run stage:rust:src && npm run build:tsc && npm run stage:rust:compiled",
     "watch:tsc": "node scripts/tsc-lenient.js --watch --preserveWatchOutput",
+    "dev:fetch-third-party": "node scripts/fetch-third-party.js",
     "dev:link-third-party": "node scripts/link-third-party.js",
-    "dev:setup": "npm run build:cli && npm run dev:link-third-party",
+    "dev:setup": "npm run build:cli && npm run dev:fetch-third-party && npm run dev:link-third-party",
     "dev": "npm run watch:tsc",
-    "build:exe:win": "pkg package.json --targets node18-win-x64 --output Deploy.exe --compress Brotli",
-    "build:exe:linux": "pkg package.json --targets node18-linux-x64 --output Deploy.exe --compress Brotli",
+    "build:exe:win": "pkg package.json --targets node18-win-x64 --output build/Deploy.exe --compress Brotli",
+    "build:exe:linux": "pkg package.json --targets node18-linux-x64 --output build/Deploy.exe --compress Brotli",
     "build:win": "npm run build:rust && npm run build:cli && npm run build:exe:win",
     "build:linux": "npm run build:rust && npm run build:cli && npm run build:exe:linux",
     "fetch:hashes": "node scripts/fetch-hashes.js",
@@ -68,11 +69,11 @@
     "dist:win": "npm install && npm run build:win && cd \"Mod Manager\" && npm install && npm run build:win && cd .. && npm run assemble:win",
     "dist:linux": "npm install && npm run build:linux && cd \"Mod Manager\" && npm install && npm run build:linux && cd .. && npm run assemble:linux"
   },
-  "bin": "compiled/main.js",
+  "bin": "build/compiled/main.js",
   "pkg": {
     "scripts": [
       "node_modules/piscina/dist/src/worker.js",
-      "compiled/patchWorker.js"
+      "build/compiled/patchWorker.js"
     ]
   },
   "author": "Atampy26",

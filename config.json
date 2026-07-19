@@ -1,8 +1,0 @@
-{
-    runtimePath: 'C:\\Users\\User\\Documents\\Apps\\Games\\Epic Games\\HITMAN3\\Runtime',
-    skipIntro: true,
-    outputToSeparateDirectory: true,
-    loadOrder: [],
-    modOptions: {},
-    outputConfigToAppDataOnDeploy: true
-}

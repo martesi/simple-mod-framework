@@ -218,7 +218,7 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 
 			await logger.verbose("Discovering scripts")
 			for (const files of scripts) {
-				ts.compile(
+				const compiledScriptPath = ts.compile(
 					files.map((a) => path.join(process.cwd(), "Mods", mod, a)),
 					{
 						esModuleInterop: true,
@@ -231,11 +231,7 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 				)
 
 				// eslint-disable-next-line @typescript-eslint/no-var-requires
-				const modScript = (await require(path.join(
-					process.cwd(),
-					"compiled",
-					path.relative(path.join(process.cwd(), "Mods", mod), path.join(process.cwd(), "Mods", mod, files[0].replace(".ts", ".js")))
-				))) as ModScript
+				const modScript = (await require(compiledScriptPath)) as ModScript
 
 				for (const file of files) {
 					fileMap[file] = {
@@ -244,8 +240,6 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 						affected: modScript.cachingPolicy.affected
 					}
 				}
-
-				fs.removeSync(path.join(process.cwd(), "compiled"))
 			}
 
 			await logger.verbose("Discovering content")

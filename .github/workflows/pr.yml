@@ -64,8 +64,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path ./node_modules/piscina
           robocopy ./piscina ./node_modules/piscina /E /is /it; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
           tsc --noCheck
-          copy ./src/smf-rust.node ./compiled/smf-rust.node
-          pkg package.json --targets node18-win-x64 --output Deploy.exe --compress Brotli
+          copy ./src/smf-rust.node ./build/compiled/smf-rust.node
+          pkg package.json --targets node18-win-x64 --output build/Deploy.exe --compress Brotli
 
       - name: Install GUI dependencies
         if: steps.cache2.outputs.cache-hit != 'true'
@@ -89,12 +89,12 @@ jobs:
           New-Item -ItemType Directory "dist/Mod Manager"
           Invoke-WebRequest -Uri "https://github.com/glacier-modding/hitman-hashes/releases/latest/download/latest-hashes.7z" -OutFile "latest-hashes.7z"
           7z x "latest-hashes.7z" -o"./dist/Third-Party"
-          robocopy ./Third-Party ./dist/Third-Party /E; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
+          robocopy ./build/Third-Party ./dist/Third-Party /E; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
           robocopy "./For Build" ./dist /E; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
           robocopy ./docs ./dist/Info /E; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
-          robocopy ./compiled ./dist/API /E *.d.ts; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
+          robocopy ./build/compiled ./dist/API /E *.d.ts; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
           robocopy ".\Mod Manager\dist\win-unpacked" "./dist/Mod Manager" /E; if ($lastexitcode -lt 8) { $global:LASTEXITCODE = $null }
-          copy Deploy.exe dist
+          copy build\Deploy.exe dist
           New-Item -Path dist -Name "Mod Manager.cmd" -ItemType "file" -Value "@echo off`ncd `"Mod Manager`"`nstart `"`" `"Mod Manager.exe`""
 
       - name: Zip

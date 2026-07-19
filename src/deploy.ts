@@ -380,7 +380,7 @@ export default async function deploy(
 				configureSentryScope(sentryScriptsTransaction)
 
 				for (const files of deployInstruction.manifestSources.scripts) {
-					ts.compile(
+					const compiledScriptPath = ts.compile(
 						files.map((a) => path.join(process.cwd(), "Mods", mod, a)),
 						{
 							esModuleInterop: true,
@@ -393,11 +393,7 @@ export default async function deploy(
 					)
 
 					// eslint-disable-next-line @typescript-eslint/no-var-requires
-					const modScript = (await require(path.join(
-						process.cwd(),
-						"compiled",
-						path.relative(path.join(process.cwd(), "Mods", mod), path.join(process.cwd(), "Mods", mod, files[0].replace(".ts", ".js")))
-					))) as ModScript
+					const modScript = (await require(compiledScriptPath)) as ModScript
 
 					fs.ensureDirSync(path.join(process.cwd(), "scriptTempFolder"))
 
@@ -437,8 +433,6 @@ export default async function deploy(
 					)
 
 					fs.removeSync(path.join(process.cwd(), "scriptTempFolder"))
-
-					fs.removeSync(path.join(process.cwd(), "compiled"))
 				}
 
 				sentryScriptsTransaction.finish()
@@ -474,7 +468,7 @@ export default async function deploy(
 			for (const files of instruction.manifestSources.scripts) {
 				await logger.verbose(`Executing script: ${files[0]}`)
 
-				ts.compile(
+				const compiledScriptPath = ts.compile(
 					files.map((a) => path.join(process.cwd(), "Mods", instruction.cacheFolder, a)),
 					{
 						esModuleInterop: true,
@@ -487,11 +481,7 @@ export default async function deploy(
 				)
 
 				// eslint-disable-next-line @typescript-eslint/no-var-requires
-				const modScript = (await require(path.join(
-					process.cwd(),
-					"compiled",
-					path.relative(path.join(process.cwd(), "Mods", instruction.cacheFolder), path.join(process.cwd(), "Mods", instruction.cacheFolder, files[0].replace(".ts", ".js")))
-				))) as ModScript
+				const modScript = (await require(compiledScriptPath)) as ModScript
 
 				fs.ensureDirSync(path.join(process.cwd(), "scriptTempFolder"))
 
@@ -529,8 +519,6 @@ export default async function deploy(
 				)
 
 				fs.removeSync(path.join(process.cwd(), "scriptTempFolder"))
-
-				fs.removeSync(path.join(process.cwd(), "compiled"))
 			}
 
 			sentryScriptsTransaction.finish()
@@ -2076,7 +2064,7 @@ export default async function deploy(
 			for (const files of instruction.manifestSources.scripts) {
 				await logger.verbose(`Executing script: ${files[0]}`)
 
-				ts.compile(
+				const compiledScriptPath = ts.compile(
 					files.map((a) => path.join(process.cwd(), "Mods", instruction.cacheFolder, a)),
 					{
 						esModuleInterop: true,
@@ -2089,11 +2077,7 @@ export default async function deploy(
 				)
 
 				// eslint-disable-next-line @typescript-eslint/no-var-requires
-				const modScript = (await require(path.join(
-					process.cwd(),
-					"compiled",
-					path.relative(path.join(process.cwd(), "Mods", instruction.cacheFolder), path.join(process.cwd(), "Mods", instruction.cacheFolder, files[0].replace(".ts", ".js")))
-				))) as ModScript
+				const modScript = (await require(compiledScriptPath)) as ModScript
 
 				fs.ensureDirSync(path.join(process.cwd(), "scriptTempFolder"))
 
@@ -2131,8 +2115,6 @@ export default async function deploy(
 				)
 
 				fs.removeSync(path.join(process.cwd(), "scriptTempFolder"))
-
-				fs.removeSync(path.join(process.cwd(), "compiled"))
 			}
 
 			sentryScriptsTransaction.finish()

@@ -32,7 +32,7 @@ function download(url, dest, cb) {
 }
 
 const sevenZip = process.platform === "win32"
-	? path.join(__dirname, "..", "Third-Party", "7z.exe")
+	? path.join(__dirname, "..", "build", "Third-Party", "7z.exe")
 	: "7z"
 
 console.log("Fetching hitman-hashes...")

@@ -23,8 +23,8 @@ if (mode === "src") {
 	fs.copyFileSync(findRustNode(), path.join(root, "src", "smf-rust.node"))
 	console.log("Staged rust build output into src/")
 } else if (mode === "compiled") {
-	fs.copyFileSync(path.join(root, "src", "smf-rust.node"), path.join(root, "compiled", "smf-rust.node"))
-	console.log("Staged src/smf-rust.node into compiled/")
+	fs.copyFileSync(path.join(root, "src", "smf-rust.node"), path.join(root, "build", "compiled", "smf-rust.node"))
+	console.log("Staged src/smf-rust.node into build/compiled/")
 } else {
 	console.error(`Usage: node scripts/stage-rust.js <src|compiled>`)
 	process.exit(1)
