@@ -5,6 +5,16 @@ const serve = require("electron-serve")
 const fs = require("fs")
 const path = require("path")
 
+// In development mode, change the current working directory to build/Mod Manager
+// so that all relative file paths (like "../config.json", "../Mods", and "../Deploy.exe")
+// resolve correctly to the build directory.
+if (!app.isPackaged) {
+	const devCwd = path.resolve(__dirname, "..", "..", "build", "Mod Manager");
+	if (fs.existsSync(devCwd)) {
+		process.chdir(devCwd);
+	}
+}
+
 try {
 	require("electron-reloader")(module)
 } catch (e) {
@@ -20,7 +30,7 @@ let mainWindow
 function createWindow() {
 	if (!fs.existsSync(path.join("..", "Deploy.exe"))) {
 		process.chdir(path.dirname(app.getPath("exe")))
-		app.relaunch({ execPath: app.getPath("exe"), args: process.argv })
+		app.relaunch({ execPath: app.getPath("exe"), args: process.argv.slice(1) })
 		app.exit()
 	}
 

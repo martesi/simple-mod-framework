@@ -8,47 +8,52 @@
 	import { getConfig } from "$lib/utils"
 	import { page } from "$app/stores"
 
-	let ready: boolean = false
-	onMount(() => (ready = true))
+	let developerMode: boolean = false
 
-	window.ipc.receive("urlScheme", async (path: string) => {
-		if (path.startsWith("install/")) {
-			window.location.href = "/modList?urlScheme=" + encodeURIComponent(path.replace("install/", ""))
-		} else if (path.startsWith("open-docs-page/")) {
-			window.location.href = "/docs/" + path.replace("open-docs-page/", "")
+	onMount(() => {
+		try {
+			developerMode = !!getConfig().developerMode
+		} catch {
+			// config missing
 		}
+
+		window.ipc.receive("urlScheme", async (path: string) => {
+			if (path.startsWith("install/")) {
+				window.location.href = "/modList?urlScheme=" + encodeURIComponent(path.replace("install/", ""))
+			} else if (path.startsWith("open-docs-page/")) {
+				window.location.href = "/docs/" + path.replace("open-docs-page/", "")
+			}
+		})
 	})
 </script>
 
-{#if ready}
-	<div class="flex flex-row h-screen w-screen">
-		<div class="bg-neutral-900 w-16 h-full flex flex-col gap-16 items-center justify-center">
-			<a href="/" data-sveltekit-reload class="text-white">
-				<Icon icon={faHome} />
+<div class="flex flex-row h-screen w-screen">
+	<div class="bg-neutral-900 w-16 h-full flex flex-col gap-16 items-center justify-center">
+		<a href="/" class="text-white">
+			<Icon icon={faHome} />
+		</a>
+		<a href="/modList" class="text-white">
+			<Icon icon={faList} />
+		</a>
+		<a href="/settings" class="text-white">
+			<Icon icon={faCog} />
+		</a>
+		{#if developerMode}
+			<a href="/authoring" class="text-white">
+				<Icon icon={faEdit} />
 			</a>
-			<a href="/modList" data-sveltekit-reload class="text-white">
-				<Icon icon={faList} />
+			<a href="/docs/Index.md" class="text-white">
+				<Icon icon={faBook} />
 			</a>
-			<a href="/settings" data-sveltekit-reload class="text-white">
-				<Icon icon={faCog} />
-			</a>
-			{#if getConfig().developerMode}
-				<a href="/authoring" data-sveltekit-reload class="text-white">
-					<Icon icon={faEdit} />
-				</a>
-				<a href="/docs/Index.md" class="text-white">
-					<Icon icon={faBook} />
-				</a>
-			{/if}
-			<a href="/info" data-sveltekit-reload class="text-white">
-				<Icon icon={faInfoCircle} />
-			</a>
-		</div>
-		<div class="col-span-11 px-16 py-8 w-full">
-			<slot />
-		</div>
+		{/if}
+		<a href="/info" class="text-white">
+			<Icon icon={faInfoCircle} />
+		</a>
 	</div>
-{/if}
+	<div class="col-span-11 px-16 py-8 w-full">
+		<slot />
+	</div>
+</div>
 
 <style>
 	:global(.bx--content) {

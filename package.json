@@ -59,7 +59,7 @@
     "build:win": "npm run build:cli && npm run build:exe:win",
     "fetch:hashes": "node scripts/fetch-hashes.js dist",
     "assemble:win": "node scripts/assemble-dist.js && node scripts/fetch-hashes.js dist",
-    "dist:win": "bun install && npm run build:win && cd \"Mod Manager\" && npm install && npm run build:win && cd .. && npm run assemble:win",
+    "dist:win": "bun install && npm run build:win && cd \"Mod Manager\" && bun install && npm run build:win && cd .. && npm run assemble:win",
     "build": "just build",
     "dist": "just dist"
   },

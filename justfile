@@ -44,7 +44,7 @@ install-root:
     bun install
 
 install-mm:
-    cd "Mod Manager" && npm install
+    cd "Mod Manager" && bun install
 
 # ---------------------------------------------------------------------------
 # Root CLI build - strictly sequential (each step needs the last step's

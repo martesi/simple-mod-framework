@@ -36,7 +36,7 @@
 	import { getAllMods, getConfig, mergeConfig, getManifestFromModID, modIsFramework, getModFolder, sortMods, validateModFolder } from "$lib/utils"
 	import Mod from "$lib/Mod.svelte"
 	import TextInputModal from "$lib/TextInputModal.svelte"
-	import { goto } from "$app/navigation"
+
 
 	import Add from "carbon-icons-svelte/lib/Add.svelte"
 	import AddAlt from "carbon-icons-svelte/lib/AddAlt.svelte"
@@ -486,9 +486,7 @@
 								kind="ghost"
 								icon={Settings}
 								iconDescription="Adjust this mod's settings"
-								on:click={() => {
-									goto(`/settings?mod=${getManifestFromModID(item.value).id}`)
-								}}
+								href={`/settings?mod=${getManifestFromModID(item.value).id}`}
 							/>
 						{/if}
 						<Button
