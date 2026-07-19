@@ -1,5 +1,11 @@
+import { Euler, MathUtils, Matrix4 } from "three"
+
+// QuickEntity (src/quickentity*.js) expects a THREE global exposing just the
+// math classes it uses - Matrix4/Euler for rotation-matrix decomposition, and
+// the legacy `THREE.Math` alias (removed from three.js itself, kept here so
+// those files don't need touching) for RAD2DEG etc.
 // @ts-expect-error Need to assign on global because of QuickEntity
-global.THREE = require("./three-onlymath.min")
+global.THREE = { Matrix4, Euler, Math: MathUtils, MathUtils }
 
 import * as Sentry from "@sentry/node"
 import * as Tracing from "@sentry/tracing"

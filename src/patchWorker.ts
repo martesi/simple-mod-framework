@@ -1,5 +1,9 @@
+import { Euler, MathUtils, Matrix4 } from "three"
+
+// See src/main.ts for why this global exists - QuickEntity (src/quickentity*.js)
+// expects it.
 // @ts-expect-error Need to assign on global because of QuickEntity
-global.THREE = require("./three-onlymath.min")
+global.THREE = { Matrix4, Euler, Math: MathUtils, MathUtils }
 
 import * as LosslessJSON from "lossless-json"
 

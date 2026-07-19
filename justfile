@@ -41,7 +41,7 @@ default:
 install: install-root install-mm
 
 install-root:
-    npm install
+    bun install
 
 install-mm:
     cd "Mod Manager" && npm install
@@ -52,7 +52,7 @@ install-mm:
 # ---------------------------------------------------------------------------
 
 build-tsc: install-root
-    node scripts/tsc-lenient.js
+    node scripts/build.js
 
 build-exe: build-tsc
     pkg package.json --targets node18-win-x64 --output build/Deploy.exe --compress Brotli
@@ -60,9 +60,9 @@ build-exe: build-tsc
 # Whole CLI pipeline, e.g. `just cli` to build just the exe without the GUI
 cli: build-exe
 
-# TypeScript watch mode for local dev
+# TypeScript typecheck + bundle, in watch mode, for local dev
 dev-deploy: install-root
-    node scripts/tsc-lenient.js --watch --preserveWatchOutput
+    node scripts/build.js --watch
 
 # ---------------------------------------------------------------------------
 # Mod Manager GUI - separate npm project, builds independently of the CLI

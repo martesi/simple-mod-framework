@@ -2,7 +2,7 @@
   # Usage: nix develop   (or: nix --extra-experimental-features "nix-command flakes" develop
   #        if flakes/nix-command aren't enabled in your nix.conf)
   #
-  # Root CLI:           npm install && npm run build:linux   (or build:win on Windows)
+  # Root CLI:           bun install && npm run build:linux   (or build:win on Windows)
   # Mod Manager:        cd "Mod Manager" && npm install && npm run build:linux
   # Mod Manager (Tauri): cd mod-manager-tauri && npm run tauri dev
   #                       cd mod-manager-tauri && npm run build:linux
@@ -100,6 +100,7 @@
 
           packages = with pkgs; [
             nodejs_22
+            bun # package manager + bundler for the root CLI (see justfile/package.json)
             rustToolchain
             cargo-tauri
             pkg-config
@@ -128,7 +129,7 @@
             # Tauri's AppImage bundler hardcodes /usr/bin/xdg-open. On WSL2/Nix it isn't
             # there by default; symlink it once with: sudo ln -sf $(which xdg-open) /usr/bin/xdg-open
             # deb/rpm bundles work without this; only AppImage needs it.
-            echo "smf-devshell ready: node $(node --version), rustc $(rustc --version | cut -d' ' -f2)"
+            echo "smf-devshell ready: node $(node --version), bun $(bun --version), rustc $(rustc --version | cut -d' ' -f2)"
           '';
         };
       });

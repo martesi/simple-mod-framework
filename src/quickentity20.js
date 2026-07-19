@@ -94,29 +94,20 @@
  * @property {object} exposedInterfaces
 */
 
-let electron, Swal, storage;
+const gui = require("./gui-shim")
+const electron = gui.electron
+const Swal = gui.Swal
+const storage = gui.storage
 
-// @ts-ignore
-if (!module.parent) {
-	electron = require("electron")
-}
 const fs = require('fs')
 const path = require("path")
 const LosslessJSON = require('lossless-json')
-// @ts-ignore
-if (!module.parent) {
-	Swal = require("sweetalert2")
-}
 const { execSync } = require("child_process")
 const Decimal = require('decimal.js').Decimal
-// @ts-ignore
-if (!module.parent) {
-	storage = require('electron-json-storage')
-}
 const { promisify } = require("util")
 const rfc6902 = require('rfc6902')
 
-var THREE = require("./three-onlymath.min.js")
+var THREE = require("three")
 
 const QuickEntityVersion = 2.0
 
