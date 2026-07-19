@@ -34,7 +34,6 @@
 	import { OptionType } from "../../../../src/types"
 	import Mod from "$lib/Mod.svelte"
 	import TextInputModal from "$lib/TextInputModal.svelte"
-	import { goto } from "$app/navigation"
 	import { page } from "$app/stores"
 	import SortableList from "$lib/SortableList.svelte"
 
@@ -492,7 +491,7 @@
 								kind="ghost"
 								icon={Settings}
 								iconDescription="Adjust this mod's settings"
-								on:click={() => goto(`/settings?mod=${manifestCache.get(item.value)?.id}`)}
+								href={`/settings?mod=${manifestCache.get(item.value)?.id}`}
 							/>
 						{/if}
 						<Button

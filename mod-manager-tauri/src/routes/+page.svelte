@@ -365,18 +365,18 @@
 			<h1 in:fade>Welcome to the Simple Mod Framework</h1>
 			<br />
 			<div class="inline" in:fade={{ delay: 400 }}>
-				<Button kind="primary" icon={List} href="/modList" data-sveltekit-reload>Enable/disable mods</Button>
+				<Button kind="primary" icon={List} href="/modList">Enable/disable mods</Button>
 			</div>
 			<div class="inline" in:fade={{ delay: 800 }}>
-				<Button kind="primary" icon={Settings} href="/settings" data-sveltekit-reload>Configure mods</Button>
+				<Button kind="primary" icon={Settings} href="/settings">Configure mods</Button>
 			</div>
 			{#if config?.developerMode}
 				<div class="inline" in:fade={{ delay: 800 }}>
-					<Button kind="primary" icon={Edit} href="/authoring" data-sveltekit-reload>Author mods</Button>
+					<Button kind="primary" icon={Edit} href="/authoring">Author mods</Button>
 				</div>
 			{/if}
 			<div class="inline" in:fade={{ delay: config?.developerMode ? 1200 : 800 }}>
-				<Button kind="primary" icon={Info} href="/info" data-sveltekit-reload>More information</Button>
+				<Button kind="primary" icon={Info} href="/info">More information</Button>
 			</div>
 			<p class="mt-4" in:fade={{ delay: 1600 }}>Need help using mods? Consult the pinned post on the Nexus Mods page.</p>
 			<p class="mt-2" in:fade={{ delay: 2000 }}>Need help making mods? There's extensive documentation available in the Info folder.</p>
