@@ -87,17 +87,22 @@ pub fn debug_check_layout() {
     debug_assert!(
         root.is_dir(),
         "framework_root() does not resolve to a real directory: {}\n\
-         → run `npm install && npm run build:win` at the repo root to produce \
-         build/ (Deploy.exe, Mods/, Third-Party/, config.json) before `tauri dev`.",
+         → run `npm install && npm run build:cli` at the repo root to produce \
+         build/ (compiled/main.js, Mods/, Third-Party/, config.json) before \
+         `tauri dev`. (Dev mode runs compiled/main.js via node — it does not \
+         need the packaged Deploy.exe, so `build:cli` is enough; no need for \
+         the slower `build:win`.)",
         root.display()
     );
 
-    for rel in ["Deploy.exe", "Mods", "Third-Party", "config.json"] {
+    // Note: unlike release builds, dev mode does not need `Deploy.exe` itself
+    // — `deploy.rs::deploy_command()` runs `compiled/main.js` via node here.
+    for rel in ["compiled/main.js", "Mods", "Third-Party", "config.json"] {
         let p = root.join(rel);
         debug_assert!(
             p.exists(),
             "expected \"{}\" under framework_root ({}) but it's missing — \
-             the build/ folder looks incomplete. Re-run `npm run build:win` \
+             the build/ folder looks incomplete. Re-run `npm run build:cli` \
              (and `npm run setup` if Third-Party/ tools are what's missing).",
             rel,
             root.display()
