@@ -58,9 +58,10 @@ try {
 		const targetStr = 'handler = await Promise.resolve(`${filename}`).then(s => __importStar(require(s)));'
 		if (workerContent.includes(targetStr)) {
 			const replacementStr = `let target = filename;
-		if (typeof process.pkg !== 'undefined') {
-			const path = require('path');
-			target = path.join(__dirname, "../../../build/compiled", path.basename(filename));
+		const fs = require('fs');
+		const path = require('path');
+		if (!fs.existsSync(target) && target.endsWith('patchWorker.js')) {
+			target = path.resolve(__dirname, "../../../build/compiled/patchWorker.js");
 		}
 		handler = await Promise.resolve(\`\${target}\`).then(s => __importStar(require(s)));`
 			workerContent = workerContent.replace(targetStr, replacementStr)
