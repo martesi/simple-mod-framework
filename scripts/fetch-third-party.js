@@ -291,12 +291,14 @@ async function task(label, placeHint, fn) {
 	}
 }
 
-Promise.all([
-	task("For Build/Fetched Third-Party/quickentity-rs.exe", 'Place it in "For Build/Fetched Third-Party/" by hand.', ensureQuickEntityRs),
-	task(
-		"For Build/Fetched Third-Party/{HMLanguageTools.exe, HMTextureTools.exe}",
-		'Place HMLanguageTools.exe and HMTextureTools.exe in "For Build/Fetched Third-Party/" by hand.',
-		ensureTonyTools
-	),
-	task("For Build/Fetched Third-Party/7z.exe", 'Place a 7-Zip build at "For Build/Fetched Third-Party/7z.exe" by hand.', ensureSevenZip)
-])
+;(async () => {
+	await Promise.all([
+		task("For Build/Fetched Third-Party/quickentity-rs.exe", 'Place it in "For Build/Fetched Third-Party/" by hand.', ensureQuickEntityRs),
+		task(
+			"For Build/Fetched Third-Party/{HMLanguageTools.exe, HMTextureTools.exe}",
+			'Place HMLanguageTools.exe and HMTextureTools.exe in "For Build/Fetched Third-Party/" by hand.',
+			ensureTonyTools
+		),
+		task("For Build/Fetched Third-Party/7z.exe", 'Place a 7-Zip build at "For Build/Fetched Third-Party/7z.exe" by hand.', ensureSevenZip)
+	])
+})()
