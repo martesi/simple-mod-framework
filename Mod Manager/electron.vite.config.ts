@@ -1,16 +1,14 @@
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { defineConfig } from 'electron-vite'
 import { sveltekit } from '@sveltejs/kit/vite'
 
 export default defineConfig({
-  main: {
-    plugins: [externalizeDepsPlugin()]
-  },
+  main: {},
   preload: {
-    plugins: [externalizeDepsPlugin({ include: ['original-fs'] })]
+    build: {
+      externalizeDeps: { include: ['original-fs'] }
+    }
   },
   renderer: {
-    root: undefined,
-    base: undefined,
     plugins: [sveltekit()]
   }
 })

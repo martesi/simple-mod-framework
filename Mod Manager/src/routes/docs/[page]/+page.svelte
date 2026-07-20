@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte"
-	import { page } from "$app/stores"
+	import { page } from "$app/state"
 	import { goto } from "$app/navigation"
 
 	import { marked } from "marked"
@@ -49,10 +49,10 @@
 	$: {
 		loading = true
 
-		$page.params.page && dummyForceUpdate
+		page.params.page && dummyForceUpdate
 			? (async () =>
 					marked.parse(
-						String(window.fs.readFileSync(window.path.join("..", window.fs.existsSync(window.path.join("..", "docs")) ? "docs" : "Info", $page.params.page), "utf-8")),
+						String(window.fs.readFileSync(window.path.join("..", window.fs.existsSync(window.path.join("..", "docs")) ? "docs" : "Info", page.params.page), "utf-8")),
 						undefined,
 						(err, result) => {
 							pageContent = result
@@ -67,7 +67,7 @@
 
 <div class="h-[90vh] pr-4 overflow-y-auto">
 	<div class="flex gap-4 items-center">
-		<h1 class="flex-grow">{$page.params.page.split(".")[0]}</h1>
+		<h1 class="flex-grow">{page.params.page.split(".")[0]}</h1>
 		<div>
 			{#if loading}
 				<InlineLoading />

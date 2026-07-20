@@ -4,7 +4,7 @@
 	import { scale } from "svelte/transition"
 	import { onMount } from "svelte"
 
-	import { page } from "$app/stores"
+	import { page } from "$app/state"
 	import { goto } from "$app/navigation"
 
 	import tippy from "svelte-tippy"
@@ -35,8 +35,8 @@
 		frameworkVersion: FrameworkVersion
 	} as Manifest
 
-	$: manifest = $page.params.mod
-		? getManifestFromModID($page.params.mod, dummyForceUpdate)
+	$: manifest = page.params.mod
+		? getManifestFromModID(page.params.mod, dummyForceUpdate)
 		: ({
 				version: "1.0.0",
 				id: "Example.Example",
@@ -47,11 +47,11 @@
 				frameworkVersion: FrameworkVersion
 		  } as Manifest)
 
-	$: option = $page.params.option
+	$: option = page.params.option
 		? manifest.options!.find((a) =>
-				$page.params.option.split("$|$")[0] == "-"
-					? (a.type == "checkbox" || a.type == "conditional") && a.name == $page.params.option.split("$|$")[1]
-					: a.type == "select" && a.group == $page.params.option.split("$|$")[0] && a.name == $page.params.option.split("$|$")[1]
+				page.params.option.split("$|$")[0] == "-"
+					? (a.type == "checkbox" || a.type == "conditional") && a.name == page.params.option.split("$|$")[1]
+					: a.type == "select" && a.group == page.params.option.split("$|$")[0] && a.name == page.params.option.split("$|$")[1]
 		  )!
 		: ({} as ArrayElement<Manifest["options"]>)
 
@@ -60,9 +60,9 @@
 	function alterOption(_useless: string, data: Partial<ArrayElement<Manifest["options"]>>) {
 		const m = getManifestFromModID(manifest.id)
 		const optIndex = m.options!.findIndex((a) =>
-			$page.params.option.split("$|$")[0] == "-"
-				? (a.type == "checkbox" || a.type == "conditional") && a.name == $page.params.option.split("$|$")[1]
-				: a.type == "select" && a.group == $page.params.option.split("$|$")[0] && a.name == $page.params.option.split("$|$")[1]
+			page.params.option.split("$|$")[0] == "-"
+				? (a.type == "checkbox" || a.type == "conditional") && a.name == page.params.option.split("$|$")[1]
+				: a.type == "select" && a.group == page.params.option.split("$|$")[0] && a.name == page.params.option.split("$|$")[1]
 		)
 
 		if (optIndex == -1) {
@@ -82,18 +82,18 @@
 		const m = getManifestFromModID(manifest.id)
 
 		return m.options!.find((a) =>
-			($page.params.option || "").split("$|$")[0] == "-"
-				? (a.type == "checkbox" || a.type == "conditional") && a.name == ($page.params.option || "").split("$|$")[1]
-				: a.type == "select" && a.group == ($page.params.option || "").split("$|$")[0] && a.name == ($page.params.option || "").split("$|$")[1]
+			(page.params.option || "").split("$|$")[0] == "-"
+				? (a.type == "checkbox" || a.type == "conditional") && a.name == (page.params.option || "").split("$|$")[1]
+				: a.type == "select" && a.group == (page.params.option || "").split("$|$")[0] && a.name == (page.params.option || "").split("$|$")[1]
 		)!
 	}
 
 	function setOption(_useless: string, data: ArrayElement<Manifest["options"]>) {
 		const m = getManifestFromModID(manifest.id)
 		const optIndex = m.options!.findIndex((a) =>
-			($page.params.option || "").split("$|$")[0] == "-"
-				? (a.type == "checkbox" || a.type == "conditional") && a.name == ($page.params.option || "").split("$|$")[1]
-				: a.type == "select" && a.group == ($page.params.option || "").split("$|$")[0] && a.name == ($page.params.option || "").split("$|$")[1]
+			(page.params.option || "").split("$|$")[0] == "-"
+				? (a.type == "checkbox" || a.type == "conditional") && a.name == (page.params.option || "").split("$|$")[1]
+				: a.type == "select" && a.group == (page.params.option || "").split("$|$")[0] && a.name == (page.params.option || "").split("$|$")[1]
 		)
 
 		if (optIndex == -1) {
@@ -129,7 +129,7 @@
 
 <div class="flex gap-8 items-center">
 	<h4 class="text-center" transition:scale>
-		<a href="/authoring/{$page.params.mod}">← Back</a>
+		<a href="/authoring/{page.params.mod}">← Back</a>
 	</h4>
 
 	<div>
@@ -883,7 +883,7 @@
 	on:close={() => {
 		if (optionNameInputModal.value && optionNameInputModal.value.length) {
 			alterOption(manifest.id, { name: optionNameInputModal.value })
-			goto(`/authoring/${$page.params.mod}/options/${$page.params.option.split("$|$")[0]}$|$${optionNameInputModal.value}`)
+			goto(`/authoring/${page.params.mod}/options/${page.params.option.split("$|$")[0]}$|$${optionNameInputModal.value}`)
 		}
 	}}
 />
@@ -897,7 +897,7 @@
 	on:close={() => {
 		if (groupInputModal.value && groupInputModal.value.length) {
 			alterOption(manifest.id, { group: groupInputModal.value })
-			goto(`/authoring/${$page.params.mod}/options/${groupInputModal.value}$|$${$page.params.option.split("$|$")[1]}`)
+			goto(`/authoring/${page.params.mod}/options/${groupInputModal.value}$|$${page.params.option.split("$|$")[1]}`)
 		}
 	}}
 />

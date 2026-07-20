@@ -10,11 +10,7 @@ const config = {
 			fallback: "index.html"
 		})
 	},
-	preprocess: preprocess({
-		typescript: {
-			transpileOnly: true
-		}
-	})
+	preprocess: preprocess()
 }
 
 export default config

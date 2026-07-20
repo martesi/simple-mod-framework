@@ -82,12 +82,11 @@ export function getConfig() {
 					) {
 						if (manifest.options.some((a) => a.type === "select" && a.name === config.modOptions[mod][i])) {
 							// There's a select and it's using the old name format (just the name), change it to the new format (group:name)
-							config.modOptions[mod][i] =
-								// @ts-expect-error TypeScript doesn't think that a select has a group apparently
-								`${
-									// @ts-expect-error TypeScript doesn't think that a select has a group apparently
-									manifest.options.find((a) => a.type === "select" && a.name === config.modOptions[mod][i])!.group
-								}:${manifest.options.find((a) => a.type === "select" && a.name === config.modOptions[mod][i])!.name}`
+							// @ts-ignore
+							config.modOptions[mod][i] = `${
+								// @ts-ignore
+								manifest.options.find((a) => a.type === "select" && a.name === config.modOptions[mod][i])!.group
+							}:${manifest.options.find((a) => a.type === "select" && a.name === config.modOptions[mod][i])!.name}`
 						} else {
 							// Remove it, it doesn't exist
 							config.modOptions[mod].splice(i, 1)
@@ -98,16 +97,16 @@ export function getConfig() {
 				for (let i = config.modOptions[manifest.id].length - 1; i >= 0; i--) {
 					if (
 						manifest.options.find(
-							(a) => (a.type === "checkbox" && a.name === config.modOptions[manifest.id][i]) || (a.type === "select" && `${a.group}:${a.name}` === config.modOptions[manifest.id][i])
+							(a) => (a.type === "checkbox" && a.name === config.modOptions[manifest.id][i]) || (a.type === "select" && `${(a as any).group}:${a.name}` === config.modOptions[manifest.id][i])
 						)?.requirements
 					) {
 						if (
 							!manifest.options
 								.find(
 									(a) =>
-										(a.type === "checkbox" && a.name === config.modOptions[manifest.id][i]) || (a.type === "select" && `${a.group}:${a.name}` === config.modOptions[manifest.id][i])
+										(a.type === "checkbox" && a.name === config.modOptions[manifest.id][i]) || (a.type === "select" && `${(a as any).group}:${a.name}` === config.modOptions[manifest.id][i])
 								)!
-								.requirements!.every((a) => config.loadOrder.includes(a))
+								.requirements!.every((a: any) => config.loadOrder.includes(typeof a === "string" ? a : a[0]))
 						) {
 							config.modOptions[manifest.id].splice(i, 1)
 						}
@@ -172,7 +171,7 @@ export function sortMods() {
 					.filter(
 						(x) =>
 							config.modOptions[a].includes(x.name) ||
-							config.modOptions[a].includes(`${x.group}:${x.name}`) ||
+							config.modOptions[a].includes(`${(x as any).group}:${x.name}`) ||
 							(x.type === OptionType.conditional &&
 								compileExpression(x.condition, { customProp: useDotAccessOperatorAndOptionalChaining })({
 									config
@@ -196,7 +195,7 @@ export function sortMods() {
 					.filter(
 						(x) =>
 							config.modOptions[b].includes(x.name) ||
-							config.modOptions[b].includes(`${x.group}:${x.name}`) ||
+							config.modOptions[b].includes(`${(x as any).group}:${x.name}`) ||
 							(x.type === OptionType.conditional &&
 								compileExpression(x.condition, { customProp: useDotAccessOperatorAndOptionalChaining })({
 									config
@@ -220,7 +219,7 @@ export function sortMods() {
 					.filter(
 						(x) =>
 							config.modOptions[a].includes(x.name) ||
-							config.modOptions[a].includes(`${x.group}:${x.name}`) ||
+							config.modOptions[a].includes(`${(x as any).group}:${x.name}`) ||
 							(x.type === OptionType.conditional &&
 								compileExpression(x.condition, { customProp: useDotAccessOperatorAndOptionalChaining })({
 									config
@@ -244,7 +243,7 @@ export function sortMods() {
 					.filter(
 						(x) =>
 							config.modOptions[b].includes(x.name) ||
-							config.modOptions[b].includes(`${x.group}:${x.name}`) ||
+							config.modOptions[b].includes(`${(x as any).group}:${x.name}`) ||
 							(x.type === OptionType.conditional &&
 								compileExpression(x.condition, { customProp: useDotAccessOperatorAndOptionalChaining })({
 									config

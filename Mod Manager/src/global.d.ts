@@ -27,3 +27,9 @@ declare global {
 		electronVersion: string
 	}
 }
+
+declare module "carbon-icons-svelte/lib/*" {
+	import type { SvelteComponentTyped } from "svelte"
+	export default class Icon extends SvelteComponentTyped<any, any, any> {}
+}
+

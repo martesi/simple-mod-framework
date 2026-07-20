@@ -3,7 +3,7 @@
 	import { onMount } from "svelte"
 
 	import { Button, ClickableTile, InlineLoading, InlineNotification, TextInput } from "carbon-components-svelte"
-	import { page } from "$app/stores"
+	import { page } from "$app/state"
 
 	import { alterModManifest, FrameworkVersion, getManifestFromModID, getModFolder, setModManifest, validateModFolder } from "$lib/utils"
 	import TextInputModal from "$lib/TextInputModal.svelte"
@@ -30,8 +30,8 @@
 		contentFolders: ["content"],
 		frameworkVersion: FrameworkVersion
 	} as Manifest
-	$: manifest = $page.params.mod
-		? getManifestFromModID($page.params.mod, dummyForceUpdate)
+	$: manifest = page.params.mod
+		? getManifestFromModID(page.params.mod, dummyForceUpdate)
 		: ({
 				version: "1.0.0",
 				id: "Example.Example",
@@ -62,7 +62,7 @@
 
 	let modValidation = [true, ""]
 
-	$: if ($page.params.mod) {
+	$: if (page.params.mod) {
 		modValidation = validateModFolder(getModFolder(manifest.id))
 	}
 </script>
@@ -214,7 +214,7 @@
 <div class="flex flex-row justify-center items-center mt-8">
 	<div class="flex flex-row gap-8 items-center mt-8 pb-4 max-w-[80vw] overflow-x-auto">
 		<div transition:scale>
-			<ClickableTile href="/authoring/{$page.params.mod}/manifest" style="width: 10vw; height: 8vw">
+			<ClickableTile href="/authoring/{page.params.mod}/manifest" style="width: 10vw; height: 8vw">
 				<div class="w-full h-full flex justify-center items-center text-xl font-light">
 					<div>
 						<div class="flex justify-center mb-2">
@@ -227,7 +227,7 @@
 		</div>
 		{#each manifest.options || [] as option (option.group + option.name)}
 			<div transition:scale>
-				<ClickableTile href="/authoring/{$page.params.mod}/options/{(option.group || '-') + '$|$' + option.name}" style="width: 10vw; height: 8vw">
+				<ClickableTile href="/authoring/{page.params.mod}/options/{(option.group || '-') + '$|$' + option.name}" style="width: 10vw; height: 8vw">
 					<div class="w-full h-full flex justify-center items-center text-xl font-light">
 						<div>
 							<div class="flex justify-center mb-2">

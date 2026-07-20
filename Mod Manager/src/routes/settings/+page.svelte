@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from "$app/stores"
+	import { page } from "$app/state"
 
 	import ExpandableTile from "$lib/ExpandableTile.svelte"
 	import { getConfig, getManifestFromModID, getModFolder, mergeConfig, modIsFramework } from "$lib/utils"
@@ -20,7 +20,7 @@
 	const columns: [Manifest[], Manifest[], Manifest[]] = [[], [], []]
 
 	let selectedMod: string | null = null
-	if ($page.url.searchParams.get("mod")) selectedMod = $page.url.searchParams.get("mod")
+	if (page.url.searchParams.get("mod")) selectedMod = page.url.searchParams.get("mod")
 
 	let column = 0
 	for (const mod of mods) {

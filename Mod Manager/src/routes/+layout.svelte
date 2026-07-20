@@ -6,7 +6,7 @@
 	import Icon from "svelte-fa"
 	import { faBook, faCog, faEdit, faHome, faInfoCircle, faList } from "@fortawesome/free-solid-svg-icons"
 	import { getConfig } from "$lib/utils"
-	import { page } from "$app/stores"
+	import { page } from "$app/state"
 
 	let developerMode: boolean = false
 

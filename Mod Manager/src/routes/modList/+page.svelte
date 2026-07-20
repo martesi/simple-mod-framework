@@ -48,7 +48,7 @@
 	import CloudUpload from "carbon-icons-svelte/lib/CloudUpload.svelte"
 	import Filter from "carbon-icons-svelte/lib/Filter.svelte"
 	import { OptionType } from "../../../../src/types"
-	import { page } from "$app/stores"
+	import { page } from "$app/state"
 	import SortableList from "$lib/SortableList.svelte"
 
 	let enabledMods: { value: string }[] = [],
@@ -324,14 +324,14 @@
 	let autoInstallModName = ""
 	let autoInstallModalOpen = false
 
-	$: if ($page.url.searchParams.get("urlScheme")) {
+	$: if (page.url.searchParams.get("urlScheme")) {
 		;(async () => {
 			let chunksAll
 
 			try {
 				autoInstallDownloading = true
 
-				const response = await fetch($page.url.searchParams.get("urlScheme")!)
+				const response = await fetch(page.url.searchParams.get("urlScheme")!)
 				const reader = response.body!.getReader()
 
 				autoInstallDownloadSize = +response.headers.get("Content-Length")!

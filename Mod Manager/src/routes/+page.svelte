@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { fade } from "svelte/transition"
-	import { page } from "$app/stores"
+	import { page } from "$app/state"
 
 	import { Button, InlineLoading, Modal, ProgressBar } from "carbon-components-svelte"
 

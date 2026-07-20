@@ -2,7 +2,7 @@
 	import { scale } from "svelte/transition"
 	import { onMount } from "svelte"
 
-	import { page } from "$app/stores"
+	import { page } from "$app/state"
 
 	import { alterModManifest, FrameworkVersion, getManifestFromModID, getModFolder, setModManifest } from "$lib/utils"
 	import ModManifestInterface from "$lib/ModManifestInterface.svelte"
@@ -23,8 +23,8 @@
 		frameworkVersion: FrameworkVersion
 	} as Manifest
 
-	$: manifest = $page.params.mod
-		? getManifestFromModID($page.params.mod, dummyForceUpdate)
+	$: manifest = page.params.mod
+		? getManifestFromModID(page.params.mod, dummyForceUpdate)
 		: ({
 				version: "1.0.0",
 				id: "Example.Example",
@@ -46,7 +46,7 @@
 
 <div class="flex gap-4 items-center justify-center">
 	<h4 class="text-center" transition:scale>
-		<a href="/authoring/{$page.params.mod}">← Back</a>
+		<a href="/authoring/{page.params.mod}">← Back</a>
 	</h4>
 </div>
 
