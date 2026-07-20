@@ -5,10 +5,16 @@ import preprocess from "svelte-preprocess"
 const config = {
 	kit: {
 		adapter: adapter({
+			pages: "out/renderer",
+			assets: "out/renderer",
 			fallback: "index.html"
 		})
 	},
-	preprocess: preprocess()
+	preprocess: preprocess({
+		typescript: {
+			transpileOnly: true
+		}
+	})
 }
 
 export default config

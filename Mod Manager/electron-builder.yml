@@ -1,0 +1,14 @@
+appId: com.atampy26.simple-mod-framework.mod-manager
+productName: Mod Manager
+directories:
+  output: dist
+  buildResources: buildResources
+files:
+  - '!**/*'
+  - 'out/**/*'
+protocols:
+  - name: Simple Mod Framework
+    schemes:
+      - simple-mod-framework
+win:
+  executableName: Mod Manager

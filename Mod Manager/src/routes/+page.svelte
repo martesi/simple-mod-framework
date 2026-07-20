@@ -124,7 +124,7 @@
 		window.originalFs.unlinkSync("../config.json:Zone.Identifier")
 	}
 
-	if (!window.nodeVersion.startsWith("18") || !window.electronVersion.startsWith("26")) {
+	if (parseInt(window.electronVersion) < 26) {
 		mustRedownloadFrameworkModalOpen = true
 	}
 
