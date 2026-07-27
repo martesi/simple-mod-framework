@@ -19,7 +19,7 @@ const QuickEntity = {
 	"3.1": quickentityRs,
 
 	"999.999": quickentityRs
-} as {
+} as unknown as {
 	[k: string]: {
 		convert: (game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) => Promise<void>
 		generate: (game: string, input: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string) => Promise<void>
@@ -35,7 +35,7 @@ const QuickEntityPatch = {
 	"6": quickentityRs,
 
 	"999": quickentityRs
-} as {
+} as unknown as {
 	[k: string]: {
 		convert: (game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) => Promise<void>
 		generate: (game: string, input: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string) => Promise<void>
