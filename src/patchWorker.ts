@@ -1,13 +1,9 @@
-import { Euler, MathUtils, Matrix4 } from "three"
-
-// See src/main.ts for why this global exists - QuickEntity (src/quickentity*.js)
-// expects it.
-// @ts-expect-error Need to assign on global because of QuickEntity
-global.THREE = { Matrix4, Euler, Math: MathUtils, MathUtils }
-
 import * as LosslessJSON from "lossless-json"
 
-import { config, logger } from "./core-singleton"
+import type { Config } from "./types"
+import type { ResolvedCoreOptions } from "./core"
+import { createCore } from "./core"
+import { config, logger, setCurrentCore } from "./core-singleton"
 import { copyFromCache, copyToCache, getQuickEntityFromPatchVersion } from "./utils"
 
 import RPKGInstance from "./rpkg"
@@ -28,6 +24,23 @@ const execCommand = function (command: string) {
 	})
 }
 
+/**
+ * Piscina reuses each worker thread for many `.run()` calls, so this only needs to happen once
+ * per thread - not once per patch. Guarded rather than done at module scope because it depends on
+ * the config/options handed over by whichever call happens to be first, not on anything knowable
+ * at import time.
+ */
+let workerCoreInitialised = false
+
+function ensureWorkerCore(workerConfig: Config, coreOptions: ResolvedCoreOptions) {
+	if (workerCoreInitialised) {
+		return
+	}
+
+	setCurrentCore(createCore(workerConfig, coreOptions))
+	workerCoreInitialised = true
+}
+
 export default async ({
 	tempHash,
 	tempRPKG,
@@ -37,7 +50,9 @@ export default async ({
 	assignedTemporaryDirectory,
 	patches,
 	invalidatedData,
-	cacheFolder
+	cacheFolder,
+	config: workerConfig,
+	coreOptions
 }: {
 	tempHash: string
 	tempRPKG: string
@@ -51,7 +66,11 @@ export default async ({
 		data: { hash: string; dependencies: string[]; affected: string[] }
 	}[]
 	cacheFolder: string
+	config: Config
+	coreOptions: ResolvedCoreOptions
 }) => {
+	ensureWorkerCore(workerConfig, coreOptions)
+
 	fs.ensureDirSync(path.join(process.cwd(), assignedTemporaryDirectory))
 
 	if (

@@ -11,6 +11,14 @@ import path from "path"
 import * as LosslessJSON from "lossless-json"
 import Decimal from "decimal.js"
 import rfc6902 from "rfc6902"
+import { Euler, MathUtils, Matrix4 } from "three"
+
+// This file only uses Matrix4/Euler for rotation-matrix decomposition, plus the legacy
+// `THREE.Math` alias (removed from three.js itself, replaced by MathUtils) for RAD2DEG/DEG2RAD.
+// Previously this relied on a `global.THREE` set up by whichever entry point happened to import
+// first (main.ts/patchWorker.ts) - a real, local import here means this file doesn't depend on
+// ambient global state or import order at all.
+const THREE = { Matrix4, Euler, Math: MathUtils, MathUtils }
 
 const QuickEntityVersion = 1.135
 

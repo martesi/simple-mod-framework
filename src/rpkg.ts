@@ -1,11 +1,26 @@
 import child_process from "child_process"
-import fs from "fs"
-import json5 from "json5"
 import path from "path"
 
 import "clarify"
 
-const config = json5.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"))
+/**
+ * Thrown when the underlying rpkg-cli process exits unexpectedly (crashes) instead of on
+ * request. Replaces the previous behaviour of calling `process.exit(1)` from inside the
+ * process's "close" handler - any pending {@link RPKGInstance.callFunction}/
+ * {@link RPKGInstance.waitForInitialised} call is rejected with this instead, so it's up to the
+ * caller (ultimately the CLI entry point or an embedder) to decide what a fatal RPKG crash means.
+ */
+export class RPKGProcessError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = "RPKGProcessError"
+	}
+}
+
+interface PendingCall {
+	resolve: (result: string) => void
+	reject: (error: Error) => void
+}
 
 class RPKGInstance {
 	rpkgProcess: child_process.ChildProcessWithoutNullStreams
@@ -18,8 +33,13 @@ class RPKGInstance {
 
 	shouldExit: boolean
 
-	constructor() {
-		this.rpkgProcess = child_process.spawn(path.join(process.cwd(), "Third-Party", "rpkg-cli"), ["-i"])
+	private fatalError?: Error
+	private initialisedWaiters: PendingCall[] = []
+	private readyWaiter?: PendingCall
+
+	/** @param rpkgCliPath Path to the rpkg-cli executable. Defaults to `Third-Party/rpkg-cli` under the current working directory, matching the CLI's historical layout. */
+	constructor(rpkgCliPath: string = path.join(process.cwd(), "Third-Party", "rpkg-cli")) {
+		this.rpkgProcess = child_process.spawn(rpkgCliPath, ["-i"])
 		this.output = ""
 		this.previousOutput = ""
 		this.initialised = false
@@ -35,46 +55,86 @@ class RPKGInstance {
 					this.ready = false
 					this.output = ""
 					this.previousOutput = ""
+
+					const waiters = this.initialisedWaiters.splice(0)
+					for (const { resolve } of waiters) {
+						resolve(this.previousOutput)
+					}
+
 					return
 				}
 
 				this.previousOutput = this.output
 				this.output = ""
 				this.ready = true
+
+				if (this.readyWaiter) {
+					const { resolve } = this.readyWaiter
+					this.readyWaiter = undefined
+					resolve(this.previousOutput.slice(0, -8).replace(/Running command: .*\r\n\r\n/g, ""))
+				}
 			}
 		})
 
 		this.rpkgProcess.on("close", () => {
-			if (!this.shouldExit) {
-				console.error("Fatal error!")
-				console.error("RPKG process exited unexpectedly with output:")
+			if (this.shouldExit) {
+				return
+			}
 
-				for (const line of this.output.split("\n")) {
-					console.log(line)
-				}
+			console.error("Fatal error!")
+			console.error("RPKG process exited unexpectedly with output:")
 
-				setTimeout(() => process.exit(1), 2000)
+			for (const line of this.output.split("\n")) {
+				console.log(line)
+			}
+
+			this.fatalError = new RPKGProcessError(`RPKG process exited unexpectedly with output:\n${this.output}`)
+
+			const initialisedWaiters = this.initialisedWaiters.splice(0)
+			for (const { reject } of initialisedWaiters) {
+				reject(this.fatalError)
+			}
+
+			if (this.readyWaiter) {
+				const { reject } = this.readyWaiter
+				this.readyWaiter = undefined
+				reject(this.fatalError)
 			}
 		})
 	}
 
-	async waitForInitialised() {
-		// yes, bad, pls tell me how to make good
-		return new Promise(waitForInitialised.bind(this))
+	async waitForInitialised(): Promise<string> {
+		if (this.fatalError) {
+			throw this.fatalError
+		}
+
+		if (this.initialised) {
+			return this.previousOutput
+		}
+
+		return new Promise((resolve, reject) => {
+			this.initialisedWaiters.push({ resolve, reject })
+		})
 	}
 
 	async callFunction(func: string): Promise<string> {
+		if (this.fatalError) {
+			throw this.fatalError
+		}
+
 		this.ready = false
 
 		this.rpkgProcess.stdin.write(func)
 		this.rpkgProcess.stdin.write("\n")
 
-		return new Promise(waitForReady.bind(this))
+		return new Promise((resolve, reject) => {
+			this.readyWaiter = { resolve, reject }
+		})
 	}
 
-	async getRPKGOfHash(hash: string): Promise<string> {
+	async getRPKGOfHash(runtimePath: string, hash: string): Promise<string> {
 		const result = [
-			...(await this.callFunction(`-hash_probe "${path.resolve(process.cwd(), config.runtimePath)}" -filter "${hash}"`)).matchAll(/is in RPKG file: (chunk[0-9]*(?:patch[1-9])?)\.rpkg/g)
+			...(await this.callFunction(`-hash_probe "${path.resolve(process.cwd(), runtimePath)}" -filter "${hash}"`)).matchAll(/is in RPKG file: (chunk[0-9]*(?:patch[1-9])?)\.rpkg/g)
 		]
 
 		return result
@@ -100,24 +160,6 @@ class RPKGInstance {
 	exit() {
 		this.shouldExit = true
 		this.rpkgProcess.kill()
-	}
-}
-
-function waitForInitialised(resolve: (result: string) => unknown) {
-	// yes, bad, pls tell me how to make good
-	if (this.initialised) {
-		resolve(this.previousOutput)
-	} else {
-		setTimeout(waitForInitialised.bind(this, resolve), 100)
-	}
-}
-
-function waitForReady(resolve: (result: string) => unknown) {
-	// yes, bad, pls tell me how to make good
-	if (this.ready) {
-		resolve(this.previousOutput.slice(0, -8).replace(/Running command: .*\r\n\r\n/g, ""))
-	} else {
-		setTimeout(waitForReady.bind(this, resolve), 100)
 	}
 }
 

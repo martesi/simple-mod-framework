@@ -17,7 +17,7 @@ import analyseMod, {
 } from "./analyseMod"
 import type { DeployInstruction, HMLanguageToolsLOCR, Manifest, ManifestOptionData, ModScript } from "./types"
 import { ModuleKind, ScriptTarget } from "typescript"
-import { FrameworkVersion, config, logger, rpkgInstance } from "./core-singleton"
+import { FrameworkVersion, config, logger, options, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
 import { copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
 
 import Piscina from "piscina"
@@ -640,8 +640,8 @@ export default async function deploy(
 						if (content.source === "disk") {
 							await logger.info(`Optimising entity.patch.json file ${contentIdentifier}`)
 
-							const tempRPKG = await rpkgInstance.getRPKGOfHash(entityContent.tempHash)
-							const tbluRPKG = await rpkgInstance.getRPKGOfHash(entityContent.tbluHash)
+							const tempRPKG = await rpkgInstance.getRPKGOfHash(config.runtimePath, entityContent.tempHash)
+							const tbluRPKG = await rpkgInstance.getRPKGOfHash(config.runtimePath, entityContent.tbluHash)
 
 							fs.ensureDirSync("qn-update")
 
@@ -1502,8 +1502,12 @@ export default async function deploy(
 			maxThreads: Math.max(Math.ceil(os.cpus().length / 4), 2) // For an 8-core CPU with 16 logical processors there are 4 max threads
 		})
 
-		// @ts-expect-error Assigning stuff on global is probably bad practice
-		global.currentWorkerPool = workerPool
+		// Register this deploy's worker pool with the active core so a fatal error elsewhere in
+		// the deploy (core.logger.error/cleanExit) destroys it as part of cleanup - replaces the
+		// old `global.currentWorkerPool = workerPool` global, which assumed only one deploy (and
+		// therefore only one worker pool) would ever exist per process.
+		const destroyWorkerPool: () => void = () => workerPool.destroy()
+		registerCleanup(destroyWorkerPool)
 
 		const sentryPatchTransaction = sentryModTransaction.startChild({
 			op: "stage",
@@ -1523,15 +1527,22 @@ export default async function deploy(
 					patches,
 					assignedTemporaryDirectory: `patchWorker${index}`,
 					invalidatedData,
-					cacheFolder: instruction.cacheFolder
+					cacheFolder: instruction.cacheFolder,
+					// Worker threads are separate module realms with no access to this thread's
+					// in-memory core - explicitly hand over the config/logging setup so the
+					// worker can bootstrap its own Core instead of (as before core.ts became a
+					// factory) implicitly re-deriving the same thing from process.argv/config.json
+					// on the assumption that they'd always match.
+					config,
+					coreOptions: options
 				})
 			})
 		) // Run each patch in the worker queue and wait for all of them to finish
 
-		// @ts-expect-error Assigning stuff on global is probably bad practice
-		global.currentWorkerPool = {
-			destroy: () => {}
-		}
+		// The patching phase is done - stop tracking this pool for fatal-error cleanup (matches
+		// the old code swapping `global.currentWorkerPool` for a no-op `{ destroy: () => {} }`
+		// once patching finished).
+		unregisterCleanup(destroyWorkerPool)
 
 		sentryPatchTransaction.finish()
 
