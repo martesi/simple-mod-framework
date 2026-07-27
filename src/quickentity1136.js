@@ -1,30 +1,18 @@
-const gui = require("./gui-shim")
-const electron = gui.electron
-const Swal = gui.Swal
-const storage = gui.storage
+/**
+ * @param {string} name
+ * @returns {never}
+ */
+function requireArg(name) {
+	throw new Error(`Missing required argument: ${name}`)
+}
 
 const fs = require('fs')
 const path = require("path")
 const LosslessJSON = require('lossless-json')
-const { execSync } = require("child_process")
 const Decimal = require('decimal.js')
-const { promisify } = require("util")
 const rfc6902 = require('rfc6902')
 
 const QuickEntityVersion = 1.135
-
-if (require.main === module) {
-	forceArgsModeChoice = false
-	if (JSON.stringify(storage.getSync("forceArgsModeChoice")) != "{}") {
-		forceArgsModeChoice = storage.getSync("forceArgsModeChoice")
-		document.getElementById("forceArgsModeChoiceCheckbox").checked = storage.getSync("forceArgsModeChoice")
-	} else {
-		storage.set("forceArgsModeChoice", false)
-		document.getElementById("forceArgsModeChoiceCheckbox").checked = false
-	}
-
-	document.getElementById("gameSelect").value = storage.getSync("game") || "HM3"
-}
 
 // oi sieni shut up yeah?
 // you've got ur select box
@@ -361,37 +349,19 @@ async function convert(automateGame = false, automateMode = false, automateTempP
 const args = process.argv.slice(2)
 
 
-const tempPath = automateTempPath ? automateTempPath : electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TEMP's JSON",
-	buttonLabel: "Select",
-	filters: [{ name: 'JSON files', extensions: ['TEMP.json'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
+const tempPath = automateTempPath || requireArg("automateTempPath")
 
 const TEMP = LosslessJSON.parse(String(fs.readFileSync(tempPath)))
-const TEMPmeta = LosslessJSON.parse(String(fs.readFileSync(automateTempMetaPath ? automateTempMetaPath : electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TEMP's meta's JSON",
-	buttonLabel: "Select",
-	filters: [{ name: 'JSON files', extensions: ['TEMP.meta.json'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0])))
+const TEMPmeta = LosslessJSON.parse(String(fs.readFileSync(automateTempMetaPath || requireArg("automateTempMetaPath"))))
 
-const tbluPath = automateTbluPath ? automateTbluPath : electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TBLU's JSON",
-	buttonLabel: "Select",
-	filters: [{ name: 'JSON files', extensions: ['TBLU.json'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
+const tbluPath = automateTbluPath || requireArg("automateTbluPath")
 
 const TBLU = LosslessJSON.parse(String(fs.readFileSync(tbluPath)))
-const TBLUmeta = LosslessJSON.parse(String(fs.readFileSync(automateTbluMetaPath ? automateTbluMetaPath : electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TBLU's meta's JSON",
-	buttonLabel: "Select",
-	filters: [{ name: 'JSON files', extensions: ['TBLU.meta.json'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0])))
+const TBLUmeta = LosslessJSON.parse(String(fs.readFileSync(automateTbluMetaPath || requireArg("automateTbluMetaPath"))))
 
-if ((automateGame ? automateGame : storage.getSync("game")) === "HM2016") {
+const game = automateGame || requireArg("automateGame")
+
+if (game === "HM2016") {
 	TEMP.subEntities = TEMP.entityTemplates
 	delete TEMP.entityTemplates
 
@@ -402,36 +372,12 @@ if ((automateGame ? automateGame : storage.getSync("game")) === "HM2016") {
 var argsMode = automateMode ? automateMode : undefined
 
 if (!automateMode) {
-	if (forceArgsModeChoice) {
-		argsMode = (await Swal.fire({
-			title: 'Mode',
-			text: "You have selected to always ask for a conversion mode. Type 'ids' or 'names'.",
-			input: 'text',
-			inputAttributes: {
-			  autocapitalize: 'off'
-			},
-			showCancelButton: true,
-			confirmButtonText: 'OK',
-			allowOutsideClick: false
-		})).value
+	var allEntityNames = TBLU.subEntities.map(object => object.entityName)
+
+	if (new Set(allEntityNames).size == allEntityNames.length) {
+		argsMode = "names"
 	} else {
-		var allEntityNames = TBLU.subEntities.map(object => object.entityName)
-	
-		if (new Set(allEntityNames).size == allEntityNames.length) {
-			argsMode = "names"
-		} else {
-			argsMode = (await Swal.fire({
-				title: 'Mode',
-				text: "There are duplicate subEntity names in this entity. If you convert with names mode, you will not be able to convert back to ResourceTool Source from the resultant QuickEntity JSON. Type 'ids' or 'names'.",
-				input: 'text',
-				inputAttributes: {
-				  autocapitalize: 'off'
-				},
-				showCancelButton: true,
-				confirmButtonText: 'OK',
-				allowOutsideClick: false
-			})).value
-		}
+		requireArg("automateMode ('ids' or 'names' - required because this entity has duplicate subEntity names)")
 	}
 }
 
@@ -641,7 +587,7 @@ for (var entry of entity.overrideDeletes) {
 	delete entry.externalSceneIndex
 }
 
-if ((automateGame ? automateGame : storage.getSync("game")) !== "HM2016") {
+if (game !== "HM2016") {
 	for (var entry of entity.pinConnectionOverrides) {
 		entry.fromEntity.externalScene = entry.fromEntity.externalSceneIndex >= 0 ? TBLUmeta["hash_reference_data"][TBLU.externalSceneTypeIndicesInResourceHeader[entry.fromEntity.externalSceneIndex]].hash : "SPECIAL: None"
 		delete entry.fromEntity.externalSceneIndex
@@ -659,12 +605,7 @@ if ((automateGame ? automateGame : storage.getSync("game")) !== "HM2016") {
 	}
 }
 
-fs.writeFileSync(automateQNPath ? automateQNPath : electron.remote.dialog.showSaveDialogSync({
-	title: "Save the QuickEntity JSON file",
-	buttonLabel: "Save",
-	filters: [{ name: 'JSON file', extensions: ['json'] }],
-	properties: ["dontAddToRecent"]
-}), LosslessJSON.stringify(entity))
+fs.writeFileSync(automateQNPath || requireArg("automateQNPath"), LosslessJSON.stringify(entity))
 }
 
 function findEntity(cache, ref) {
@@ -673,39 +614,16 @@ function findEntity(cache, ref) {
 
 async function generate(automateGame = false, automateQNPath = false, automateTempPath = false, automateTempMetaPath = false, automateTbluPath = false, automateTbluMetaPath = false) {
 
-const entity = LosslessJSON.parse(String(fs.readFileSync(automateQNPath ? automateQNPath : electron.remote.dialog.showOpenDialogSync({
-	title: "Select the QuickEntity JSON",
-	buttonLabel: "Select",
-	filters: [{ name: 'JSON files', extensions: ['json'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0])))
+const game = automateGame || requireArg("automateGame")
 
-if (entity.quickEntityVersion < QuickEntityVersion && !automateGame) {
-	if (!(await Swal.fire({
-		title: 'Outdated QuickEntity JSON',
-		text: `The QuickEntity JSON was created with version ${entity.quickEntityVersion}. The version of QuickEntity you are currently using is ${QuickEntityVersion}. Are you sure you want to continue?`,
-		showCancelButton: true,
-		confirmButtonText: 'Continue',
-		allowOutsideClick: false
-	})).isConfirmed) {
-		return
-	}
-}
+const entity = LosslessJSON.parse(String(fs.readFileSync(automateQNPath || requireArg("automateQNPath"))))
 
 const argsMode = entity.quickEntityMode
 
 if (argsMode != "ids") {
 	var allEntityNames = entity.entities.map(object => object.name)
 	if (new Set(allEntityNames).size != allEntityNames.length) {
-		if (!(await Swal.fire({
-			title: 'Duplicate entity names',
-			text: `The QuickEntity JSON was converted using names mode but contains duplicate entity names. Converting to ResourceTool Source will likely result in loss of rebuilding integrity. Are you sure you want to continue?`,
-			showCancelButton: true,
-			confirmButtonText: 'Continue',
-			allowOutsideClick: false
-		})).isConfirmed) {
-			return
-		}
+		throw new Error("The QuickEntity JSON was converted using names mode but contains duplicate entity names. Converting to ResourceTool Source will likely result in loss of rebuilding integrity.")
 	}
 }
 
@@ -749,8 +667,8 @@ var TBLU = {
 	"subEntities": [],
 	"externalSceneTypeIndicesInResourceHeader": [],
 	"overrideDeletes": entity.overrideDeletes,
-	"pinConnectionOverrides": (automateGame ? automateGame : storage.getSync("game")) !== "HM2016" ? entity.pinConnectionOverrides : undefined,
-	"pinConnectionOverrideDeletes": (automateGame ? automateGame : storage.getSync("game")) !== "HM2016" ? entity.pinConnectionOverrideDeletes : undefined
+	"pinConnectionOverrides": game !== "HM2016" ? entity.pinConnectionOverrides : undefined,
+	"pinConnectionOverrideDeletes": game !== "HM2016" ? entity.pinConnectionOverrideDeletes : undefined
 }
 
 var TBLUmeta = {
@@ -937,7 +855,7 @@ for (var entry of TBLU.overrideDeletes) {
 }
 
 
-if ((automateGame ? automateGame : storage.getSync("game")) !== "HM2016") {
+if (game !== "HM2016") {
 	for (var entry of TBLU.pinConnectionOverrides) {
 		entry.fromEntity.externalSceneIndex = TBLU.externalSceneTypeIndicesInResourceHeader.findIndex(a => TBLUmeta.hash_reference_data[a].hash == entry.fromEntity.externalScene)
 		delete entry.fromEntity.externalScene
@@ -1010,8 +928,6 @@ TBLU.pinConnections = []
 TBLU.inputPinForwardings = []
 TBLU.outputPinForwardings = []
 
-const game = (automateGame ? automateGame : storage.getSync("game"))
-
 index = 0
 for (var entry of entity.entities) {
 	if (entry.events) {
@@ -1063,7 +979,7 @@ for (var entry of entity.entities) {
 }
 
 
-if ((automateGame ? automateGame : storage.getSync("game")) == "HM2016") {
+if (game == "HM2016") {
 	TEMP.entityTemplates = TEMP.subEntities
 	delete TEMP.subEntities
 
@@ -1071,40 +987,16 @@ if ((automateGame ? automateGame : storage.getSync("game")) == "HM2016") {
 	delete TBLU.subEntities
 }
 
-var tempRebuildPath = automateTempPath ? automateTempPath : electron.remote.dialog.showSaveDialogSync({
-	title: "Save the TEMP's JSON",
-	buttonLabel: "Save",
-	defaultPath: `${entity.tempHash}.TEMP.json`,
-	filters: [{ name: 'JSON file', extensions: ['TEMP.json'] }],
-	properties: ["dontAddToRecent"]
-})
+var tempRebuildPath = automateTempPath || requireArg("automateTempPath")
 fs.writeFileSync(tempRebuildPath, LosslessJSON.stringify(TEMP))
 
-var tempMetaRebuildPath = automateTempMetaPath ? automateTempMetaPath : electron.remote.dialog.showSaveDialogSync({
-	title: "Save the TEMP's meta's JSON",
-	buttonLabel: "Save",
-	defaultPath:`output/${entity.tempHash}.TEMP.meta.json`,
-	filters: [{ name: 'JSON file', extensions: ['TEMP.meta.json'] }],
-	properties: ["dontAddToRecent"]
-})
+var tempMetaRebuildPath = automateTempMetaPath || requireArg("automateTempMetaPath")
 fs.writeFileSync(tempMetaRebuildPath, LosslessJSON.stringify(TEMPmeta))
 
-var tbluRebuildPath = automateTbluPath ? automateTbluPath : electron.remote.dialog.showSaveDialogSync({
-	title: "Save the TBLU's JSON",
-	buttonLabel: "Save",
-	defaultPath: `output/${entity.tbluHash}.TBLU.json`,
-	filters: [{ name: 'JSON file', extensions: ['TBLU.json'] }],
-	properties: ["dontAddToRecent"]
-})
+var tbluRebuildPath = automateTbluPath || requireArg("automateTbluPath")
 fs.writeFileSync(tbluRebuildPath, LosslessJSON.stringify(TBLU))
 
-var tbluMetaRebuildPath = automateTbluMetaPath ? automateTbluMetaPath : electron.remote.dialog.showSaveDialogSync({
-	title: "Save the TBLU's meta's JSON",
-	buttonLabel: "Save",
-	defaultPath: `output/${entity.tbluHash}.TBLU.meta.json`,
-	filters: [{ name: 'JSON file', extensions: ['TBLU.meta.json'] }],
-	properties: ["dontAddToRecent"]
-})
+var tbluMetaRebuildPath = automateTbluMetaPath || requireArg("automateTbluMetaPath")
 fs.writeFileSync(tbluMetaRebuildPath, LosslessJSON.stringify(TBLUmeta))
 
 return {
@@ -1114,130 +1006,6 @@ return {
 	tbluMetaRebuildPath
 }
 
-}
-
-async function convertToSource() {
-
-const tempPath = electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TEMP",
-	buttonLabel: "Select",
-	filters: [{ name: 'TEMP files', extensions: ['TEMP'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
-
-const tempMetaPath = electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TEMP meta",
-	buttonLabel: "Select",
-	filters: [{ name: 'TEMP meta files', extensions: ['TEMP.meta'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
-
-const tbluPath = electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TBLU",
-	buttonLabel: "Select",
-	filters: [{ name: 'TBLU files', extensions: ['TBLU'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
-
-const tbluMetaPath = electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TBLU meta",
-	buttonLabel: "Select",
-	filters: [{ name: 'TBLU meta files', extensions: ['TBLU.meta'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
-
-execSync("ResourceTool.exe " + storage.getSync("game") + " convert TEMP \"" + tempPath + "\" \"" + tempPath + ".json\" --simple")
-execSync("ResourceTool.exe " + storage.getSync("game") + " convert TBLU \"" + tbluPath + "\" \"" + tbluPath + ".json\" --simple")
-execSync("rpkg-cli.exe -hash_meta_to_json \"" + tempMetaPath + "\"")
-execSync("rpkg-cli.exe -hash_meta_to_json \"" + tbluMetaPath + "\"")
-
-}
-
-async function convertToPackaged() {
-
-const tempPath = electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TEMP json",
-	buttonLabel: "Select",
-	filters: [{ name: 'TEMP JSON files', extensions: ['TEMP.json'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
-
-const tempMetaPath = electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TEMP meta json",
-	buttonLabel: "Select",
-	filters: [{ name: 'TEMP meta JSON files', extensions: ['TEMP.meta.json'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
-
-const tbluPath = electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TBLU json",
-	buttonLabel: "Select",
-	filters: [{ name: 'TBLU JSON files', extensions: ['TBLU.json'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
-
-const tbluMetaPath = electron.remote.dialog.showOpenDialogSync({
-	title: "Select the TBLU meta json",
-	buttonLabel: "Select",
-	filters: [{ name: 'TBLU meta JSON files', extensions: ['TBLU.meta.json'] }],
-	properties: ["openFile", "dontAddToRecent"]
-})[0]
-
-execSync("ResourceTool.exe " + storage.getSync("game") + " generate TEMP \"" + tempPath + "\" \"" + tempPath.slice(0,-5) + "\" --simple")
-execSync("ResourceTool.exe " + storage.getSync("game") + " generate TBLU \"" + tbluPath + "\" \"" + tbluPath.slice(0,-5) + "\" --simple")
-execSync("rpkg-cli.exe -json_to_hash_meta \"" + tempMetaPath + "\"")
-execSync("rpkg-cli.exe -json_to_hash_meta \"" + tbluMetaPath + "\"")
-
-}
-
-async function packagedToConverted() {
-	const tempPath = electron.remote.dialog.showOpenDialogSync({
-		title: "Select the TEMP",
-		buttonLabel: "Select",
-		filters: [{ name: 'TEMP files', extensions: ['TEMP'] }],
-		properties: ["openFile", "dontAddToRecent"]
-	})[0]
-
-	const tempMetaPath = electron.remote.dialog.showOpenDialogSync({
-		title: "Select the TEMP meta",
-		buttonLabel: "Select",
-		filters: [{ name: 'TEMP meta files', extensions: ['TEMP.meta'] }],
-		properties: ["openFile", "dontAddToRecent"]
-	})[0]
-
-	const tbluPath = electron.remote.dialog.showOpenDialogSync({
-		title: "Select the TBLU",
-		buttonLabel: "Select",
-		filters: [{ name: 'TBLU files', extensions: ['TBLU'] }],
-		properties: ["openFile", "dontAddToRecent"]
-	})[0]
-
-	const tbluMetaPath = electron.remote.dialog.showOpenDialogSync({
-		title: "Select the TBLU meta",
-		buttonLabel: "Select",
-		filters: [{ name: 'TBLU meta files', extensions: ['TBLU.meta'] }],
-		properties: ["openFile", "dontAddToRecent"]
-	})[0]
-
-	execSync("ResourceTool.exe " + storage.getSync("game") + " convert TEMP \"" + tempPath + "\" \"" + tempPath + ".json\" --simple")
-	execSync("ResourceTool.exe " + storage.getSync("game") + " convert TBLU \"" + tbluPath + "\" \"" + tbluPath + ".json\" --simple")
-	execSync("rpkg-cli.exe -hash_meta_to_json \"" + tempMetaPath + "\"")
-	execSync("rpkg-cli.exe -hash_meta_to_json \"" + tbluMetaPath + "\"")
-
-	convert(storage.getSync("game"), false, tempPath + ".json", tempMetaPath + ".json", tbluPath + ".json", tbluMetaPath + ".json")
-}
-
-async function convertedToPackaged() {
-	var x = await generate(storage.getSync("game"))
-
-	execSync("ResourceTool.exe " + storage.getSync("game") + " generate TEMP \"" + x.tempRebuildPath + "\" \"" + x.tempRebuildPath.slice(0,-5) + "\" --simple")
-	execSync("ResourceTool.exe " + storage.getSync("game") + " generate TBLU \"" + x.tbluRebuildPath + "\" \"" + x.tbluRebuildPath.slice(0,-5) + "\" --simple")
-	execSync("rpkg-cli.exe -json_to_hash_meta \"" + x.tempMetaRebuildPath + "\"")
-	execSync("rpkg-cli.exe -json_to_hash_meta \"" + x.tbluMetaRebuildPath + "\"")
-}
-
-async function setGame(game) {
-	await (promisify(storage.set))("game", game)
 }
 
 function patchCheckLosslessNumber(input, output, pointer) {
@@ -1251,19 +1019,9 @@ function patchCheckLosslessNumber(input, output, pointer) {
 }
 
 async function createPatchJSON(automateQN1Path = false, automateQN2Path = false, automateOutputPath = false) {
-	let entity1 = LosslessJSON.parse(String(fs.readFileSync(automateQN1Path ? automateQN1Path : electron.remote.dialog.showOpenDialogSync({
-		title: "Select the first QuickEntity JSON",
-		buttonLabel: "Select",
-		filters: [{ name: 'JSON files', extensions: ['json'] }],
-		properties: ["openFile", "dontAddToRecent"]
-	})[0])))
+	let entity1 = LosslessJSON.parse(String(fs.readFileSync(automateQN1Path || requireArg("automateQN1Path"))))
 
-	let entity2 = LosslessJSON.parse(String(fs.readFileSync(automateQN2Path ? automateQN2Path : electron.remote.dialog.showOpenDialogSync({
-		title: "Select the second QuickEntity JSON",
-		buttonLabel: "Select",
-		filters: [{ name: 'JSON files', extensions: ['json'] }],
-		properties: ["openFile", "dontAddToRecent"]
-	})[0])))
+	let entity2 = LosslessJSON.parse(String(fs.readFileSync(automateQN2Path || requireArg("automateQN2Path"))))
 
 	const findEntityCacheEntity1 = {}
 	for (var entry in entity1.entities) {
@@ -1445,26 +1203,12 @@ async function createPatchJSON(automateQN1Path = false, automateQN2Path = false,
 
 	let candidate1 = Object.fromEntries(entity1.entities.map(a => [a.entityID, a]))
 	if (entity1.entities.length != Object.keys(candidate1).length) {
-		await Swal.fire({
-			title: 'Duplicate entity IDs',
-			text: `The first QuickEntity JSON contains duplicate entity IDs. A patch JSON cannot be created.`,
-			showCancelButton: false,
-			confirmButtonText: 'OK',
-			allowOutsideClick: false
-		})
-		return
+		throw new Error("The first QuickEntity JSON contains duplicate entity IDs. A patch JSON cannot be created.")
 	}
 
 	let candidate2 = Object.fromEntries(entity2.entities.map(a => [a.entityID, a]))
 	if (entity2.entities.length != Object.keys(candidate2).length) {
-		await Swal.fire({
-			title: 'Duplicate entity IDs',
-			text: `The second QuickEntity JSON contains duplicate entity IDs. A patch JSON cannot be created.`,
-			showCancelButton: false,
-			confirmButtonText: 'OK',
-			allowOutsideClick: false
-		})
-		return
+		throw new Error("The second QuickEntity JSON contains duplicate entity IDs. A patch JSON cannot be created.")
 	}
 
 	entity1.entities = candidate1
@@ -1474,37 +1218,21 @@ async function createPatchJSON(automateQN1Path = false, automateQN2Path = false,
 	delete entity2.quickEntityVersion
 
 		let patch = rfc6902.createPatch(entity1, entity2, patchCheckLosslessNumber)
-	
+
 	let outputPatchJSON = {
 		tempHash: entity2.tempHash,
     	tbluHash: entity2.tbluHash,
 		patch: patch
 	}
 
-	let outputPath = automateOutputPath ? automateOutputPath : electron.remote.dialog.showSaveDialogSync({
-		title: "Save the patch JSON",
-		buttonLabel: "Save",
-		defaultPath: `patch.json`,
-		filters: [{ name: 'JSON file', extensions: ['json'] }],
-		properties: ["dontAddToRecent"]
-	})
+	let outputPath = automateOutputPath || requireArg("automateOutputPath")
 	fs.writeFileSync(outputPath, LosslessJSON.stringify(outputPatchJSON))
 }
 
 async function applyPatchJSON(automateQNPath = false, automatePatchPath = false, automateOutputPath = false) {
-	let entity = LosslessJSON.parse(String(fs.readFileSync(automateQNPath ? automateQNPath : electron.remote.dialog.showOpenDialogSync({
-		title: "Select the QuickEntity JSON",
-		buttonLabel: "Select",
-		filters: [{ name: 'JSON files', extensions: ['json'] }],
-		properties: ["openFile", "dontAddToRecent"]
-	})[0])))
+	let entity = LosslessJSON.parse(String(fs.readFileSync(automateQNPath || requireArg("automateQNPath"))))
 
-	let patch = LosslessJSON.parse(String(fs.readFileSync(automatePatchPath ? automatePatchPath : electron.remote.dialog.showOpenDialogSync({
-		title: "Select the patch JSON",
-		buttonLabel: "Select",
-		filters: [{ name: 'JSON files', extensions: ['json'] }],
-		properties: ["openFile", "dontAddToRecent"]
-	})[0])))
+	let patch = LosslessJSON.parse(String(fs.readFileSync(automatePatchPath || requireArg("automatePatchPath"))))
 
 	const findEntityCache = {}
 	for (var entry in entity.entities) {
@@ -1597,14 +1325,7 @@ async function applyPatchJSON(automateQNPath = false, automatePatchPath = false,
 
 	let candidate = Object.fromEntries(entity.entities.map(a => [a.entityID, a]))
 	if (entity.entities.length != Object.keys(candidate).length) {
-		await Swal.fire({
-			title: 'Duplicate entity IDs',
-			text: `The QuickEntity JSON contains duplicate entity IDs. A patch JSON cannot be applied.`,
-			showCancelButton: false,
-			confirmButtonText: 'OK',
-			allowOutsideClick: false
-		})
-		return
+		throw new Error("The QuickEntity JSON contains duplicate entity IDs. A patch JSON cannot be applied.")
 	}
 
 	entity.entities = candidate
@@ -1707,13 +1428,7 @@ async function applyPatchJSON(automateQNPath = false, automatePatchPath = false,
 		}
 	}
 
-	let outputPath = automateOutputPath ? automateOutputPath : electron.remote.dialog.showSaveDialogSync({
-		title: "Save the resulting JSON",
-		buttonLabel: "Save",
-		defaultPath: `result.json`,
-		filters: [{ name: 'JSON file', extensions: ['json'] }],
-		properties: ["dontAddToRecent"]
-	})
+	let outputPath = automateOutputPath || requireArg("automateOutputPath")
 	fs.writeFileSync(outputPath, LosslessJSON.stringify(newEntity).replace(/"LN\|((?:[0-9]|\.|-|e)*)"/g, (a,b) => new LosslessJSON.LosslessNumber(b).value))
 }
 
