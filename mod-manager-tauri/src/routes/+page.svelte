@@ -12,7 +12,8 @@
 		getModFolder,
 		mergeConfig,
 		FrameworkVersion,
-		clearModCache
+		addModsToIndex,
+		removeModFromIndex
 	} from "$lib/utils"
 	import type { Config, Manifest } from "../../../src/types"
 
@@ -338,9 +339,15 @@
 				throw new Error("Mod update ZIP has files in the root!")
 			}
 
+			const stagingContents = await native.fs.readdirSync("./staging")
 			const modFolder = await getModFolder(updatingMod!.id)
 			await native.fs.removeSync(modFolder)
 			await native.fs.copySync("./staging", "../Mods")
+			// write-through: this is our own mutation (remove old id, add
+			// whatever folder(s) the update produced), so the persisted index
+			// stays accurate for the reload below instead of going stale
+			await removeModFromIndex(updatingMod!.id)
+			await addModsToIndex(stagingContents)
 			await native.fs.removeSync("./staging")
 			await native.fs.removeSync("./tempArchive")
 		} catch (e) {
@@ -350,7 +357,6 @@
 		}
 
 		updatingMod = null
-		clearModCache()
 		window.location.reload()
 	}
 </script>

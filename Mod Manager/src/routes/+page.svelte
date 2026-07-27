@@ -4,7 +4,7 @@
 
 	import { Button, InlineLoading, Modal, ProgressBar } from "carbon-components-svelte"
 
-	import { getAllMods, getConfig, getManifestFromModID, modIsFramework, getModFolder, mergeConfig, FrameworkVersion } from "$lib/utils"
+	import { getAllMods, getConfig, getManifestFromModID, modIsFramework, getModFolder, mergeConfig, FrameworkVersion, addModsToIndex, removeModFromIndex } from "$lib/utils"
 
 	import { v4 } from "uuid"
 	import { marked } from "marked"
@@ -406,9 +406,17 @@
 				throw new Error("Mod update ZIP has files in the root!")
 			}
 
+			const stagingContents = window.fs.readdirSync("./staging")
+
 			window.fs.removeSync(getModFolder(updatingMod!.id))
 
 			window.fs.copySync("./staging", "../Mods")
+
+			// write-through: this is our own mutation (remove old id, add
+			// whatever folder(s) the update produced), so the persisted index
+			// stays accurate for the reload below instead of going stale
+			removeModFromIndex(updatingMod!.id)
+			addModsToIndex(stagingContents)
 
 			window.fs.removeSync("./staging")
 			window.fs.removeSync("./tempArchive")

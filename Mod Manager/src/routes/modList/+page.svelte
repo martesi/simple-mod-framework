@@ -33,7 +33,7 @@
 		bg: "#262626"
 	})
 
-	import { getAllMods, getConfig, mergeConfig, getManifestFromModID, modIsFramework, getModFolder, sortMods, validateModFolder } from "$lib/utils"
+	import { getAllMods, getConfig, mergeConfig, getManifestFromModID, modIsFramework, getModFolder, sortMods, validateModFolder, addModsToIndex, removeModFromIndex, rebuildModIndex } from "$lib/utils"
 	import Mod from "$lib/Mod.svelte"
 	import TextInputModal from "$lib/TextInputModal.svelte"
 
@@ -47,6 +47,7 @@
 	import Close from "carbon-icons-svelte/lib/Close.svelte"
 	import CloudUpload from "carbon-icons-svelte/lib/CloudUpload.svelte"
 	import Filter from "carbon-icons-svelte/lib/Filter.svelte"
+	import Renew from "carbon-icons-svelte/lib/Renew.svelte"
 	import { OptionType } from "../../../../src/types"
 	import { page } from "$app/state"
 	import SortableList from "$lib/SortableList.svelte"
@@ -130,6 +131,7 @@
 
 	let rpkgModExtractionInProgress = false
 	let frameworkModExtractionInProgress = false
+	let rebuildCacheInProgress = false
 
 	let invalidFrameworkZipModalOpen = false
 
@@ -221,6 +223,7 @@
 						frameworkModPeacockPluginsWarningOpen = true
 					} else {
 						window.fs.copySync("./staging", "../Mods")
+						addModsToIndex(window.fs.readdirSync("./staging"))
 
 						mergeConfig({
 							knownMods: [
@@ -282,6 +285,8 @@
 			window.fs.copyFileSync(file.path, window.path.join("..", "Mods", rpkgModName, file.chunk, window.path.basename(file.path)))
 		}
 
+		addModsToIndex([rpkgModName])
+
 		mergeConfig({ knownMods: [...getConfig().knownMods, rpkgModName] })
 
 		window.fs.removeSync("./staging")
@@ -289,6 +294,18 @@
 		window.location.reload()
 
 		rpkgModExtractionInProgress = false
+	}
+
+	function handleRebuildCache() {
+		rebuildCacheInProgress = true
+		// defer the (potentially slow, and fully synchronous) rebuild by a tick
+		// so the "please wait" modal actually gets a chance to paint first —
+		// this app's IPC is synchronous, so rebuildModIndex() blocks the thread
+		setTimeout(() => {
+			rebuildModIndex()
+			forceModListsUpdate = Math.random()
+			rebuildCacheInProgress = false
+		}, 50)
 	}
 
 	let displayExtractedModsDialog = false
@@ -382,6 +399,9 @@
 			<div>
 				<Search icon={Filter} placeholder="Filter available mods" bind:value={availableModFilter} />
 			</div>
+			{#if getConfig().developerMode}
+				<Button kind="secondary" icon={Renew} iconDescription="Rebuild the mod cache" on:click={handleRebuildCache}>Rebuild cache</Button>
+			{/if}
 			<Button
 				kind="primary"
 				icon={Add}
@@ -525,6 +545,7 @@
 	on:click:button--secondary={() => (deleteModModalOpen = false)}
 	on:submit={() => {
 		window.fs.removeSync(getModFolder(deleteModInProgress))
+		removeModFromIndex(deleteModInProgress)
 		mergeConfig({ knownMods: getConfig().knownMods.filter((a) => a != deleteModInProgress) })
 
 		deleteModModalOpen = false
@@ -639,6 +660,8 @@
 
 <Modal passiveModal open={frameworkModExtractionInProgress} modalHeading="Installing the mod" preventCloseOnClickOutside>The mod is being installed - please wait.</Modal>
 
+<Modal passiveModal open={rebuildCacheInProgress} modalHeading="Rebuilding the mod cache" preventCloseOnClickOutside>Re-scanning the Mods folder and re-reading every manifest - please wait.</Modal>
+
 <Modal alert bind:open={invalidFrameworkZipModalOpen} modalHeading="Invalid framework ZIP" primaryButtonText="OK" shouldSubmitOnEnter={false} on:submit={() => (invalidFrameworkZipModalOpen = false)}>
 	<p>The framework ZIP file contains files in the root directory. Contact the mod author.</p>
 </Modal>
@@ -675,6 +698,7 @@
 			frameworkModPeacockPluginsWarningOpen = true
 		} else {
 			window.fs.copySync("./staging", "../Mods")
+			addModsToIndex(window.fs.readdirSync("./staging"))
 
 			mergeConfig({
 				knownMods: [...getConfig().knownMods, json5.parse(window.fs.readFileSync(window.path.join("..", "Mods", window.fs.readdirSync("./staging")[0], "manifest.json"), "utf8")).id]
@@ -703,6 +727,7 @@
 	on:click:button--secondary={() => (frameworkModPeacockPluginsWarningOpen = false)}
 	on:click:button--primary={() => {
 		window.fs.copySync("./staging", "../Mods")
+		addModsToIndex(window.fs.readdirSync("./staging"))
 
 		mergeConfig({ knownMods: [...getConfig().knownMods, json5.parse(window.fs.readFileSync(window.path.join("..", "Mods", window.fs.readdirSync("./staging")[0], "manifest.json"), "utf8")).id] })
 

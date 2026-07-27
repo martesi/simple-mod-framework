@@ -25,52 +25,187 @@ const validateUnlockables = new Ajv({ strict: false }).compile(unlockablesSchema
 const validateContract = new Ajv({ strict: false }).compile(contractSchema)
 const validateJSONPatch = new Ajv({ strict: false }).compile(jsonPatchSchema)
 
-// ─── mod-level caches (cleared after install/uninstall) ───────────────────
+// ─── mod-level caches (persisted to disk; kept in sync via write-through) ──
+//
+// These are populated by buildModIndex() — either from the persisted on-disk
+// index below, or by a full walk of Mods/ — and are then kept in sync
+// afterwards by the manager's own mutations (addModsToIndex /
+// removeModFromIndex / setModManifest) instead of being wiped and rebuilt on
+// every navigation.
 
 let _modFolderCache = new Map<string, string>()
 let _isFrameworkCache = new Map<string, boolean>()
 let _manifestCache = new Map<string, Manifest>()
 let _allModsCache: string[] | null = null
 
-// A single in-flight scan of the Mods directory shared by every lookup below.
+// A single in-flight build of the mod index, shared by every lookup below.
 // Without it, getModFolder/getManifestFromModID each re-walk the whole Mods
 // folder, so resolving a load order of N mods costs O(N²) sequential native
 // fs round-trips — painfully slow on a real install over a slow mount (e.g.
-// WSL /mnt drvfs, ~45s to first render). Building the index does one readdir
-// plus a parallel manifest read per entry, and populates all caches at once.
+// WSL /mnt drvfs, ~45s to first render). buildModIndex() does one readdir,
+// plus a manifest read for whatever entries the persisted cache below can't
+// already vouch for, and populates all four caches above at once.
 let _modIndex: Promise<void> | null = null
 
-function buildModIndex(): Promise<void> {
-	if (_modIndex) return _modIndex
-	_modIndex = (async () => {
-		const modsDir = native.path.join("..", "Mods")
-		const entries = await native.fs.readdirSync(modsDir)
-		// resolve every entry in parallel, but keep readdir order in the result
-		const ids = await Promise.all(
-			entries.map(async (entry) => {
-				if (entry === "Managed by SMF, do not touch") return null
-				const fullPath = native.path.resolve(native.path.join(modsDir, entry))
-				const manifestPath = native.path.join(fullPath, "manifest.json")
-				if (await native.fs.existsSync(manifestPath)) {
-					try {
-						const mf: Manifest = json5.parse(await native.fs.readFileSync(manifestPath, "utf8"))
-						_modFolderCache.set(mf.id, fullPath)
-						_manifestCache.set(mf.id, mf)
-						_isFrameworkCache.set(mf.id, true)
-						return mf.id
-					} catch {
-						// malformed manifest — fall through and treat as a bare folder
-					}
+// ─── persistent mod index ──────────────────────────────────────────────────
+//
+// Re-deriving everything from disk on every start/navigation is the
+// correctness-first default: disk is the source of truth, since users can
+// drop a mod straight into Mods/ by extracting a zip there instead of using
+// "Add a Mod" (that's what the knownMods / "Incorrectly installed mod"
+// detection in modList exists to catch). But that means every user who never
+// touches the folder by hand pays the re-scan cost to protect the minority
+// who do.
+//
+// So the manifest data + folder map + framework/RPKG flag for every mod is
+// persisted to MOD_INDEX_CACHE_FILE in the app dir. On startup we still do
+// one top-level readdir of Mods/ (folder names only — a single round-trip,
+// not N manifest reads) and diff it against the persisted folder names:
+//   - nothing changed → trust the cache wholesale, zero manifest reads
+//   - a folder appeared/disappeared → keep the cached entries for every
+//     folder that's still there, and only read the manifest for the new ones
+// The one case this can't catch is someone hand-editing files *inside* an
+// existing mod folder without touching the folder set — that's what the
+// manual "Rebuild cache" button (rebuildModIndex) is for.
+const MOD_INDEX_CACHE_FILE = "mod-index-cache.json"
+const MOD_INDEX_CACHE_VERSION = 1
+
+interface ModIndexEntry {
+	/** Folder name under Mods/ — not a full path, so the cache stays valid even if the install is later moved. */
+	folder: string
+	/** manifest.id for framework mods; the folder name itself for bare RPKG mods. */
+	id: string
+	isFramework: boolean
+	manifest?: Manifest
+}
+
+interface PersistedModIndex {
+	version: number
+	/** Cross-checked against FrameworkVersion so an upgrade that changes manifest handling can't silently trust a stale cache. */
+	frameworkVersion: string
+	entries: ModIndexEntry[]
+}
+
+/**
+ * Read manifest.json (if any) for each named folder, in parallel. The only
+ * part of an index build that touches per-mod files — called only for
+ * folders the persisted cache can't already vouch for (or all of them, on a
+ * full walk).
+ */
+async function readModEntries(folders: string[], modsDir: string): Promise<ModIndexEntry[]> {
+	return Promise.all(
+		folders.map(async (folder): Promise<ModIndexEntry> => {
+			const fullPath = native.path.resolve(native.path.join(modsDir, folder))
+			const manifestPath = native.path.join(fullPath, "manifest.json")
+			if (await native.fs.existsSync(manifestPath)) {
+				try {
+					const manifest: Manifest = json5.parse(await native.fs.readFileSync(manifestPath, "utf8"))
+					return { folder, id: manifest.id, isFramework: true, manifest }
+				} catch {
+					// malformed manifest — fall through and treat as a bare folder
 				}
-				// no (valid) manifest: an RPKG / bare mod keyed by its folder name
-				_modFolderCache.set(entry, fullPath)
-				_isFrameworkCache.set(entry, false)
-				return entry
-			})
-		)
-		_allModsCache = ids.filter((id): id is string => id !== null)
-	})()
+			}
+			// no (valid) manifest: an RPKG / bare mod keyed by its folder name
+			return { folder, id: folder, isFramework: false }
+		})
+	)
+}
+
+/** Populate the four in-memory caches from a resolved entry list. */
+function applyModEntries(entries: ModIndexEntry[], modsDir: string): void {
+	_modFolderCache.clear()
+	_isFrameworkCache.clear()
+	_manifestCache.clear()
+	for (const entry of entries) {
+		_modFolderCache.set(entry.id, native.path.resolve(native.path.join(modsDir, entry.folder)))
+		_isFrameworkCache.set(entry.id, entry.isFramework)
+		if (entry.manifest) _manifestCache.set(entry.id, entry.manifest)
+	}
+	_allModsCache = entries.map((entry) => entry.id)
+}
+
+/**
+ * Load the persisted index, or null if it's missing, unreadable, or from an
+ * incompatible framework version — any of which just means "build it fresh",
+ * never a hard failure.
+ */
+async function loadPersistedModIndex(): Promise<ModIndexEntry[] | null> {
+	try {
+		if (!(await native.fs.existsSync(MOD_INDEX_CACHE_FILE))) return null
+		const parsed: PersistedModIndex = JSON.parse(await native.fs.readFileSync(MOD_INDEX_CACHE_FILE, "utf8"))
+		if (parsed.version !== MOD_INDEX_CACHE_VERSION || parsed.frameworkVersion !== FrameworkVersion || !Array.isArray(parsed.entries)) {
+			return null
+		}
+		return parsed.entries
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Write the current in-memory index to disk. Best-effort: if this fails
+ * (disk full, permissions, whatever) the in-memory index is still correct
+ * for this run — it just means the next start re-walks Mods/ instead of
+ * trusting a cache, never a hard failure.
+ */
+async function persistModIndex(): Promise<void> {
+	const entries: ModIndexEntry[] = (_allModsCache ?? []).map((id) => ({
+		folder: native.path.basename(_modFolderCache.get(id) ?? id),
+		id,
+		isFramework: _isFrameworkCache.get(id) ?? false,
+		manifest: _manifestCache.get(id)
+	}))
+	const payload: PersistedModIndex = { version: MOD_INDEX_CACHE_VERSION, frameworkVersion: FrameworkVersion, entries }
+	try {
+		await native.fs.writeFileSync(MOD_INDEX_CACHE_FILE, JSON.stringify(payload))
+	} catch {
+		// best-effort — see doc comment above
+	}
+}
+
+function buildModIndex(forceFull = false): Promise<void> {
+	if (_modIndex) return _modIndex
+	_modIndex = buildModIndexUncached(forceFull)
 	return _modIndex
+}
+
+async function buildModIndexUncached(forceFull: boolean): Promise<void> {
+	const modsDir = native.path.join("..", "Mods")
+	const rawEntries = await native.fs.readdirSync(modsDir)
+	const folders = rawEntries.filter((entry) => entry !== "Managed by SMF, do not touch")
+
+	const persisted = forceFull ? null : await loadPersistedModIndex()
+
+	if (persisted) {
+		const persistedFolders = new Set(persisted.map((entry) => entry.folder))
+		const currentFolders = new Set(folders)
+		const unchanged = persistedFolders.size === currentFolders.size && folders.every((folder) => persistedFolders.has(folder))
+
+		if (unchanged) {
+			// nothing appeared or disappeared in Mods/ since last run — trust the
+			// persisted cache wholesale: no manifest reads, no validation walks
+			applyModEntries(persisted, modsDir)
+			return
+		}
+
+		// a folder appeared or disappeared: keep the cached entry for every
+		// folder that's still there, and only read manifests for the new ones
+		const kept = persisted.filter((entry) => currentFolders.has(entry.folder))
+		const addedFolders = folders.filter((folder) => !persistedFolders.has(folder))
+		const addedEntries = await readModEntries(addedFolders, modsDir)
+		const byFolder = new Map([...kept, ...addedEntries].map((entry) => [entry.folder, entry]))
+		const merged = folders.map((folder) => byFolder.get(folder)).filter((entry): entry is ModIndexEntry => entry !== undefined)
+
+		applyModEntries(merged, modsDir)
+		await persistModIndex()
+		return
+	}
+
+	// no usable persisted cache (missing, corrupt, stale framework version, or
+	// a forced rebuild) — fall back to the full walk and persist a fresh cache
+	const entries = await readModEntries(folders, modsDir)
+	applyModEntries(entries, modsDir)
+	await persistModIndex()
 }
 
 export function clearModCache(): void {
@@ -79,6 +214,49 @@ export function clearModCache(): void {
 	_manifestCache.clear()
 	_allModsCache = null
 	_modIndex = null
+}
+
+/**
+ * Force a full re-derive of the mod index from disk, bypassing (and then
+ * overwriting) the persisted cache. This is the one case the readdir diff
+ * can't cover on its own: someone hand-edited files inside an existing mod
+ * folder without adding/removing/renaming it, so there's no folder-name
+ * change to notice. Wired up to the "Rebuild cache" button.
+ */
+export async function rebuildModIndex(): Promise<void> {
+	clearModCache()
+	await buildModIndex(true)
+}
+
+/**
+ * Write-through for mods the manager just installed itself (Add a Mod, an
+ * RPKG install, or a mod auto-update) — we already know exactly which
+ * folders under Mods/ changed, so there's no need to touch anything else in
+ * the index, let alone re-walk it.
+ */
+export async function addModsToIndex(folderNames: string[]): Promise<void> {
+	await buildModIndex()
+	const modsDir = native.path.join("..", "Mods")
+	const newEntries = await readModEntries(folderNames, modsDir)
+	for (const entry of newEntries) {
+		_modFolderCache.set(entry.id, native.path.resolve(native.path.join(modsDir, entry.folder)))
+		_isFrameworkCache.set(entry.id, entry.isFramework)
+		if (entry.manifest) _manifestCache.set(entry.id, entry.manifest)
+	}
+	const existingIds = new Set(_allModsCache ?? [])
+	const newIds = newEntries.map((entry) => entry.id).filter((id) => !existingIds.has(id))
+	_allModsCache = [...(_allModsCache ?? []), ...newIds]
+	await persistModIndex()
+}
+
+/** Write-through for a mod the manager just deleted itself. */
+export async function removeModFromIndex(id: string): Promise<void> {
+	await buildModIndex()
+	_modFolderCache.delete(id)
+	_isFrameworkCache.delete(id)
+	_manifestCache.delete(id)
+	_allModsCache = (_allModsCache ?? []).filter((a) => a !== id)
+	await persistModIndex()
 }
 
 // ─── config ──────────────────────────────────────────────────────────────────
@@ -274,7 +452,11 @@ export async function getAllMods(): Promise<string[]> {
 export async function setModManifest(modID: string, manifest: Manifest): Promise<void> {
 	const folder = await getModFolder(modID)
 	await native.fs.writeFileSync(native.path.join(folder, "manifest.json"), JSON.stringify(manifest, undefined, "\t"))
-	_manifestCache.delete(modID)
+	// write-through: we just wrote this manifest ourselves, so update (rather
+	// than merely invalidate) the cache and persist it — no need to re-read
+	// what we already have in hand, and no need for a full rescan
+	_manifestCache.set(modID, manifest)
+	await persistModIndex()
 }
 
 export async function alterModManifest(modID: string, data: Partial<Manifest>): Promise<void> {

@@ -320,13 +320,138 @@ export function alterModManifest(modID: string, data: Partial<Manifest>) {
 	setModManifest(modID, manifest)
 }
 
+// ─── mod-level caches (persisted to disk; kept in sync via write-through) ──
+//
+// These are populated by buildModIndex() — either from the persisted on-disk
+// index below, or by a full walk of Mods/ — and are then kept in sync
+// afterwards by the manager's own mutations (addModsToIndex /
+// removeModFromIndex / setModManifest) instead of paying for a full re-walk
+// every time this module gets a fresh start — which, in this Electron app,
+// is every single navigation that reloads the page (modList's add/delete
+// flows and the root page's startModUpdate/installRPKGMod all do a hard
+// reload right after mutating Mods/).
+
 let _modFolderCache = new Map<string, string>()
 let _isFrameworkCache = new Map<string, boolean>()
 let _manifestCache = new Map<string, Manifest>()
 let _allModsCache: string[] | null = null
 let _isIndexed = false
 
-function buildModIndex(): void {
+// ─── persistent mod index ──────────────────────────────────────────────────
+//
+// Re-deriving everything from disk on every start is the correctness-first
+// default: disk is the source of truth, since users can drop a mod straight
+// into Mods/ by extracting a zip there instead of using "Add a Mod" (that's
+// what the knownMods / "Incorrectly installed mod" detection exists to
+// catch). But that means every user who never touches the folder by hand
+// pays the re-scan cost to protect the minority who do.
+//
+// So the manifest data + folder map + framework/RPKG flag for every mod is
+// persisted to MOD_INDEX_CACHE_FILE in the app dir (relative paths here
+// resolve against process.cwd(), which main/index.ts pins to the Mod
+// Manager folder). On startup we still do one top-level readdir of Mods/
+// (folder names only — a single round-trip, not N manifest reads) and diff
+// it against the persisted folder names:
+//   - nothing changed → trust the cache wholesale, zero manifest reads
+//   - a folder appeared/disappeared → keep the cached entries for every
+//     folder that's still there, and only read the manifest for the new ones
+// The one case this can't catch is someone hand-editing files *inside* an
+// existing mod folder without touching the folder set — that's what the
+// manual "Rebuild cache" button (rebuildModIndex) is for.
+const MOD_INDEX_CACHE_FILE = "mod-index-cache.json"
+const MOD_INDEX_CACHE_VERSION = 1
+
+interface ModIndexEntry {
+	/** Folder name under Mods/ — not a full path, so the cache stays valid even if the install is later moved. */
+	folder: string
+	/** manifest.id for framework mods; the folder name itself for bare RPKG mods. */
+	id: string
+	isFramework: boolean
+	manifest?: Manifest
+}
+
+interface PersistedModIndex {
+	version: number
+	/** Cross-checked against FrameworkVersion so an upgrade that changes manifest handling can't silently trust a stale cache. */
+	frameworkVersion: string
+	entries: ModIndexEntry[]
+}
+
+/**
+ * Read manifest.json (if any) for each named folder. The only part of an
+ * index build that touches per-mod files — called only for folders the
+ * persisted cache can't already vouch for (or all of them, on a full walk).
+ */
+function readModEntries(folders: string[], modsDir: string): ModIndexEntry[] {
+	return folders.map((folder): ModIndexEntry => {
+		const fullPath = window.path.resolve(window.path.join(modsDir, folder))
+		const manifestPath = window.path.join(fullPath, "manifest.json")
+		if (window.fs.existsSync(manifestPath)) {
+			try {
+				const manifest: Manifest = json5.parse(String(window.fs.readFileSync(manifestPath, "utf8")))
+				return { folder, id: manifest.id, isFramework: true, manifest }
+			} catch {
+				// malformed manifest — fall through and treat as a bare folder
+			}
+		}
+		// no (valid) manifest: an RPKG / bare mod keyed by its folder name
+		return { folder, id: folder, isFramework: false }
+	})
+}
+
+/** Populate the four in-memory caches from a resolved entry list. */
+function applyModEntries(entries: ModIndexEntry[], modsDir: string): void {
+	_modFolderCache.clear()
+	_isFrameworkCache.clear()
+	_manifestCache.clear()
+	for (const entry of entries) {
+		_modFolderCache.set(entry.id, window.path.resolve(window.path.join(modsDir, entry.folder)))
+		_isFrameworkCache.set(entry.id, entry.isFramework)
+		if (entry.manifest) _manifestCache.set(entry.id, entry.manifest)
+	}
+	_allModsCache = entries.map((entry) => entry.id)
+}
+
+/**
+ * Load the persisted index, or null if it's missing, unreadable, or from an
+ * incompatible framework version — any of which just means "build it fresh",
+ * never a hard failure.
+ */
+function loadPersistedModIndex(): ModIndexEntry[] | null {
+	try {
+		if (!window.fs.existsSync(MOD_INDEX_CACHE_FILE)) return null
+		const parsed: PersistedModIndex = JSON.parse(String(window.fs.readFileSync(MOD_INDEX_CACHE_FILE, "utf8")))
+		if (parsed.version !== MOD_INDEX_CACHE_VERSION || parsed.frameworkVersion !== FrameworkVersion || !Array.isArray(parsed.entries)) {
+			return null
+		}
+		return parsed.entries
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Write the current in-memory index to disk. Best-effort: if this fails
+ * (disk full, permissions, whatever) the in-memory index is still correct
+ * for this run — it just means the next start re-walks Mods/ instead of
+ * trusting a cache, never a hard failure.
+ */
+function persistModIndex(): void {
+	const entries: ModIndexEntry[] = (_allModsCache ?? []).map((id) => ({
+		folder: window.path.basename(_modFolderCache.get(id) ?? id),
+		id,
+		isFramework: _isFrameworkCache.get(id) ?? false,
+		manifest: _manifestCache.get(id)
+	}))
+	const payload: PersistedModIndex = { version: MOD_INDEX_CACHE_VERSION, frameworkVersion: FrameworkVersion, entries }
+	try {
+		window.fs.writeFileSync(MOD_INDEX_CACHE_FILE, JSON.stringify(payload))
+	} catch {
+		// best-effort — see doc comment above
+	}
+}
+
+function buildModIndex(forceFull = false): void {
 	if (_isIndexed) return
 	const modsDir = window.path.join("..", "Mods")
 	if (!window.fs.existsSync(modsDir)) {
@@ -334,31 +459,45 @@ function buildModIndex(): void {
 		_isIndexed = true
 		return
 	}
-	const entries = window.fs.readdirSync(modsDir)
-	const ids: string[] = []
-	for (const entry of entries) {
-		if (entry === "Managed by SMF, do not touch") continue
-		const fullPath = window.path.resolve(window.path.join(modsDir, entry))
-		const manifestPath = window.path.join(fullPath, "manifest.json")
-		if (window.fs.existsSync(manifestPath)) {
-			try {
-				const mf: Manifest = json5.parse(String(window.fs.readFileSync(manifestPath, "utf8")))
-				_modFolderCache.set(mf.id, fullPath)
-				_manifestCache.set(mf.id, mf)
-				_isFrameworkCache.set(mf.id, true)
-				ids.push(mf.id)
-				continue
-			} catch {
-				// malformed manifest — fall through and treat as a bare folder
-			}
+
+	const rawEntries = window.fs.readdirSync(modsDir)
+	const folders = rawEntries.filter((entry) => entry !== "Managed by SMF, do not touch")
+
+	const persisted = forceFull ? null : loadPersistedModIndex()
+
+	if (persisted) {
+		const persistedFolders = new Set(persisted.map((entry) => entry.folder))
+		const currentFolders = new Set(folders)
+		const unchanged = persistedFolders.size === currentFolders.size && folders.every((folder) => persistedFolders.has(folder))
+
+		if (unchanged) {
+			// nothing appeared or disappeared in Mods/ since last run — trust the
+			// persisted cache wholesale: no manifest reads, no validation walks
+			applyModEntries(persisted, modsDir)
+			_isIndexed = true
+			return
 		}
-		// no (valid) manifest: an RPKG / bare mod keyed by its folder name
-		_modFolderCache.set(entry, fullPath)
-		_isFrameworkCache.set(entry, false)
-		ids.push(entry)
+
+		// a folder appeared or disappeared: keep the cached entry for every
+		// folder that's still there, and only read manifests for the new ones
+		const kept = persisted.filter((entry) => currentFolders.has(entry.folder))
+		const addedFolders = folders.filter((folder) => !persistedFolders.has(folder))
+		const addedEntries = readModEntries(addedFolders, modsDir)
+		const byFolder = new Map([...kept, ...addedEntries].map((entry) => [entry.folder, entry]))
+		const merged = folders.map((folder) => byFolder.get(folder)).filter((entry): entry is ModIndexEntry => entry !== undefined)
+
+		applyModEntries(merged, modsDir)
+		_isIndexed = true
+		persistModIndex()
+		return
 	}
-	_allModsCache = ids
+
+	// no usable persisted cache (missing, corrupt, stale framework version, or
+	// a forced rebuild) — fall back to the full walk and persist a fresh cache
+	const entries = readModEntries(folders, modsDir)
+	applyModEntries(entries, modsDir)
 	_isIndexed = true
+	persistModIndex()
 }
 
 export function clearModCache(): void {
@@ -369,9 +508,56 @@ export function clearModCache(): void {
 	_isIndexed = false
 }
 
+/**
+ * Force a full re-derive of the mod index from disk, bypassing (and then
+ * overwriting) the persisted cache. This is the one case the readdir diff
+ * can't cover on its own: someone hand-edited files inside an existing mod
+ * folder without adding/removing/renaming it, so there's no folder-name
+ * change to notice. Wired up to the "Rebuild cache" button.
+ */
+export function rebuildModIndex(): void {
+	clearModCache()
+	buildModIndex(true)
+}
+
+/**
+ * Write-through for mods the manager just installed itself (Add a Mod, an
+ * RPKG install, or a mod auto-update) — we already know exactly which
+ * folders under Mods/ changed, so there's no need to touch anything else in
+ * the index, let alone re-walk it.
+ */
+export function addModsToIndex(folderNames: string[]): void {
+	buildModIndex()
+	const modsDir = window.path.join("..", "Mods")
+	const newEntries = readModEntries(folderNames, modsDir)
+	for (const entry of newEntries) {
+		_modFolderCache.set(entry.id, window.path.resolve(window.path.join(modsDir, entry.folder)))
+		_isFrameworkCache.set(entry.id, entry.isFramework)
+		if (entry.manifest) _manifestCache.set(entry.id, entry.manifest)
+	}
+	const existingIds = new Set(_allModsCache ?? [])
+	const newIds = newEntries.map((entry) => entry.id).filter((id) => !existingIds.has(id))
+	_allModsCache = [...(_allModsCache ?? []), ...newIds]
+	persistModIndex()
+}
+
+/** Write-through for a mod the manager just deleted itself. */
+export function removeModFromIndex(id: string): void {
+	buildModIndex()
+	_modFolderCache.delete(id)
+	_isFrameworkCache.delete(id)
+	_manifestCache.delete(id)
+	_allModsCache = (_allModsCache ?? []).filter((a) => a !== id)
+	persistModIndex()
+}
+
 export function setModManifest(modID: string, manifest: Manifest) {
 	window.fs.writeFileSync(window.path.join(getModFolder(modID), "manifest.json"), JSON.stringify(manifest, undefined, "\t"))
-	_manifestCache.delete(modID)
+	// write-through: we just wrote this manifest ourselves, so update (rather
+	// than merely invalidate) the cache and persist it — no need to re-read
+	// what we already have in hand, and no need for a full rescan
+	_manifestCache.set(modID, manifest)
+	persistModIndex()
 }
 
 export function getModFolder(id: string): string {

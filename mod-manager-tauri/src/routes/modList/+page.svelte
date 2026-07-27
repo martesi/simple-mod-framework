@@ -28,7 +28,8 @@
 
 	import {
 		getAllMods, getConfig, mergeConfig, getManifestFromModID, modIsFramework,
-		getModFolder, sortMods, validateModFolder, clearModCache
+		getModFolder, sortMods, validateModFolder, addModsToIndex, removeModFromIndex,
+		rebuildModIndex
 	} from "$lib/utils"
 	import type { Config, Manifest } from "../../../../src/types"
 	import { OptionType } from "../../../../src/types"
@@ -49,6 +50,7 @@
 	import Close from "carbon-icons-svelte/lib/Close.svelte"
 	import CloudUpload from "carbon-icons-svelte/lib/CloudUpload.svelte"
 	import Filter from "carbon-icons-svelte/lib/Filter.svelte"
+	import Renew from "carbon-icons-svelte/lib/Renew.svelte"
 
 	// ─── state ──────────────────────────────────────────────────────────────────
 
@@ -77,6 +79,7 @@
 
 	let rpkgModExtractionInProgress = false
 	let frameworkModExtractionInProgress = false
+	let rebuildCacheInProgress = false
 
 	let invalidFrameworkZipModalOpen = false
 	let invalidModModalOpen = false
@@ -179,7 +182,6 @@
 	// ─── helpers ─────────────────────────────────────────────────────────────────
 
 	async function refreshLists() {
-		clearModCache()
 		config = await getConfig()
 		allMods = await getAllMods()
 		manifestCache = new Map()
@@ -213,6 +215,16 @@
 					config = await mergeConfig({ knownMods: [...config.knownMods, mod] })
 				}
 			}
+		}
+	}
+
+	async function handleRebuildCache() {
+		rebuildCacheInProgress = true
+		try {
+			await rebuildModIndex()
+			await refreshLists()
+		} finally {
+			rebuildCacheInProgress = false
 		}
 	}
 
@@ -309,6 +321,7 @@
 
 	async function installFrameworkMod(stagingContents: string[]) {
 		await nativeFs.copySync("./staging", "../Mods")
+		await addModsToIndex(stagingContents)
 
 		const firstManifest = json5.parse(
 			await nativeFs.readFileSync(
@@ -333,6 +346,7 @@
 				nativePath.join("..", "Mods", rpkgModName, file.chunk, nativePath.basename(file.path))
 			)
 		}
+		await addModsToIndex([rpkgModName])
 		config = await mergeConfig({ knownMods: [...(config?.knownMods ?? []), rpkgModName] })
 		await nativeFs.removeSync("./staging")
 		rpkgModExtractionInProgress = false
@@ -395,6 +409,9 @@
 			<div>
 				<Search icon={Filter} placeholder="Filter available mods" bind:value={availableModFilter} />
 			</div>
+			{#if config?.developerMode}
+				<Button kind="secondary" icon={Renew} iconDescription="Rebuild the mod cache" on:click={handleRebuildCache}>Rebuild cache</Button>
+			{/if}
 			<Button kind="primary" icon={Add} on:click={openAddModDialog}>Add a Mod</Button>
 		</div>
 		<br />
@@ -529,6 +546,7 @@
 	on:submit={async () => {
 		const folder = await getModFolder(deleteModInProgress)
 		await nativeFs.removeSync(folder)
+		await removeModFromIndex(deleteModInProgress)
 		config = await mergeConfig({ knownMods: (config?.knownMods ?? []).filter(a => a !== deleteModInProgress) })
 		deleteModModalOpen = false
 		await refreshLists()
@@ -629,6 +647,10 @@
 
 <Modal passiveModal open={frameworkModExtractionInProgress} modalHeading="Installing the mod" preventCloseOnClickOutside>
 	The mod is being installed - please wait.
+</Modal>
+
+<Modal passiveModal open={rebuildCacheInProgress} modalHeading="Rebuilding the mod cache" preventCloseOnClickOutside>
+	Re-scanning the Mods folder and re-reading every manifest - please wait.
 </Modal>
 
 <Modal alert bind:open={invalidFrameworkZipModalOpen} modalHeading="Invalid framework ZIP" primaryButtonText="OK" shouldSubmitOnEnter={false} on:submit={() => (invalidFrameworkZipModalOpen = false)}>
