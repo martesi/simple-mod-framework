@@ -100,15 +100,15 @@ function requireArg(name) {
 	throw new Error(`Missing required argument: ${name}`)
 }
 
-const fs = require('fs')
-const path = require("path")
-const LosslessJSON = require('lossless-json')
-const Decimal = require('decimal.js').Decimal
-const rfc6902 = require('rfc6902')
-const deepEqual = require('lodash.isequal')
-const deepMerge = require('lodash.merge')
+import fs from "fs"
+import path from "path"
+import * as LosslessJSON from "lossless-json"
+import { Decimal } from "decimal.js"
+import rfc6902 from "rfc6902"
+import deepEqual from "lodash.isequal"
+import deepMerge from "lodash.merge"
 
-var THREE = require("three")
+import * as THREE from "three"
 
 const QuickEntityVersion = 2.1
 
@@ -1098,9 +1098,4 @@ async function applyPatchJSON(automateQNPath = false, automatePatchPath = false,
 	fs.writeFileSync(outputPath, LosslessJSON.stringify(entity).replace(/"LN\|((?:[0-9]|\.|-|e)*)"/g, (a,b) => new LosslessJSON.LosslessNumber(b).value))
 }
 
-module.exports = {
-	convert,
-	generate,
-	createPatchJSON,
-	applyPatchJSON
-}
+export { convert, generate, createPatchJSON, applyPatchJSON }

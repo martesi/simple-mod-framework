@@ -257,7 +257,8 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 
 						let entityContent
 						let fileToReplace
-						switch (path.basename(contentFilePath).split(".").slice(1).join(".")) {
+						const contentType = path.basename(contentFilePath).split(".").slice(1).join(".")
+						switch (contentType) {
 							case "entity.json": // Edits the given entity; doesn't depend on anything
 								entityContent = LosslessJSON.parse(fs.readFileSync(contentFilePath, "utf8"))
 
@@ -357,11 +358,7 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 								affected.push(normaliseToHash(entityContent.hash))
 								break
 							default: // Replaces a file with a raw file
-								if (
-									path.basename(contentFilePath).split(".").slice(1).join(".").length === 4 ||
-									path.basename(contentFilePath).split(".").slice(1).join(".").endsWith("meta") ||
-									path.basename(contentFilePath).split(".").slice(1).join(".").endsWith("meta.json")
-								) {
+								if (contentType.length === 4 || contentType.endsWith("meta") || contentType.endsWith("meta.json")) {
 									fileToReplace = path.basename(contentFilePath).split(".")[0]
 
 									if (baseGameEntityHashes.has(fileToReplace)) {

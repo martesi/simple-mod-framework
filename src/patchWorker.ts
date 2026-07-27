@@ -16,7 +16,7 @@ import fs from "fs-extra"
 import path from "path"
 import { xxhash3 } from "hash-wasm"
 
-require("clarify")
+import "clarify"
 
 const execCommand = function (command: string) {
 	void logger.verbose(`Executing command ${command}`)
@@ -28,7 +28,7 @@ const execCommand = function (command: string) {
 	})
 }
 
-export = async ({
+export default async ({
 	tempHash,
 	tempRPKG,
 	tbluHash,

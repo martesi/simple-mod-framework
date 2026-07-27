@@ -5,14 +5,20 @@ import fs from "fs-extra"
 import md5 from "md5"
 import path from "path"
 
-const QuickEntity = {
-	"0.1": require("./quickentity1136"),
-	"2.0": require("./quickentity20"),
-	"2.1": require("./quickentity"),
-	"3.0": require("./quickentity-3"),
-	"3.1": require("./quickentity-rs"),
+import * as quickentity1136 from "./quickentity1136"
+import * as quickentity20 from "./quickentity20"
+import * as quickentity21 from "./quickentity"
+import * as quickentity3 from "./quickentity-3"
+import * as quickentityRs from "./quickentity-rs"
 
-	"999.999": require("./quickentity-rs")
+const QuickEntity = {
+	"0.1": quickentity1136,
+	"2.0": quickentity20,
+	"2.1": quickentity21,
+	"3.0": quickentity3,
+	"3.1": quickentityRs,
+
+	"999.999": quickentityRs
 } as {
 	[k: string]: {
 		convert: (game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) => Promise<void>
@@ -22,13 +28,13 @@ const QuickEntity = {
 }
 
 const QuickEntityPatch = {
-	"0": require("./quickentity1136"),
-	"3": require("./quickentity20"),
-	"4": require("./quickentity"),
-	"5": require("./quickentity-3"),
-	"6": require("./quickentity-rs"),
+	"0": quickentity1136,
+	"3": quickentity20,
+	"4": quickentity21,
+	"5": quickentity3,
+	"6": quickentityRs,
 
-	"999": require("./quickentity-rs")
+	"999": quickentityRs
 } as {
 	[k: string]: {
 		convert: (game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) => Promise<void>
@@ -37,16 +43,21 @@ const QuickEntityPatch = {
 	}
 }
 
+// QuickEntity/QuickEntityPatch are static after module init, so their key lists never change -
+// compute each once instead of twice per lookup call (Object.keys() + findIndex()'s Object.keys()).
+const quickEntityVersionKeys = Object.keys(QuickEntity)
+const quickEntityPatchVersionKeys = Object.keys(QuickEntityPatch)
+
 export function getQuickEntityFromVersion(version: string) {
 	void logger.verbose(`Getting QuickEntity version from entity version ${version}`)
 
-	return QuickEntity[Object.keys(QuickEntity)[Object.keys(QuickEntity).findIndex((a) => parseFloat(a) > Number(version)) - 1]]
+	return QuickEntity[quickEntityVersionKeys[quickEntityVersionKeys.findIndex((a) => parseFloat(a) > Number(version)) - 1]]
 }
 
 export function getQuickEntityFromPatchVersion(version: string) {
 	void logger.verbose(`Getting QuickEntity version from patch version ${version}`)
 
-	return QuickEntityPatch[Object.keys(QuickEntityPatch)[Object.keys(QuickEntityPatch).findIndex((a) => parseFloat(a) > Number(version)) - 1]]
+	return QuickEntityPatch[quickEntityPatchVersionKeys[quickEntityPatchVersionKeys.findIndex((a) => parseFloat(a) > Number(version)) - 1]]
 }
 
 export function hexflip(input: string) {

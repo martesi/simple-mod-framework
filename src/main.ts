@@ -25,7 +25,7 @@ import md5File from "md5-file"
 import path from "path"
 import { xxhash3 } from "hash-wasm"
 
-require("clarify")
+import "clarify"
 
 const gameHashes = {
 	"b894cfa2f11b6db52db587a21de688b2": Platform.epic, // base game

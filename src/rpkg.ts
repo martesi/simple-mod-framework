@@ -3,7 +3,7 @@ import fs from "fs"
 import json5 from "json5"
 import path from "path"
 
-require("clarify")
+import "clarify"
 
 const config = json5.parse(fs.readFileSync(path.join(process.cwd(), "config.json"), "utf8"))
 
