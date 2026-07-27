@@ -38,13 +38,17 @@ let _isFrameworkCache = new Map<string, boolean>()
 let _manifestCache = new Map<string, Manifest>()
 let _allModsCache: string[] | null = null
 
+// Per-mod validateModFolder() results — see the "mod validation cache"
+// section near the bottom of this file for how these get populated.
+let _validationCache = new Map<string, [boolean, string]>()
+
 // A single in-flight build of the mod index, shared by every lookup below.
 // Without it, getModFolder/getManifestFromModID each re-walk the whole Mods
 // folder, so resolving a load order of N mods costs O(N²) sequential native
 // fs round-trips — painfully slow on a real install over a slow mount (e.g.
 // WSL /mnt drvfs, ~45s to first render). buildModIndex() does one readdir,
 // plus a manifest read for whatever entries the persisted cache below can't
-// already vouch for, and populates all four caches above at once.
+// already vouch for, and populates all the caches above at once.
 let _modIndex: Promise<void> | null = null
 
 // ─── persistent mod index ──────────────────────────────────────────────────
@@ -68,7 +72,7 @@ let _modIndex: Promise<void> | null = null
 // existing mod folder without touching the folder set — that's what the
 // manual "Rebuild cache" button (rebuildModIndex) is for.
 const MOD_INDEX_CACHE_FILE = "mod-index-cache.json"
-const MOD_INDEX_CACHE_VERSION = 1
+const MOD_INDEX_CACHE_VERSION = 2
 
 interface ModIndexEntry {
 	/** Folder name under Mods/ — not a full path, so the cache stays valid even if the install is later moved. */
@@ -77,6 +81,15 @@ interface ModIndexEntry {
 	id: string
 	isFramework: boolean
 	manifest?: Manifest
+	/**
+	 * Cached validateModFolder() result for this mod, if it's been computed
+	 * since the last time this entry's manifest was rewritten or the cache
+	 * was force-rebuilt. Absent means "not yet validated" — getModValidation()
+	 * fills it in lazily (see the mod validation cache section below), never
+	 * eagerly during an index build, so building/loading the index itself
+	 * never pays for a validation walk.
+	 */
+	validation?: [boolean, string]
 }
 
 interface PersistedModIndex {
@@ -111,15 +124,17 @@ async function readModEntries(folders: string[], modsDir: string): Promise<ModIn
 	)
 }
 
-/** Populate the four in-memory caches from a resolved entry list. */
+/** Populate the in-memory caches from a resolved entry list. */
 function applyModEntries(entries: ModIndexEntry[], modsDir: string): void {
 	_modFolderCache.clear()
 	_isFrameworkCache.clear()
 	_manifestCache.clear()
+	_validationCache.clear()
 	for (const entry of entries) {
 		_modFolderCache.set(entry.id, native.path.resolve(native.path.join(modsDir, entry.folder)))
 		_isFrameworkCache.set(entry.id, entry.isFramework)
 		if (entry.manifest) _manifestCache.set(entry.id, entry.manifest)
+		if (entry.validation) _validationCache.set(entry.id, entry.validation)
 	}
 	_allModsCache = entries.map((entry) => entry.id)
 }
@@ -153,7 +168,8 @@ async function persistModIndex(): Promise<void> {
 		folder: native.path.basename(_modFolderCache.get(id) ?? id),
 		id,
 		isFramework: _isFrameworkCache.get(id) ?? false,
-		manifest: _manifestCache.get(id)
+		manifest: _manifestCache.get(id),
+		validation: _validationCache.get(id)
 	}))
 	const payload: PersistedModIndex = { version: MOD_INDEX_CACHE_VERSION, frameworkVersion: FrameworkVersion, entries }
 	try {
@@ -212,6 +228,7 @@ export function clearModCache(): void {
 	_modFolderCache.clear()
 	_isFrameworkCache.clear()
 	_manifestCache.clear()
+	_validationCache.clear()
 	_allModsCache = null
 	_modIndex = null
 }
@@ -242,6 +259,9 @@ export async function addModsToIndex(folderNames: string[]): Promise<void> {
 		_modFolderCache.set(entry.id, native.path.resolve(native.path.join(modsDir, entry.folder)))
 		_isFrameworkCache.set(entry.id, entry.isFramework)
 		if (entry.manifest) _manifestCache.set(entry.id, entry.manifest)
+		// freshly (re)installed content — any stale validation result for this
+		// id no longer applies; let getModValidation() recompute it lazily
+		_validationCache.delete(entry.id)
 	}
 	const existingIds = new Set(_allModsCache ?? [])
 	const newIds = newEntries.map((entry) => entry.id).filter((id) => !existingIds.has(id))
@@ -255,6 +275,7 @@ export async function removeModFromIndex(id: string): Promise<void> {
 	_modFolderCache.delete(id)
 	_isFrameworkCache.delete(id)
 	_manifestCache.delete(id)
+	_validationCache.delete(id)
 	_allModsCache = (_allModsCache ?? []).filter((a) => a !== id)
 	await persistModIndex()
 }
@@ -456,6 +477,11 @@ export async function setModManifest(modID: string, manifest: Manifest): Promise
 	// than merely invalidate) the cache and persist it — no need to re-read
 	// what we already have in hand, and no need for a full rescan
 	_manifestCache.set(modID, manifest)
+	// the manifest is what validateModFolder mostly validates against
+	// (content/blobs folders, option groups, schema) — a rewritten manifest
+	// invalidates any cached validation result for this mod, so the next
+	// getModValidation() call recomputes it instead of serving a stale verdict
+	_validationCache.delete(modID)
 	await persistModIndex()
 }
 
@@ -654,4 +680,102 @@ export async function validateModFolder(modFolder: string): Promise<[boolean, st
 	}
 
 	return [true, ""]
+}
+
+// ─── mod validation cache ───────────────────────────────────────────────────
+//
+// validateModFolder() is the bigger remaining fs cost at list render: a full
+// recursive klaw walk of a mod's folder, plus a readFileSync + Ajv schema
+// validation for every entity.json / entity.patch.json / repository.json /
+// unlockables.json / contract.json / JSON.patch.json it finds. Called
+// per-card from Mod.svelte on mount, that's N visible cards each firing a
+// walk + a pile of small reads, all in parallel, right on first paint.
+//
+// getModValidation() is the fix, in two parts:
+//   - cache: results are kept in _validationCache, keyed by mod id, and
+//     persisted alongside the rest of the mod index (see ModIndexEntry.validation
+//     above) so a warm start never re-walks a mod whose content hasn't
+//     changed *through the app itself*. Just like the manifest cache in
+//     buildModIndex, this can't see hand-edits made directly inside a mod's
+//     content folder without going through the app — that's what the manual
+//     "Rebuild cache" button is for (it clears this cache too, via
+//     clearModCache). What it does see: setModManifest (any edit made via the
+//     authoring UI) and addModsToIndex (installs/updates) both invalidate the
+//     entry for the mod they touched.
+//   - defer + bound concurrency: a cold entry still has to pay for the walk,
+//     but it yields a tick before starting (so the initial paint isn't
+//     racing it) and only VALIDATION_CONCURRENCY walks run at once, so a
+//     freshly-installed list of N mods doesn't fire N concurrent klaw walks
+//     down the same invoke channel.
+const VALIDATION_CONCURRENCY = 4
+let _validationActive = 0
+const _validationQueue: (() => void)[] = []
+
+// A burst of cold cards resolving one after another would otherwise fire one
+// full-index disk write per mod; coalesce them into a single write shortly
+// after the last one lands.
+let _persistDebounceTimer: ReturnType<typeof setTimeout> | null = null
+function schedulePersistModIndex(): void {
+	if (_persistDebounceTimer) clearTimeout(_persistDebounceTimer)
+	_persistDebounceTimer = setTimeout(() => {
+		_persistDebounceTimer = null
+		void persistModIndex()
+	}, 500)
+}
+
+async function withValidationSlot<T>(fn: () => Promise<T>): Promise<T> {
+	if (_validationActive >= VALIDATION_CONCURRENCY) {
+		await new Promise<void>((resolve) => _validationQueue.push(resolve))
+	}
+	_validationActive++
+	try {
+		return await fn()
+	} finally {
+		_validationActive--
+		_validationQueue.shift()?.()
+	}
+}
+
+// A mod can be requested more than once before the first request resolves —
+// e.g. the same mod appearing in a filtered list re-render, or Mod.svelte and
+// the authoring page both mounting for it around the same time. Share the
+// in-flight promise (same pattern as _configPromise above) so concurrent
+// callers await one walk instead of each starting — and queuing for — their
+// own redundant one.
+const _validationInFlight = new Map<string, Promise<[boolean, string]>>()
+
+/**
+ * Cached, deferred, concurrency-limited wrapper around validateModFolder(),
+ * keyed by mod id — this is what per-card UI (Mod.svelte, the authoring
+ * page) should call instead of validateModFolder() directly. A warm cache
+ * hit resolves immediately with no native calls at all; a cold entry is
+ * queued behind VALIDATION_CONCURRENCY other walks and written back to the
+ * persisted index once resolved.
+ */
+export async function getModValidation(id: string): Promise<[boolean, string]> {
+	if (_validationCache.has(id)) return _validationCache.get(id)!
+	if (_validationInFlight.has(id)) return _validationInFlight.get(id)!
+
+	const promise = (async (): Promise<[boolean, string]> => {
+		// yield to the render/paint pipeline before doing any native work, so a
+		// page full of cold cards doesn't fire its walks in the same tick as layout
+		await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+		return withValidationSlot(async () => {
+			const folder = await getModFolder(id)
+			const result = await validateModFolder(folder)
+			_validationCache.set(id, result)
+			// best-effort write-through, same as the rest of the index — a failure
+			// here just means the next start re-validates this mod once more
+			schedulePersistModIndex()
+			return result
+		})
+	})()
+
+	_validationInFlight.set(id, promise)
+	try {
+		return await promise
+	} finally {
+		_validationInFlight.delete(id)
+	}
 }

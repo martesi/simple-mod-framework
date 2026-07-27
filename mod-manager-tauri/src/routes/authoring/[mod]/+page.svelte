@@ -6,8 +6,8 @@
 	import { page } from "$app/stores"
 
 	import {
-		alterModManifest, FrameworkVersion, getManifestFromModID, getModFolder,
-		setModManifest, validateModFolder
+		alterModManifest, FrameworkVersion, getManifestFromModID,
+		getModValidation, setModManifest
 	} from "$lib/utils"
 	import TextInputModal from "$lib/TextInputModal.svelte"
 	import type { Manifest } from "../../../../../src/types"
@@ -48,8 +48,7 @@
 	async function loadMod(modId: string) {
 		try {
 			manifest = await getManifestFromModID(modId)
-			const folder = await getModFolder(modId)
-			modValidation = await validateModFolder(folder)
+			modValidation = await getModValidation(modId)
 		} catch {
 			manifest = { ...emptyManifest, name: "Error loading mod" }
 		}

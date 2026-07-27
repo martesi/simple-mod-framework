@@ -4,7 +4,7 @@
 	import Error from "carbon-icons-svelte/lib/Error.svelte"
 
 	import type { Manifest } from "../../../src/types"
-	import { FrameworkVersion, getModFolder, validateModFolder } from "./utils"
+	import { FrameworkVersion, getModFolder, getModValidation } from "./utils"
 	import * as native from "$lib/native"
 
 	import semver from "semver"
@@ -23,8 +23,7 @@
 	if (isFrameworkMod && manifest?.id) {
 		;(async () => {
 			try {
-				const folder = await getModFolder(manifest.id)
-				modValidation = await validateModFolder(folder)
+				modValidation = await getModValidation(manifest.id)
 			} catch {
 				modValidation = [false, "Couldn't locate mod folder"]
 			}
