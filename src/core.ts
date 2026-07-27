@@ -17,7 +17,8 @@ const args = arg(
 		"--useConsoleLogging": Boolean,
 		"--pauseAfterLogging": Boolean,
 		"--doNotPause": Boolean,
-		"--logLevel": [String]
+		"--logLevel": [String],
+		"--analyseMod": String
 	},
 	{
 		permissive: true

@@ -15,6 +15,7 @@ import { DateTime, Duration, DurationLikeObject } from "luxon"
 import type { Span, Transaction } from "@sentry/tracing"
 
 import { Platform } from "./types"
+import analyseMod, { loadRPKGHashCache, saveRPKGHashCache } from "./analyseMod"
 import core from "./core-singleton"
 import deploy from "./deploy"
 import difference from "./difference"
@@ -161,14 +162,18 @@ function toHuman(dur: Duration) {
 process.on("SIGINT", () => void core.logger.error("Received SIGINT signal"))
 process.on("SIGTERM", () => void core.logger.error("Received SIGTERM signal"))
 
-async function doTheThing() {
+/**
+ * Platform-version validation and error-reporting bootstrap shared by every command (full deploy
+ * or `--analyseMod`). A mod's analysis script gets the full effective config (including
+ * `platform`), and if error reporting is on, uncaught exceptions during `--analyseMod` should be
+ * reported the same way they are during a full deploy - so both paths need this, not just deploy.
+ */
+async function initialiseCommon() {
 	if (typeof core.config.platform === "undefined") {
 		await core.logger.error(
 			"Unknown game version. If the game has recently updated, wait for a framework update to be released; the developers are already aware. If you're using a cracked version of the game, that's the problem."
 		)
 	}
-
-	const startedDate = DateTime.now()
 
 	if (core.config.reportErrors) {
 		await core.logger.info("Initialising error reporting")
@@ -214,6 +219,41 @@ async function doTheThing() {
 				: md5File.sync(path.join(core.config.runtimePath, "..", "Retail", "HITMAN3.exe"))
 		)
 	}
+}
+
+/**
+ * `Deploy --analyseMod <id>`: analyse a single mod and (re)populate its analysis cache entry,
+ * without running the full discover/difference/deploy pipeline. Meant to be invoked by the mod
+ * manager whenever a mod is added/updated or its selected options change, so that a subsequent
+ * full deploy can load this mod's cached deployInstruction instead of re-walking/re-parsing it -
+ * see analyseMod.ts and deploy.ts's "Analyse mods" phase.
+ */
+async function doAnalyseModThing() {
+	await initialiseCommon()
+
+	const startedDate = DateTime.now()
+
+	await core.logger.verbose("Initialising RPKG instance")
+	await core.rpkgInstance.waitForInitialised()
+
+	fs.ensureDirSync(path.join(process.cwd(), "cache"))
+	loadRPKGHashCache()
+
+	const modId = core.args["--analyseMod"]!
+	await core.logger.info(`Analysing ${modId}`)
+	await analyseMod(modId)
+
+	saveRPKGHashCache()
+
+	await core.logger.info(`Done in ${toHuman(startedDate.until(DateTime.now()).toDuration()) || "less than a second"}`)
+
+	await core.cleanExit()
+}
+
+async function doTheThing() {
+	await initialiseCommon()
+
+	const startedDate = DateTime.now()
 
 	await core.logger.verbose("Initialising RPKG instance")
 	await core.rpkgInstance.waitForInitialised()
@@ -296,4 +336,8 @@ async function doTheThing() {
 	await core.cleanExit()
 }
 
-void doTheThing()
+if (core.args["--analyseMod"]) {
+	void doAnalyseModThing()
+} else {
+	void doTheThing()
+}

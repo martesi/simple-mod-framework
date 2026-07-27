@@ -3,16 +3,25 @@ import * as rfc6902 from "rfc6902"
 import * as rust_utils from "./smf-rust"
 import * as ts from "./typescript"
 
+import analyseMod, {
+	RPKGHashCache,
+	callRPKGFunction,
+	computeOptionsHash,
+	deserialiseDeployInstruction,
+	execCommand,
+	getRPKGOfHash,
+	loadAnalysisCache,
+	loadRPKGHashCache,
+	saveRPKGHashCache,
+	thirdParty
+} from "./analyseMod"
 import type { DeployInstruction, HMLanguageToolsLOCR, Manifest, ManifestOptionData, ModScript } from "./types"
 import { ModuleKind, ScriptTarget } from "typescript"
-import { compileExpression, useDotAccessOperatorAndOptionalChaining } from "filtrex"
-import { config, logger, rpkgInstance } from "./core-singleton"
+import { FrameworkVersion, config, logger, rpkgInstance } from "./core-singleton"
 import { copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
 
-import { OptionType } from "./types"
 import Piscina from "piscina"
 import type { Transaction } from "@sentry/tracing"
-import child_process from "child_process"
 import { crc32 } from "crc"
 import fs from "fs-extra"
 import json5 from "json5"
@@ -23,45 +32,12 @@ import os from "os"
 import path from "path"
 import { xxhash3 } from "hash-wasm"
 
-const thirdParty = (exe: string) => path.join(process.cwd(), "Third-Party", exe)
-
 const deepMerge = function (x: any, y: any) {
 	return mergeWith(x, y, (orig, src) => {
 		if (Array.isArray(orig)) {
 			return src
 		}
 	})
-}
-
-const execCommand = function (command: string) {
-	void logger.verbose(`Executing command ${command}`)
-	child_process.execSync(command, { stdio: ["pipe", "pipe", "inherit"] })
-}
-
-const callRPKGFunction = async function (command: string) {
-	await logger.verbose(`Executing RPKG function ${command}`)
-	return await rpkgInstance.callFunction(command)
-}
-
-const RPKGHashCache: Record<string, [string, boolean]> = {}
-
-const getRPKGOfHash = async function (hash: string): Promise<string> {
-	await logger.verbose(`Getting RPKG of hash ${hash}`)
-
-	if (RPKGHashCache[hash]) {
-		await logger.verbose(`Returning RPKG of hash ${hash} from cache`)
-		return RPKGHashCache[hash][0]
-	} else {
-		try {
-			const x = await rpkgInstance.getRPKGOfHash(hash)
-			RPKGHashCache[hash] = [x, false]
-			return x
-		} catch {
-			await logger.error(`Couldn't find ${hash} in the game files! Make sure your game is up-to-date and you've installed the framework in the right place.`)
-
-			process.exit(1) // This is unreachable but TypeScript doesn't know that
-		}
-	}
 }
 
 export default async function deploy(
@@ -72,9 +48,7 @@ export default async function deploy(
 		data: { hash: string; dependencies: string[]; affected: string[] }
 	}[]
 ) {
-	if (fs.existsSync(path.join(process.cwd(), "cache", "rpkgHashCache.json"))) {
-		Object.assign(RPKGHashCache, Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(path.join(process.cwd(), "cache", "rpkgHashCache.json"), "utf8"))).map((a) => [a[0], [a[1], false]])))
-	}
+	loadRPKGHashCache()
 
 	const allRPKGTypes: Record<string, "base" | "patch"> = {}
 
@@ -201,241 +175,30 @@ export default async function deploy(
 			})
 			configureSentryScope(sentryModTransaction)
 
-			await logger.info(`Analysing framework mod: ${manifest.name}`)
+			// Analysis (disk walk, manifest/option resolution, analysis script) is cached per-mod in
+			// analyseMod.ts, keyed by (mod id, manifest hash, resolved-options hash). Prefer that cache
+			// so deploy() doesn't re-walk/re-parse every mod on every run - only the options hash is
+			// re-checked here (cheap, no disk I/O); verifying the manifest hash would require the same
+			// walk this is meant to avoid, so that's left to whatever calls `Deploy --analyseMod <id>`
+			// (meant to run whenever the mod manager sees a mod added/updated or its options change).
+			// If there's no valid cache entry yet, fall back to analysing inline right now - exactly
+			// what this code path always did before - and cache the result for next time.
+			const cached = loadAnalysisCache(manifest.id)
+			const optionsHash = computeOptionsHash(manifest)
 
-			const sentryDiskAnalysisTransaction = sentryModTransaction.startChild({
-				op: "analyse",
-				description: "Disk analysis"
-			})
-			configureSentryScope(sentryDiskAnalysisTransaction)
+			let deployInstruction: DeployInstruction | undefined
 
-			let contentFolders: string[] = []
-			let blobsFolders: string[] = []
-
-			const scripts: string[][] = []
-
-			for (const contentFolder of manifest.contentFolders || []) {
-				if (contentFolder?.length && fs.readdirSync(path.join(process.cwd(), "Mods", mod, contentFolder)).length) {
-					contentFolders.push(contentFolder)
-				}
+			if (cached && cached.frameworkVersion === FrameworkVersion && cached.optionsHash === optionsHash) {
+				await logger.info(`Using cached analysis for ${manifest.name}`)
+				deployInstruction = deserialiseDeployInstruction(cached.deployInstruction)
+			} else {
+				await logger.info(`No valid analysis cache for ${manifest.name} - analysing now (this will be cached for next time)`)
+				deployInstruction = await analyseMod(mod)
 			}
 
-			for (const blobsFolder of manifest.blobsFolders || []) {
-				if (blobsFolder?.length && fs.readdirSync(path.join(process.cwd(), "Mods", mod, blobsFolder)).length) {
-					blobsFolders.push(blobsFolder)
-				}
-			}
-
-			manifest.scripts && scripts.push(manifest.scripts)
-
-			if (config.modOptions[manifest.id] && manifest.options && manifest.options.length) {
-				await logger.verbose("Merging mod options")
-
-				for (const option of manifest.options.filter(
-					(a) =>
-						(a.type === OptionType.checkbox && config.modOptions[manifest.id].includes(a.name)) ||
-						(a.type === OptionType.select && config.modOptions[manifest.id].includes(`${a.group}:${a.name}`)) ||
-						(a.type === OptionType.conditional &&
-							compileExpression(a.condition, {
-								customProp: useDotAccessOperatorAndOptionalChaining
-							})({
-								config
-							}))
-				)) {
-					for (const contentFolder of option.contentFolders || []) {
-						if (contentFolder?.length && fs.existsSync(path.join(process.cwd(), "Mods", mod, contentFolder)) && fs.readdirSync(path.join(process.cwd(), "Mods", mod, contentFolder)).length) {
-							contentFolders.push(contentFolder)
-						}
-					}
-
-					for (const blobsFolder of option.blobsFolders || []) {
-						if (blobsFolder?.length && fs.existsSync(path.join(process.cwd(), "Mods", mod, blobsFolder)) && fs.readdirSync(path.join(process.cwd(), "Mods", mod, blobsFolder)).length) {
-							blobsFolders.push(blobsFolder)
-						}
-					}
-
-					manifest.localisation || (manifest.localisation = {} as ManifestOptionData["localisation"])
-					option.localisation && deepMerge(manifest.localisation, option.localisation)
-
-					manifest.localisationOverrides || (manifest.localisationOverrides = {})
-					option.localisationOverrides && deepMerge(manifest.localisationOverrides, option.localisationOverrides)
-
-					manifest.localisedLines || (manifest.localisedLines = {})
-					option.localisedLines && deepMerge(manifest.localisedLines, option.localisedLines)
-
-					manifest.dependencies || (manifest.dependencies = [])
-					option.dependencies && manifest.dependencies.push(...option.dependencies)
-
-					manifest.requirements || (manifest.requirements = [])
-					option.requirements && manifest.requirements.push(...option.requirements)
-
-					manifest.supportedPlatforms || (manifest.supportedPlatforms = [])
-					option.supportedPlatforms && manifest.supportedPlatforms.push(...option.supportedPlatforms)
-
-					manifest.packagedefinition || (manifest.packagedefinition = [])
-					option.packagedefinition && manifest.packagedefinition.push(...option.packagedefinition)
-
-					manifest.thumbs || (manifest.thumbs = [])
-					option.thumbs && manifest.thumbs.push(...option.thumbs)
-
-					manifest.peacockPlugins || (manifest.peacockPlugins = [])
-					option.peacockPlugins && manifest.peacockPlugins.push(...option.peacockPlugins)
-
-					option.scripts && scripts.push(option.scripts)
-				}
-			}
-
-			contentFolders = [...new Set(contentFolders)]
-			blobsFolders = [...new Set(blobsFolders)]
-
-			const content: DeployInstruction["content"] = []
-			const blobs: DeployInstruction["blobs"] = []
-			const rpkgTypes: DeployInstruction["rpkgTypes"] = {}
-
-			for (const contentFolder of contentFolders) {
-				for (const chunkFolder of fs.readdirSync(path.join(process.cwd(), "Mods", mod, contentFolder))) {
-					for (const contentFilePath of klaw(path.join(process.cwd(), "Mods", mod, contentFolder, chunkFolder))
-						.filter((a) => a.stats.isFile())
-						.map((a) => a.path)) {
-						const contentType = path.basename(contentFilePath).split(".").slice(1).join(".")
-
-						await logger.verbose(`Registering ${contentType} file ${contentFilePath}`)
-
-						content.push({
-							source: "disk",
-							chunk: Number(chunkFolder.replace(/chunk/gi, "")),
-							path: contentFilePath,
-							type: contentType
-						})
-					}
-
-					/* ------------------------------ Copy chunk meta to staging folder ----------------------------- */
-					if (fs.existsSync(path.join(process.cwd(), "Mods", mod, contentFolder, chunkFolder, `${chunkFolder}.meta`))) {
-						rpkgTypes[chunkFolder] = {
-							type: "base",
-							chunkMeta: path.join(process.cwd(), "Mods", mod, contentFolder, chunkFolder, `${chunkFolder}.meta`)
-						}
-					} else {
-						rpkgTypes[chunkFolder] = {
-							type: "patch"
-						}
-					}
-				}
-			}
-
-			for (const blobsFolder of blobsFolders) {
-				for (const blob of klaw(path.join(process.cwd(), "Mods", mod, blobsFolder))
-					.filter((a) => a.stats.isFile())
-					.map((a) => a.path)) {
-					const blobPath = blob.replace(path.join(process.cwd(), "Mods", mod, blobsFolder), "").slice(1).split(path.sep).join("/").toLowerCase()
-
-					let blobHash: string
-					if (path.extname(blob).startsWith(".jp") || path.extname(blob) === ".png") {
-						blobHash = `00${md5(`[assembly:/_pro/online/default/cloudstorage/resources/${blobPath}].pc_gfx`.toLowerCase()).slice(2, 16).toUpperCase()}`
-					} else if (path.extname(blob) === ".json") {
-						blobHash = `00${md5(`[assembly:/_pro/online/default/cloudstorage/resources/${blobPath}].pc_json`.toLowerCase()).slice(2, 16).toUpperCase()}`
-					} else {
-						blobHash = `00${md5(`[assembly:/_pro/online/default/cloudstorage/resources/${blobPath}].pc_${path.extname(blob).slice(1)}`.toLowerCase())
-							.slice(2, 16)
-							.toUpperCase()}`
-					}
-
-					blobs.push({
-						source: "disk",
-						filePath: blob,
-						blobPath,
-						blobHash
-					})
-				}
-			}
-
-			const deployInstruction: DeployInstruction = {
-				id: manifest.id,
-				name: manifest.name,
-				cacheFolder: manifest.id,
-				manifestSources: {
-					localisation: manifest.localisation,
-					localisationOverrides: manifest.localisationOverrides,
-					localisedLines: manifest.localisedLines,
-					dependencies: manifest.dependencies,
-					requirements: manifest.requirements,
-					supportedPlatforms: manifest.supportedPlatforms,
-					packagedefinition: manifest.packagedefinition,
-					thumbs: manifest.thumbs,
-					peacockPlugins: (manifest.peacockPlugins || []).map((a) => path.join(process.cwd(), "Mods", mod, a)),
-					scripts
-				},
-				content,
-				blobs,
-				rpkgTypes
-			}
-
-			sentryDiskAnalysisTransaction.finish()
-
-			if (deployInstruction.manifestSources.scripts.length) {
-				const sentryScriptsTransaction = sentryModTransaction.startChild({
-					op: "analyse",
-					description: "analysis scripts"
-				})
-				configureSentryScope(sentryScriptsTransaction)
-
-				for (const files of deployInstruction.manifestSources.scripts) {
-					const compiledScriptPath = ts.compile(
-						files.map((a) => path.join(process.cwd(), "Mods", mod, a)),
-						{
-							esModuleInterop: true,
-							allowJs: true,
-							target: ScriptTarget.ES2019,
-							module: ModuleKind.CommonJS,
-							resolveJsonModule: true
-						},
-						path.join(process.cwd(), "Mods", mod)
-					)
-
-					// eslint-disable-next-line @typescript-eslint/no-var-requires
-					const modScript = (await require(compiledScriptPath)) as ModScript
-
-					fs.ensureDirSync(path.join(process.cwd(), "scriptTempFolder"))
-
-					await modScript.analysis(
-						{
-							config,
-							deployInstruction,
-							modRoot: path.join(process.cwd(), "Mods", mod),
-							tempFolder: path.join(process.cwd(), "scriptTempFolder")
-						},
-						{
-							rpkg: {
-								callRPKGFunction,
-								getRPKGOfHash,
-								async extractFileFromRPKG(hash: string, rpkg: string) {
-									await logger.verbose(`Extracting ${hash} from ${rpkg}`)
-									await rpkgInstance.callFunction(
-										`-extract_from_rpkg "${path.join(config.runtimePath, `${rpkg}.rpkg`)}" -filter "${hash}" -output_path ${path.join(process.cwd(), "scriptTempFolder")}`
-									)
-								}
-							},
-							utils: {
-								execCommand,
-								extractOrCopyToTemp,
-								getQuickEntityFromVersion,
-								getQuickEntityFromPatchVersion,
-								hexflip
-							},
-							logger: {
-								verbose: (a) => logger.verbose(a, manifest.name),
-								debug: (a) => logger.debug(a, manifest.name),
-								info: (a) => logger.info(a, manifest.name),
-								warn: (a) => logger.warn(a, manifest.name),
-								error: (a, b) => logger.error(a, b, manifest.name)
-							}
-						}
-					)
-
-					fs.removeSync(path.join(process.cwd(), "scriptTempFolder"))
-				}
-
-				sentryScriptsTransaction.finish()
+			if (!deployInstruction) {
+				await logger.error(`Analysis of mod ${manifest.name} didn't produce a deploy instruction!`)
+				return
 			}
 
 			deployInstructions.push(deployInstruction)
@@ -2598,16 +2361,7 @@ export default async function deploy(
 	fs.removeSync(path.join(process.cwd(), "staging"))
 	fs.removeSync(path.join(process.cwd(), "temp"))
 
-	fs.writeFileSync(
-		path.join(process.cwd(), "cache", "rpkgHashCache.json"),
-		JSON.stringify(
-			Object.fromEntries(
-				Object.entries(RPKGHashCache)
-					.filter((a) => !a[1][0])
-					.map((a) => [a[0], a[1][0]])
-			)
-		)
-	)
+	saveRPKGHashCache()
 
 	return { lastServerSideStates }
 }
