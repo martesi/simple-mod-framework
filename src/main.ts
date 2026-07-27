@@ -1,12 +1,3 @@
-import { Euler, MathUtils, Matrix4 } from "three"
-
-// QuickEntity (src/quickentity*.js) expects a THREE global exposing just the
-// math classes it uses - Matrix4/Euler for rotation-matrix decomposition, and
-// the legacy `THREE.Math` alias (removed from three.js itself, kept here so
-// those files don't need touching) for RAD2DEG etc.
-// @ts-expect-error Need to assign on global because of QuickEntity
-global.THREE = { Matrix4, Euler, Math: MathUtils, MathUtils }
-
 import * as Sentry from "@sentry/node"
 import * as Tracing from "@sentry/tracing"
 import * as LosslessJSON from "lossless-json"
@@ -16,16 +7,50 @@ import type { Span, Transaction } from "@sentry/tracing"
 
 import { Platform } from "./types"
 import analyseMod, { loadRPKGHashCache, saveRPKGHashCache } from "./analyseMod"
-import core from "./core-singleton"
+import { CoreFatalError, createCore } from "./core"
+import { setCurrentCore } from "./core-singleton"
 import deploy from "./deploy"
 import difference from "./difference"
 import discover from "./discover"
+import arg from "arg"
 import fs from "fs-extra"
 import md5File from "md5-file"
 import path from "path"
 import { xxhash3 } from "hash-wasm"
 
 import "clarify"
+
+/* ---------------------------------------------------------------------------------------------- */
+/*   CLI bootstrap. This is the only place in the framework that reads process.argv, parses       */
+/*   config.json off disk as a side effect of starting up, and owns the process's exit code -      */
+/*   core.ts/rpkg.ts/deploy.ts are meant to be embeddable and never call process.exit() or touch   */
+/*   argv themselves; this file is where "what does a fatal deploy error mean" gets decided for    */
+/*   the CLI build specifically (an embedder, e.g. the mod manager's main process, would have its  */
+/*   own equivalent of this file that reacts differently - by surfacing to a UI instead of         */
+/*   exiting the whole process).                                                                  */
+/* ---------------------------------------------------------------------------------------------- */
+
+const cliArgs = arg(
+	{
+		"--useConsoleLogging": Boolean,
+		"--pauseAfterLogging": Boolean,
+		"--doNotPause": Boolean,
+		"--logLevel": [String],
+		"--analyseMod": String
+	},
+	{
+		permissive: true
+	}
+)
+
+const core = createCore(path.join(process.cwd(), "config.json"), {
+	useConsoleLogging: cliArgs["--useConsoleLogging"],
+	pauseAfterLogging: cliArgs["--pauseAfterLogging"],
+	doNotPause: cliArgs["--doNotPause"] ?? false, // the CLI pauses on a fatal error by default, unlike embedded callers of createCore()
+	logLevel: cliArgs["--logLevel"]?.length ? cliArgs["--logLevel"] : undefined
+})
+
+setCurrentCore(core)
 
 const gameHashes = {
 	"b894cfa2f11b6db52db587a21de688b2": Platform.epic, // base game
@@ -46,25 +71,27 @@ const gameHashes = {
 if (!core.config.reportErrors) {
 	process.on("uncaughtException", (err, origin) => {
 		void (async () => {
-			if (!core.args["--useConsoleLogging"]) {
+			if (!cliArgs["--useConsoleLogging"]) {
 				await core.logger.warn("Error reporting is disabled; if you experience this issue again, please enable it so that the problem can be debugged.")
 			}
 
 			await core.logger.error(`Uncaught exception! ${err}`, false)
 			console.error(origin)
 			await core.cleanExit()
+			process.exit()
 		})()
 	})
 
 	process.on("unhandledRejection", (err, origin) => {
 		void (async () => {
-			if (!core.args["--useConsoleLogging"]) {
+			if (!cliArgs["--useConsoleLogging"]) {
 				await core.logger.warn("Error reporting is disabled; if you experience this issue again, please enable it so that the problem can be debugged.")
 			}
 
 			await core.logger.error(`Unhandled promise rejection! ${err}`, false)
 			console.error(origin)
 			await core.cleanExit()
+			process.exit()
 		})()
 	})
 }
@@ -239,7 +266,7 @@ async function doAnalyseModThing() {
 	fs.ensureDirSync(path.join(process.cwd(), "cache"))
 	loadRPKGHashCache()
 
-	const modId = core.args["--analyseMod"]!
+	const modId = cliArgs["--analyseMod"]!
 	await core.logger.info(`Analysing ${modId}`)
 	await analyseMod(modId)
 
@@ -336,8 +363,30 @@ async function doTheThing() {
 	await core.cleanExit()
 }
 
-if (core.args["--analyseMod"]) {
-	void doAnalyseModThing()
-} else {
-	void doTheThing()
+/**
+ * core.logger.error() (and RPKGInstance's fatal-crash path) now throws/rejects instead of calling
+ * `process.exit()` - see LEI-129. This is the one place that decides what that means for the CLI
+ * build: exit 1. A clean run of either command falls through to exit 0, matching the old
+ * `core.cleanExit()`'s unconditional `process.exit()` (exit code 0).
+ */
+async function run() {
+	try {
+		if (cliArgs["--analyseMod"]) {
+			await doAnalyseModThing()
+		} else {
+			await doTheThing()
+		}
+
+		process.exit(0)
+	} catch (err) {
+		if (!(err instanceof CoreFatalError)) {
+			// A CoreFatalError means logger.error() already printed/logged the failure - anything
+			// else is an unexpected bug, so make sure it's visible before the process goes down.
+			console.error(err)
+		}
+
+		process.exit(1)
+	}
 }
+
+void run()

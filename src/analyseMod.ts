@@ -42,13 +42,17 @@ export const getRPKGOfHash = async function (hash: string): Promise<string> {
 		return RPKGHashCache[hash][0]
 	} else {
 		try {
-			const x = await rpkgInstance.getRPKGOfHash(hash)
+			const x = await rpkgInstance.getRPKGOfHash(config.runtimePath, hash)
 			RPKGHashCache[hash] = [x, false]
 			return x
 		} catch {
-			await logger.error(`Couldn't find ${hash} in the game files! Make sure your game is up-to-date and you've installed the framework in the right place.`)
+			const message = `Couldn't find ${hash} in the game files! Make sure your game is up-to-date and you've installed the framework in the right place.`
+			await logger.error(message)
 
-			process.exit(1) // This is unreachable but TypeScript doesn't know that
+			// logger.error() above throws in the overwhelmingly common case (exitAfter defaults to
+			// true), but stays a no-op if the "error" log level has been filtered out - throw here
+			// too so a missing hash is always fatal regardless of logLevel configuration.
+			throw new Error(message)
 		}
 	}
 }
