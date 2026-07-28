@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
 import { Loader2, Plus, RefreshCw, Rocket, Search } from "lucide-react"
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { useAppStore } from "@/store/app-store"
+import { useVirtualList } from "@/lib/useVirtualList"
 import type { ModEntry } from "@/lib/manifest-types"
 
 import { SortableModRow } from "./SortableModRow"
@@ -52,34 +53,6 @@ export function ModsScreen() {
   const [settingsModId, setSettingsModId] = useState<string | null>(null)
   const [removeCandidate, setRemoveCandidate] = useState<ModEntry | null>(null)
 
-  // Virtualization: this pane owns its own scroll (rather than relying on AppShell's page-level
-  // scroll) specifically so we know the exact scrollTop/viewport height needed to compute which
-  // rows are actually visible - see `windowed` below. Without this, every mod's row was mounted
-  // unconditionally regardless of scroll position, which is real, unavoidable React
-  // mount/reconciliation cost on every re-render (row memoization only helps re-renders, not the
-  // sheer number of components React has to walk) - the actual cause of "first screen slow to
-  // render with many mods" and "opening the drawer/switching an option takes a long time" (both
-  // just trigger a ModsScreen re-render, which used to mean walking every single row).
-  const listRef = useRef<HTMLDivElement>(null)
-  const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 })
-
-  useEffect(() => {
-    const el = listRef.current
-    if (!el) return
-
-    const update = () => setViewport({ scrollTop: el.scrollTop, height: el.clientHeight })
-    update()
-
-    el.addEventListener("scroll", update, { passive: true })
-    const resizeObserver = new ResizeObserver(update)
-    resizeObserver.observe(el)
-
-    return () => {
-      el.removeEventListener("scroll", update)
-      resizeObserver.disconnect()
-    }
-  }, [])
-
   const deployActive = !!deploy.snapshot && !(deploy.progress?.done ?? false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -102,17 +75,11 @@ export function ModsScreen() {
   const enabledIds = config?.loadOrder ?? []
   const settingsMod = mods.find((m) => m.id === settingsModId) ?? null
 
-  // The actual windowing math: which slice of `filtered` falls within (an overscanned margin
-  // around) the currently-visible scroll range. `SortableContext` below still gets the *full*
-  // ordered id list (dnd-kit needs that for correct index/collision math), but only this slice
-  // actually mounts a <SortableModRow>.
-  const total = filtered.length
-  const startIndex = Math.max(0, Math.floor(viewport.scrollTop / MOD_ROW_HEIGHT) - OVERSCAN)
-  const visibleCount = Math.ceil(viewport.height / MOD_ROW_HEIGHT) + OVERSCAN * 2
-  const endIndex = Math.min(total, startIndex + visibleCount)
-  const windowed = filtered.slice(startIndex, endIndex)
-  const topSpacer = startIndex * MOD_ROW_HEIGHT
-  const bottomSpacer = (total - endIndex) * MOD_ROW_HEIGHT
+  // Which slice of `filtered` falls within (an overscanned margin around) the currently-visible
+  // scroll range - see useVirtualList.ts. `SortableContext` below still gets the *full* ordered id
+  // list (dnd-kit needs that for correct index/collision math), but only `windowed` actually mounts
+  // a <SortableModRow>.
+  const { containerRef: listRef, windowed, topSpacer, bottomSpacer } = useVirtualList(filtered, MOD_ROW_HEIGHT, OVERSCAN)
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
