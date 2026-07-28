@@ -41,7 +41,7 @@ interface AppState {
   setCheckboxOption(modId: string, optionName: string, enabled: boolean): void
   setSelectOption(modId: string, group: string, optionName: string): void
 
-  addModFile(file: { name: string; size: number }): void
+  addModFile(file: { name: string; size: number; path: string }): void
   removeMod(modId: string): Promise<{ ok: boolean; reason?: string }>
   updateOutdated(modId: string): Promise<void>
 

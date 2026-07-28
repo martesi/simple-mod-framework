@@ -3,9 +3,10 @@ import { cn } from "@/lib/utils"
 
 /**
  * A path text field + "Browse" button, shared by SettingsScreen's Paths card
- * and SetupWizard's per-path steps. There is no real fs access in this UI-only
- * build (see ipc.ts) - Browse is intentionally a no-op, same as `noop` in
- * new-ui/Mod Manager.dc.html, until LEI-133 wires up a real directory picker.
+ * and SetupWizard's per-path steps. The text field round-trips to the real
+ * config.json now (LEI-134), but there's no native directory-picker dialog
+ * wired up yet - Browse is intentionally still a no-op, same as `noop` in
+ * new-ui/Mod Manager.dc.html, until LEI-133 wires up a real `dialog.showOpenDialog` channel.
  */
 export function PathInputRow({
   value,

@@ -1,7 +1,35 @@
 import { ElectronAPI } from "@electron-toolkit/preload"
 
+/**
+ * The raw shape `contextBridge.exposeInMainWorld("smf", ...)` puts on
+ * `window.smf` (see preload/index.ts). Deliberately loose/`unknown`-typed on
+ * the wire - `renderer/src/lib/ipc.electron.ts` is what gives this the real,
+ * strongly-typed `SmfApi` shape the rest of the UI codes against.
+ */
+export interface SmfBridge {
+  config: {
+    get(): Promise<unknown>
+    merge(patch: unknown): Promise<unknown>
+  }
+  mods: {
+    list(): Promise<unknown>
+    rebuildIndex(): Promise<unknown>
+    beginAdd(file: { name: string; size: number; path: string }): string
+    onTaskUpdate(callback: (update: unknown) => void): () => void
+    remove(modId: string): Promise<unknown>
+    updateOutdated(modId: string): Promise<unknown>
+  }
+  deploy: {
+    start(): Promise<unknown>
+    onProgress(callback: (progress: unknown) => void): () => void
+    getActiveSnapshot(): Promise<unknown>
+  }
+  getPathForFile(file: File): string
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
+    smf: SmfBridge
   }
 }

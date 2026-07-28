@@ -1,26 +1,65 @@
-import { contextBridge } from "electron"
+import { contextBridge, ipcRenderer, webUtils } from "electron"
+import { randomUUID } from "node:crypto"
 import { electronAPI } from "@electron-toolkit/preload"
 
 /**
- * Deliberately inert stub preload (LEI-137 is UI only). No fs, no
- * child_process, no raw ipc.send/receive bridge - that's exactly the
- * anti-pattern LEI-134 exists to remove from the current renderer
- * (see Mod Manager/src/preload/index.ts for the version being replaced).
+ * LEI-134: the real bridge, replacing the inert LEI-137 stub. No `fs`, no
+ * `child_process`, no raw `ipcRenderer.send/on` handed to the renderer
+ * wholesale - only this fixed, typed set of channels, matching the `SmfApi`
+ * shape the renderer already codes against (`renderer/src/lib/ipc.ts`).
  *
- * Once LEI-134/LEI-133 land real ipcMain.handle channels, expose them here
- * behind the same SmfApi shape the renderer already codes against
- * (src/renderer/src/lib/ipc.ts), e.g.:
- *
- *   contextBridge.exposeInMainWorld("smf", {
- *     config: { get: () => ipcRenderer.invoke("config:get"), ... },
- *     ...
- *   })
- *
- * and swap the mock in src/renderer/src/main.tsx for a thin wrapper around
- * `window.smf`.
+ * `beginAdd` is the one call that isn't a plain `invoke` passthrough: the
+ * `SmfApi` contract needs it to return a task id *synchronously* (so the UI
+ * can key a progress row on it immediately), but `ipcRenderer.invoke` is
+ * always async. The id is minted here instead and sent along with the
+ * `mods:beginAdd` call - main never has to await anything to know which task
+ * a given `mods:taskUpdate` push belongs to.
  */
+const smf = {
+  config: {
+    get: () => ipcRenderer.invoke("config:get"),
+    merge: (patch: unknown) => ipcRenderer.invoke("config:merge", patch)
+  },
+
+  mods: {
+    list: () => ipcRenderer.invoke("mods:list"),
+    rebuildIndex: () => ipcRenderer.invoke("mods:rebuildIndex"),
+
+    beginAdd: (file: { name: string; size: number; path: string }): string => {
+      const taskId = randomUUID()
+      void ipcRenderer.invoke("mods:beginAdd", { taskId, file })
+      return taskId
+    },
+
+    onTaskUpdate: (callback: (update: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, update: unknown) => callback(update)
+      ipcRenderer.on("mods:taskUpdate", listener)
+      return () => ipcRenderer.removeListener("mods:taskUpdate", listener)
+    },
+
+    remove: (modId: string) => ipcRenderer.invoke("mods:remove", modId),
+    updateOutdated: (modId: string) => ipcRenderer.invoke("mods:updateOutdated", modId)
+  },
+
+  deploy: {
+    start: () => ipcRenderer.invoke("deploy:start"),
+
+    onProgress: (callback: (progress: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: unknown) => callback(progress)
+      ipcRenderer.on("deploy:progress", listener)
+      return () => ipcRenderer.removeListener("deploy:progress", listener)
+    },
+
+    getActiveSnapshot: () => ipcRenderer.invoke("deploy:getActiveSnapshot")
+  },
+
+  /** Electron 32+'s replacement for the removed `File.path` - the only way for the renderer to learn a dropped/picked file's real on-disk path without raw Node access. */
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file)
+}
+
 try {
   contextBridge.exposeInMainWorld("electron", electronAPI)
+  contextBridge.exposeInMainWorld("smf", smf)
 } catch (error) {
   console.error(error)
 }

@@ -29,7 +29,13 @@ export function AddModDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     // all off here (rather than awaiting one before starting the next) is
     // exactly the "non-blocking add" behavior LEI-137 calls for.
     for (const file of Array.from(files)) {
-      addModFile({ name: file.name, size: file.size })
+      // `File.path` was removed from Electron's renderer-exposed File object
+      // for security reasons - `getPathForFile` (exposed via preload's
+      // `webUtils.getPathForFile`, see LEI-134) is the supported replacement,
+      // and the only way the main process can be told which real on-disk
+      // file to extract without granting the renderer raw fs access itself.
+      const path = window.smf?.getPathForFile(file) ?? ""
+      addModFile({ name: file.name, size: file.size, path })
     }
   }
 

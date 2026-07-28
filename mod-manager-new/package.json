@@ -2,7 +2,7 @@
   "name": "mod-manager-new",
   "version": "0.1.0",
   "private": true,
-  "description": "React 19 + shadcn/ui (Base UI) rebuild of the Mod Manager renderer (LEI-137, UI only). Talks to the host process through the stubbed contract in src/renderer/src/lib/ipc.ts until LEI-134/LEI-133 land the real ipcMain.handle wiring.",
+  "description": "React 19 + shadcn/ui (Base UI) rebuild of the Mod Manager renderer (LEI-137). Talks to the host process through the SmfApi contract in src/renderer/src/lib/ipc.ts, now backed by real ipcMain.handle channels (LEI-134) - fs/child_process live only in src/main, never the renderer.",
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
@@ -21,6 +21,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "json5": "^2.2.3",
     "lucide-react": "^0.475.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

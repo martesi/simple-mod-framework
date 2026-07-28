@@ -1,21 +1,24 @@
 /**
- * The stubbed IPC contract for the Mod Manager UI (LEI-137).
+ * The IPC contract for the Mod Manager UI (LEI-137).
  *
  * ----------------------------------------------------------------------------
  * WHY THIS FILE EXISTS
  * ----------------------------------------------------------------------------
- * The current Electron app exposes raw `window.fs` / `window.child_process` /
- * a bare `window.ipc.send/receive` bridge straight to the renderer (see
- * `Mod Manager/src/preload/index.ts`) - there is no `ipcMain.handle` contract
- * to build against yet. That hardening work is LEI-134; wiring the embedded
- * core (game directory picker, userData settings, actual deploy) is LEI-133.
+ * The old Svelte app exposes raw `window.fs` / `window.child_process` / a
+ * bare `window.ipc.send/receive` bridge straight to the renderer (see
+ * `Mod Manager/src/preload/index.ts`) - that's the anti-pattern LEI-134
+ * removed here: `preload/index.ts` now exposes a fixed, typed `smf` object
+ * backed by `ipcMain.handle` channels (`src/main/ipcHandlers.ts`), and
+ * `ipc.electron.ts` adapts it to the `SmfApi` shape below. Embedding the
+ * framework core directly in-process (replacing the Deploy.exe subprocess
+ * spawn, a real game-directory picker, userData settings) is still LEI-133.
  *
- * Rather than block this UI rebuild on that backend work, every screen here
- * talks *only* to the `SmfApi` interface below, obtained via `getSmfApi()`.
- * Nothing in `src/components` imports `window.fs`, `window.ipc`, etc.
- * directly. When LEI-134/133 land, replace `mockSmfApi` (ipc.mock.ts) with a
- * real implementation backed by `contextBridge`-exposed `ipcRenderer.invoke`
- * calls - the component tree does not need to change.
+ * Every screen talks *only* to the `SmfApi` interface below, obtained via
+ * `getSmfApi()`. Nothing in `src/components` imports `window.fs`,
+ * `window.smf`, etc. directly - `main.tsx` is the only place that chooses
+ * between `ipc.electron.ts`'s real implementation and `ipc.mock.ts`'s
+ * in-memory one (used when this renderer runs outside a real Electron
+ * shell), so the component tree never needs to change either way.
  *
  * ----------------------------------------------------------------------------
  * CONCURRENCY / DISK-SAFETY CONTRACT (see LEI-137 description)
@@ -37,10 +40,13 @@
  *   the snapshot's timestamp so the user can see what a running deploy is
  *   actually using.
  * - `deploy.onProgress` delivers a structured `{ stage, modIndex, modTotal,
- *   currentModId }` shape - this is the contract LEI-136 needs to satisfy. If
- *   LEI-136 isn't ready when LEI-133/134 land, a v1 backend can synthesize
- *   this same shape by scraping `Deploying <modId>` lines out of the existing
- *   plain-text log against the known snapshot mod list.
+ *   currentModId }` shape - this is the contract LEI-136 needs to satisfy.
+ *   LEI-134's backend (`src/main/deployManager.ts`) is the "v1" version this
+ *   doc comment originally anticipated: it synthesizes this shape by
+ *   scraping `Deploying <modId>` lines out of Deploy.exe's own stdout
+ *   (spawned with `--useConsoleLogging`) against the known snapshot mod
+ *   list, rather than a real structured progress channel from the deployer
+ *   itself - swap it out once LEI-136 lands one.
  */
 
 import type { Config, ModEntry } from "./manifest-types"
@@ -96,8 +102,15 @@ export interface SmfApi {
      * immediately with a task id; does not await completion, and never blocks
      * a subsequent call for a different file. Only a same-destination-folder
      * collision should ever be guarded server-side.
+     *
+     * `path` is the file's real absolute on-disk path - obtained in the
+     * renderer via `window.smf.getPathForFile(file)` (Electron's
+     * `webUtils.getPathForFile`, the post-`File.path`-removal replacement),
+     * since the main process needs it to actually read the archive and has
+     * no other way to resolve a bare `File` object back to a filesystem path
+     * without raw Node access in the renderer (see LEI-134).
      */
-    beginAdd(file: { name: string; size: number }): string
+    beginAdd(file: { name: string; size: number; path: string }): string
     onTaskUpdate(cb: (update: ModTaskUpdate) => void): Unsubscribe
     /** Rejected while a deploy is active - real handler must enforce this independently of the UI. */
     remove(modId: string): Promise<{ ok: boolean; reason?: string }>

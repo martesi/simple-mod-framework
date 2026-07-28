@@ -195,7 +195,7 @@ class MockSmfApi implements SmfApi {
   mods = {
     list: async (): Promise<ModEntry[]> => structuredClone(this.modsData),
 
-    beginAdd: (file: { name: string; size: number }): string => {
+    beginAdd: (file: { name: string; size: number; path: string }): string => {
       const taskId = uuid()
       const label = file.name.replace(/\.(zip|7z|rar|rpkg)$/i, "")
       const looksLikeArchive = /\.(zip|7z|rar|rpkg)$/i.test(file.name)
