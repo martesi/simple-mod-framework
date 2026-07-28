@@ -1,4 +1,4 @@
-import { OptionType, type Config, type Manifest, type ModEntry } from "./manifest-types"
+import { OptionType, type Config, type DefaultPaths, type Manifest, type ModEntry } from "./manifest-types"
 import type { DeployProgress, DeploySnapshot, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
 
 /**
@@ -195,10 +195,22 @@ class MockSmfApi implements SmfApi {
     // after a beat, same "believable" spirit as the rest of this mock.
     pickGameDirectory: async (): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
       await delay(300)
-      const gamePath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN 3\\Retail"
+      const gamePath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN 3"
       this.cfg = { ...this.cfg, gamePath }
       saveConfig(this.cfg)
       return { ok: true, config: structuredClone(this.cfg) }
+    },
+
+    // No real userData/OS username to read outside a real Electron shell - this mock just has to
+    // look plausible. The real backend (settings.ts's resolveDefaultUiPaths()) returns actual
+    // dataRoot-based paths instead of a made-up "C:\Users\you\..." string.
+    getDefaultPaths: async (): Promise<DefaultPaths> => {
+      await delay(50)
+      return {
+        gamePath: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN3",
+        cachePath: "C:\\Users\\you\\AppData\\Roaming\\mod-manager-new\\cache",
+        modPath: "C:\\Users\\you\\AppData\\Roaming\\mod-manager-new\\Mods"
+      }
     }
   }
 

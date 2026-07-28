@@ -43,6 +43,7 @@ function WizardPathStep({
  */
 export function SetupWizard() {
   const config = useAppStore((s) => s.config)
+  const defaultPaths = useAppStore((s) => s.defaultPaths)
   const wizard = useAppStore((s) => s.wizard)
   const closeWizard = useAppStore((s) => s.closeWizard)
   const wizardBack = useAppStore((s) => s.wizardBack)
@@ -55,7 +56,7 @@ export function SetupWizard() {
   const browseCachePath = useAppStore((s) => s.browseCachePath)
   const browseModPath = useAppStore((s) => s.browseModPath)
 
-  if (!config) return null
+  if (!config || !defaultPaths) return null
 
   const step = WIZARD_STEPS[wizard.step] ?? "welcome"
   const isLast = wizard.step === WIZARD_STEPS.length - 1
@@ -85,7 +86,7 @@ export function SetupWizard() {
           title="Game path"
           description="Point to the folder that contains the game's Retail executable."
           value={config.gamePath}
-          placeholder="C:\Program Files\HITMAN3\Retail"
+          placeholder={defaultPaths.gamePath}
           onChange={setGamePath}
           onBrowse={browseGamePath}
         />
@@ -97,7 +98,7 @@ export function SetupWizard() {
           title="Cache path"
           description="Where extracted RPKG data and intermediate build files are stored."
           value={config.cachePath}
-          placeholder="C:\Users\you\AppData\Local\Simple Mod Framework\cache"
+          placeholder={defaultPaths.cachePath}
           onChange={setCachePath}
           onBrowse={browseCachePath}
         />
@@ -109,7 +110,7 @@ export function SetupWizard() {
           title="Mod path"
           description="The folder the manager scans for mods to load."
           value={config.modPath}
-          placeholder="C:\Users\you\Documents\SMF Mods"
+          placeholder={defaultPaths.modPath}
           onChange={setModPath}
           onBrowse={browseModPath}
         />

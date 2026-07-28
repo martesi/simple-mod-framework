@@ -49,7 +49,7 @@
  *   itself - swap it out once LEI-136 lands one.
  */
 
-import type { Config, ModEntry } from "./manifest-types"
+import type { Config, DefaultPaths, ModEntry } from "./manifest-types"
 
 export type ModTaskStatus = "queued" | "extracting" | "validating" | "installing" | "done" | "error"
 
@@ -101,6 +101,8 @@ export interface SmfApi {
      * just canceled the dialog.
      */
     pickGameDirectory(): Promise<{ ok: true; config: Config } | { ok: false; error: string }>
+    /** Example paths for the Settings/wizard placeholder text - see settings.ts's `resolveDefaultUiPaths()` doc comment for why these come from main rather than being hardcoded in the renderer. */
+    getDefaultPaths(): Promise<DefaultPaths>
   }
 
   /** Plain OS-level helpers with no config/validation semantics of their own. */

@@ -111,3 +111,37 @@ export function mergeSettings(paths: AppPaths, patch: Partial<AppSettings>): App
 export function resolveModsDir(paths: AppPaths, settings: AppSettings): string {
 	return isAbsolute(settings.modsPath) ? settings.modsPath : resolve(paths.dataRoot, settings.modsPath)
 }
+
+export interface DefaultUiPaths {
+	/**
+	 * A plausible example game folder, for placeholder text only - never validated or persisted,
+	 * picking a real one is still on the user. Deliberately doesn't end in "\Retail": `gameDetect.ts`'s
+	 * `deriveGamePathInfo()` accepts either the game's root folder or its Retail subfolder (self-healing
+	 * the latter from the former), so showing "...\Retail" here reads as "you must type this exact
+	 * subfolder" - which isn't true, and is exactly the mistake that's confused people picking the
+	 * wrong folder (see gameDetect.ts's self-heal comment).
+	 */
+	gamePath: string
+	/** Where this app would actually put its cache if the user leaves the field untouched - a real, valid path under `dataRoot` (which is `app.getPath('userData')`, so it already carries the real logged-in username), not a placeholder made up to merely look plausible. */
+	cachePath: string
+	/** Same idea as `cachePath` - mirrors `resolveModsDir()`'s own default ("Mods" under `dataRoot`) when `modsPath` is unset. */
+	modPath: string
+}
+
+/**
+ * Computes the example paths the UI shows as placeholder text (Settings' Paths card, the setup
+ * wizard) - previously three strings hardcoded twice over in the renderer (SettingsScreen.tsx and
+ * SetupWizard.tsx), including a `cachePath`/`modPath` placeholder ("C:\Users\you\...") that was
+ * never a real path on the user's machine. `cachePath`/`modPath` here are the actual paths this app
+ * would use by default, so they're both valid and already carry the real Windows username baked
+ * into `dataRoot` - `gamePath` can't be known ahead of time, so it stays an illustrative guess, just
+ * without the "\Retail" suffix (see `DefaultUiPaths.gamePath`'s doc comment).
+ */
+export function resolveDefaultUiPaths(paths: AppPaths): DefaultUiPaths {
+	const programFiles = process.env["ProgramFiles(x86)"] ?? process.env["ProgramFiles"] ?? "C:\\Program Files (x86)"
+	return {
+		gamePath: join(programFiles, "Steam", "steamapps", "common", "HITMAN3"),
+		cachePath: resolve(paths.dataRoot, "cache"),
+		modPath: resolve(paths.dataRoot, "Mods")
+	}
+}

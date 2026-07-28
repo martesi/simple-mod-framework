@@ -1,4 +1,4 @@
-import type { Config, ModEntry } from "./manifest-types"
+import type { Config, DefaultPaths, ModEntry } from "./manifest-types"
 import type { DeployProgress, DeploySnapshot, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
 
 /**
@@ -15,7 +15,8 @@ export function createElectronSmfApi(): SmfApi {
     config: {
       get: () => bridge.config.get() as Promise<Config>,
       merge: (patch) => bridge.config.merge(patch) as Promise<Config>,
-      pickGameDirectory: () => bridge.config.pickGameDirectory() as Promise<{ ok: true; config: Config } | { ok: false; error: string }>
+      pickGameDirectory: () => bridge.config.pickGameDirectory() as Promise<{ ok: true; config: Config } | { ok: false; error: string }>,
+      getDefaultPaths: () => bridge.config.getDefaultPaths() as Promise<DefaultPaths>
     },
 
     system: {

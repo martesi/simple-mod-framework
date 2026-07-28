@@ -76,3 +76,15 @@ export interface Config {
   /** In-game text language code (e.g. "en-US") mods should target. */
   language: string
 }
+
+/**
+ * Example paths the UI shows as placeholder text (Settings' Paths card, the setup wizard) -
+ * computed on the main side (`settings.ts`'s `resolveDefaultUiPaths()`) rather than hardcoded here,
+ * since `cachePath`/`modPath` are real paths under this app's actual `dataRoot` (and so already
+ * carry the real logged-in username) - a plain string literal in the renderer couldn't do that.
+ */
+export interface DefaultPaths {
+  gamePath: string
+  cachePath: string
+  modPath: string
+}

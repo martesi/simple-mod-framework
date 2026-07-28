@@ -2,7 +2,7 @@ import { create } from "zustand"
 import { toast } from "sonner"
 import { getSmfApi } from "@/lib/ipc"
 import type { DeployProgress, DeploySnapshot, ModTaskUpdate } from "@/lib/ipc"
-import type { Config, ModEntry } from "@/lib/manifest-types"
+import type { Config, DefaultPaths, ModEntry } from "@/lib/manifest-types"
 import { WIZARD_STEPS } from "@/lib/wizard-steps"
 
 export interface AddTask extends ModTaskUpdate {
@@ -27,6 +27,8 @@ interface WizardState {
 interface AppState {
   loaded: boolean
   config: Config | null
+  /** Example paths for the Paths card/wizard placeholder text - see ipc.ts's `config.getDefaultPaths()` doc comment. Null until `init()` resolves, same as `config`. */
+  defaultPaths: DefaultPaths | null
   mods: ModEntry[]
   addTasks: Record<string, AddTask>
   deploy: DeployState
@@ -75,6 +77,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   loaded: false,
   config: null,
+  defaultPaths: null,
   mods: [],
   addTasks: {},
   search: "",
@@ -84,13 +87,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async init() {
     const smf = getSmfApi()
-    const [config, mods] = await Promise.all([smf.config.get(), smf.mods.list()])
+    const [config, mods, defaultPaths] = await Promise.all([smf.config.get(), smf.mods.list(), smf.config.getDefaultPaths()])
     // An empty gamePath is the sentinel loadSettings() writes for a brand-new
     // settings.json (see settings.ts's defaultSettings()/loadSettings() doc
     // comments) - i.e. "no config found yet". Open straight into the wizard
     // in that case instead of the normal mods screen, matching new-ui/Mod
     // Manager.dc.html's wizardOpen:true initial state.
-    set({ config, mods, loaded: true, wizard: { open: !config.gamePath, step: 0 } })
+    set({ config, mods, defaultPaths, loaded: true, wizard: { open: !config.gamePath, step: 0 } })
 
     smf.mods.onTaskUpdate((update) => {
       set((s) => ({ addTasks: { ...s.addTasks, [update.taskId]: { ...update, startedAt: s.addTasks[update.taskId]?.startedAt ?? Date.now() } } }))

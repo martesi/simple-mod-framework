@@ -21,6 +21,7 @@ const ABOUT_LINKS = [
 
 export function SettingsScreen() {
   const config = useAppStore((s) => s.config)
+  const defaultPaths = useAppStore((s) => s.defaultPaths)
   const systemDark = useAppStore((s) => s.systemDark)
   const setThemeMode = useAppStore((s) => s.setThemeMode)
   const setAccent = useAppStore((s) => s.setAccent)
@@ -34,7 +35,7 @@ export function SettingsScreen() {
   const browseModPath = useAppStore((s) => s.browseModPath)
   const openWizard = useAppStore((s) => s.openWizard)
 
-  if (!config) return null
+  if (!config || !defaultPaths) return null
 
   const dark = resolveDark(config.themeMode, systemDark)
 
@@ -52,15 +53,15 @@ export function SettingsScreen() {
       <div className="mb-6 flex flex-col gap-4 rounded-lg border border-border bg-surface p-[18px] shadow-sm">
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">Game path</div>
-          <PathInputRow value={config.gamePath} placeholder="C:\Program Files\HITMAN3\Retail" onChange={setGamePath} onBrowse={browseGamePath} />
+          <PathInputRow value={config.gamePath} placeholder={defaultPaths.gamePath} onChange={setGamePath} onBrowse={browseGamePath} />
         </div>
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">Cache path</div>
-          <PathInputRow value={config.cachePath} placeholder="C:\Users\you\AppData\Local\Simple Mod Framework\cache" onChange={setCachePath} onBrowse={browseCachePath} />
+          <PathInputRow value={config.cachePath} placeholder={defaultPaths.cachePath} onChange={setCachePath} onBrowse={browseCachePath} />
         </div>
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">Mod path</div>
-          <PathInputRow value={config.modPath} placeholder="C:\Users\you\Documents\SMF Mods" onChange={setModPath} onBrowse={browseModPath} />
+          <PathInputRow value={config.modPath} placeholder={defaultPaths.modPath} onChange={setModPath} onBrowse={browseModPath} />
         </div>
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">Language</div>

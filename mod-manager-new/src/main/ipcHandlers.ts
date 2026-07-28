@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from "electron"
 import type { AppPaths } from "./paths"
-import { loadSettings, mergeSettings, resolveModsDir } from "./settings"
+import { loadSettings, mergeSettings, resolveDefaultUiPaths, resolveModsDir } from "./settings"
 import { fromUiPatch, toUiConfig } from "./configMapping"
 import { deriveGamePathInfo } from "./gameDetect"
 import { runAnalyseMod, type DeployPipelineLogLine } from "./deployPipeline"
@@ -8,7 +8,7 @@ import { ModIndex } from "./modIndex"
 import { setModImageRoot } from "./modImages"
 import { removeModFolder, runAddModTask, type TaskEmit } from "./modOps"
 import { DeployManager } from "./deployManager"
-import type { Config } from "../renderer/src/lib/manifest-types"
+import type { Config, DefaultPaths } from "../renderer/src/lib/manifest-types"
 
 /**
  * Registers every `ipcMain.handle` channel this app's preload bridges to the
@@ -34,6 +34,8 @@ export function registerIpcHandlers(paths: AppPaths): void {
   const deployManager = new DeployManager(paths, (progress) => broadcast("deploy:progress", progress))
 
   ipcMain.handle("config:get", (): Config => toUiConfig(loadSettings(paths)))
+
+  ipcMain.handle("config:getDefaultPaths", (): DefaultPaths => resolveDefaultUiPaths(paths))
 
   ipcMain.handle("config:merge", (_event, patch: Partial<Config>): Config => {
     // No retailPath/runtimePath/platform to re-derive and store here anymore - only gamePath

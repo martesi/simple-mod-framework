@@ -18,7 +18,8 @@ const smf = {
   config: {
     get: () => ipcRenderer.invoke("config:get"),
     merge: (patch: unknown) => ipcRenderer.invoke("config:merge", patch),
-    pickGameDirectory: () => ipcRenderer.invoke("config:pickGameDirectory")
+    pickGameDirectory: () => ipcRenderer.invoke("config:pickGameDirectory"),
+    getDefaultPaths: () => ipcRenderer.invoke("config:getDefaultPaths")
   },
 
   system: {

@@ -11,6 +11,7 @@ export interface SmfBridge {
     get(): Promise<unknown>
     merge(patch: unknown): Promise<unknown>
     pickGameDirectory(): Promise<unknown>
+    getDefaultPaths(): Promise<unknown>
   }
   system: {
     pickDirectory(options?: { title?: string }): Promise<string | null>
