@@ -14,19 +14,42 @@ files:
   - '!**/*'
   - 'out/**/*'
 # The rpkg-cli/ResourceTool.exe/etc. binaries plus the hitman-hashes data
-# fetch-hashes.js downloads (see scripts/fetch-third-party.js,
-# scripts/fetch-hashes.js, scripts/link-third-party.js), and
-# cleanMicrosoftThumbs.dat (see gameDetect.ts's Microsoft Store thumbs.dat
-# fallback) - build/ already looks exactly like this by the time
-# electron-builder runs (npm run setup / just build-mm both ensure that),
-# mirroring the old Mod Manager's own extraResources setup (LEI-131).
-# extraResources always lands outside app.asar, at process.resourcesPath -
-# see paths.ts's resolveAppPaths() - no asarUnpack needed.
+# fetch-hashes.js downloads, and cleanMicrosoftThumbs.dat (see gameDetect.ts's
+# Microsoft Store thumbs.dat fallback) - mirroring the old Mod Manager's own
+# extraResources setup (LEI-131). extraResources always lands outside
+# app.asar, at process.resourcesPath - see paths.ts's resolveAppPaths() - no
+# asarUnpack needed. Multiple entries with the same `to: Third-Party` are
+# fine - electron-builder just merges their contents into that one
+# destination folder.
+#
+# Deliberately NOT build/Third-Party/ or build/cleanMicrosoftThumbs.dat as a
+# whole (see scripts/link-third-party.js) - both are populated almost
+# entirely by relative symlinks into the two "For Build/" folders below (on
+# purpose, so the CLI's build/ working directory doesn't duplicate ~300MB of
+# binaries on every `npm run setup`), and electron-builder's extraResources
+# copy doesn't dereference symlinks: it recreates the same relative-target
+# symlink at the destination instead of copying real bytes, which ships a
+# packaged app full of dangling links (there's no "For Build/" folder next to
+# the installed app on an end user's machine). Pointing straight at the
+# original folders instead sidesteps that - neither is ever a symlink itself.
+#
+# hash_list.txt is the one exception: fetch-hashes.js downloads it straight
+# into build/Third-Party (not from either "For Build/" folder), so it's
+# already a real file there with nothing to dereference - safe to reference
+# directly without staging it anywhere first.
 extraResources:
-  - from: ../build/Third-Party
+  - from: ../For Build/Third-Party
     to: Third-Party
-  - from: ../build/cleanMicrosoftThumbs.dat
+  - from: ../For Build/Fetched Third-Party
+    to: Third-Party
+  - from: ../build/Third-Party/hash_list.txt
+    to: Third-Party/hash_list.txt
+  - from: ../For Build/cleanMicrosoftThumbs.dat
     to: cleanMicrosoftThumbs.dat
+  - from: ../For Build/cleanPackageDefinition.txt
+    to: cleanPackageDefinition.txt
+  - from: ../For Build/cleanThumbs.dat
+    to: cleanThumbs.dat
 protocols:
   - name: Simple Mod Framework
     schemes:
