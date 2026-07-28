@@ -54,7 +54,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
     // the new one instead of stale leftovers from the old one.
     if (modsDirBefore !== undefined && getModsDir() !== modsDirBefore) {
       await index.rebuildChunked((scanned, total) => broadcast("mods:cacheProgress", { scanned, total }))
-      addKnownMods(paths, index.list().map((m) => m.id))
+      addKnownMods(paths, index.list())
     }
 
     return toUiConfig(settings, paths)
@@ -117,7 +117,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
     // Manager) go through ModIndex's lazy rebuild-on-first-list (see modIndex.ts's ensureBuilt()),
     // never modOps.ts's install path - so without this same write-through here, "enable" would be
     // broken for every pre-existing mod on a fresh install, not just newly-added ones.
-    addKnownMods(paths, list.map((m) => m.id))
+    addKnownMods(paths, list)
     return list
   })
 
@@ -127,8 +127,11 @@ export function registerIpcHandlers(paths: AppPaths): void {
     // Same write-through mods:beginAdd's install paths do (see modOps.ts's addKnownMods() calls) -
     // a rebuild can surface mods that were dropped into the Mods folder outside this app entirely,
     // and those need registering in knownMods/modOrder too or they'll hit the exact same
-    // can't-enable-it bug a normally-installed mod would without it.
-    addKnownMods(paths, list.map((m) => m.id))
+    // can't-enable-it bug a normally-installed mod would without it. Passing the full list (not
+    // just ids) also lets addKnownMods() backfill default modOptions for any mod - new or
+    // pre-existing - that has manifest options but no selection yet (see settings.ts's
+    // seedDefaultModOptions()).
+    addKnownMods(paths, list)
     return list
   })
 

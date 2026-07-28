@@ -134,26 +134,104 @@ export function mergeSettings(paths: AppPaths, patch: Partial<AppSettings>): App
 	return next
 }
 
+/** Structural subset of both `ManifestOption` (manifest-types.ts) and `DiskManifestOption` (diskManifest.ts) - `addKnownMods()`'s callers pass either, and this file avoids importing either type to stay decoupled (see this file's top doc comment). */
+interface OptionLike {
+	name: string
+	type: string
+	group?: string
+	enabledByDefault?: boolean
+}
+
+/** What `addKnownMods()` needs from each mod to seed default options - just an id for RPKG-only mods (no manifest at all). */
+export interface KnownModInput {
+	id: string
+	manifest?: { options?: OptionLike[] }
+}
+
 /**
- * Write-through for mod IDs the `ModIndex` just learned about (a fresh install via `mods:beginAdd`,
- * or ones turned up by `mods:rebuildIndex`) - registers them in `knownMods` and, critically, in
- * `modOrder` too, not just the former.
+ * Fills in `modOptions[mod.id]` for any mod that doesn't have an entry yet (`undefined` - a mod the
+ * user has never opened the options drawer for, distinct from `[]`, which means they opened it and
+ * deliberately left everything unchecked). Never touches a mod that already has a real entry, so a
+ * user's actual choices - including "nothing selected" - are never overwritten.
  *
- * Without this, a newly-installed mod's ID exists only in the in-memory `ModIndex` (see
- * `modIndex.ts`'s `addFolders()`) and never reaches `settings.json` at all. `configMapping.ts`'s
- * `toUiConfig()` only falls back to `knownMods` for `modOrder` while `modOrder` is still empty; the
- * first drag-reorder (`app-store.ts`'s `reorderMods()`) persists a *complete* `modOrder` snapshot of
- * every mod loaded at that moment, and from then on new mods are permanently absent from it. Since
- * `toggleMod()`'s enable branch (`app-store.ts`) builds the new `loadOrder` by filtering
- * `config.modOrder` down to "this mod or already-enabled ones", a mod missing from `modOrder` can
- * never be filtered *in* - flipping its switch silently produces the same `loadOrder` it started
- * with. Keeping `modOrder` populated incrementally, right alongside `knownMods`, closes that gap
- * instead of only patching the fallback case.
+ * Mirrors `Mod Manager/src/lib/utils.ts`'s old `getConfig()` validation block, which ran this same
+ * seeding on every single config read. That block got dropped when config validation was split out
+ * of a single monolithic `getConfig()` for this rewrite - mods with `manifest.options` were left with
+ * `modOptions[id]` staying `undefined` forever, which `src/discover.ts`'s option-merging silently
+ * treats as "no option content, base mod only" (no error, no warning - see the option-merge `if` at
+ * `discover.ts:145`) - a deployed mod quietly missing whatever content lived behind the never-selected
+ * option.
+ *
+ * For each select-type option group, prefers whichever option the manifest flags
+ * `enabledByDefault` - falling back to the first-listed option in that group if none is flagged,
+ * since `validateModFolder` only enforces "at most one `enabledByDefault` per group", not "at least
+ * one", and a group with zero selections is exactly the same silent-gap bug either way. Checkboxes
+ * only get pre-checked when the manifest explicitly flags them `enabledByDefault` - unlike select
+ * groups, a checkbox has an "off" state that's already a valid, meaningful default.
+ *
+ * Returns `undefined` (rather than a same-as-before object) when nothing needed seeding, so
+ * `addKnownMods()` can skip writing settings.json back out on the very common call where every mod
+ * it's passed is already fully configured.
  */
-export function addKnownMods(paths: AppPaths, ids: string[]): AppSettings {
+function seedDefaultModOptions(modOptions: Record<string, string[]>, mods: KnownModInput[]): Record<string, string[]> | undefined {
+	let changed = false
+	const next = { ...modOptions }
+
+	for (const mod of mods) {
+		const options = mod.manifest?.options
+		if (!options?.length || next[mod.id] !== undefined) continue
+
+		const picks: string[] = []
+
+		for (const o of options) {
+			if (o.type === "checkbox" && o.enabledByDefault) picks.push(o.name)
+		}
+
+		const groups = new Map<string, OptionLike[]>()
+		for (const o of options) {
+			if (o.type === "select" && o.group) {
+				const arr = groups.get(o.group) ?? []
+				arr.push(o)
+				groups.set(o.group, arr)
+			}
+		}
+		for (const [group, groupOptions] of groups) {
+			const chosen = groupOptions.find((o) => o.enabledByDefault) ?? groupOptions[0]
+			picks.push(`${group}:${chosen.name}`)
+		}
+
+		next[mod.id] = picks
+		changed = true
+	}
+
+	return changed ? next : undefined
+}
+
+/**
+ * Write-through for mods the `ModIndex` just learned about (a fresh install via `mods:beginAdd`,
+ * or ones turned up by `mods:rebuildIndex`) - registers them in `knownMods` and, critically, in
+ * `modOrder` too, not just the former. Also seeds default `modOptions` for any of them that don't
+ * have a selection yet (see `seedDefaultModOptions()`) - the same "mod just became known" moment is
+ * also the right moment to give it a sane default option, so both self-heals live in one write-through
+ * instead of two separate ones that could drift out of sync.
+ *
+ * Without the `knownMods`/`modOrder` half, a newly-installed mod's ID exists only in the in-memory
+ * `ModIndex` (see `modIndex.ts`'s `addFolders()`) and never reaches `settings.json` at all.
+ * `configMapping.ts`'s `toUiConfig()` only falls back to `knownMods` for `modOrder` while `modOrder`
+ * is still empty; the first drag-reorder (`app-store.ts`'s `reorderMods()`) persists a *complete*
+ * `modOrder` snapshot of every mod loaded at that moment, and from then on new mods are permanently
+ * absent from it. Since `toggleMod()`'s enable branch (`app-store.ts`) builds the new `loadOrder` by
+ * filtering `config.modOrder` down to "this mod or already-enabled ones", a mod missing from
+ * `modOrder` can never be filtered *in* - flipping its switch silently produces the same `loadOrder`
+ * it started with. Keeping `modOrder` populated incrementally, right alongside `knownMods`, closes
+ * that gap instead of only patching the fallback case.
+ */
+export function addKnownMods(paths: AppPaths, mods: KnownModInput[]): AppSettings {
 	const current = loadSettings(paths)
-	const newIds = ids.filter((id) => !current.knownMods.includes(id))
-	if (newIds.length === 0) return current
+	const newIds = mods.map((m) => m.id).filter((id) => !current.knownMods.includes(id))
+	const seededModOptions = seedDefaultModOptions(current.modOptions, mods)
+
+	if (newIds.length === 0 && !seededModOptions) return current
 
 	const knownMods = [...current.knownMods, ...newIds]
 	const existingOrder = current.modOrder ?? []
@@ -162,7 +240,7 @@ export function addKnownMods(paths: AppPaths, ids: string[]): AppSettings {
 	// currently-indexed ID, not just newly-added ones).
 	const modOrder = [...existingOrder, ...newIds.filter((id) => !existingOrder.includes(id))]
 
-	return mergeSettings(paths, { knownMods, modOrder })
+	return mergeSettings(paths, { knownMods, modOrder, ...(seededModOptions ? { modOptions: seededModOptions } : {}) })
 }
 
 /** Where Mods/ actually is, resolved against dataRoot if `modsPath` isn't already absolute - mirrors `src/core.ts`'s `createCore()`. */

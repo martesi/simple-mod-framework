@@ -131,8 +131,10 @@ async function installFrameworkMods(paths: AppPaths, modsDir: string, index: Mod
   index.addFolders(folders)
   // Register every installed ID (not just the single-mod case the "done" emit's modId covers) -
   // see settings.ts's addKnownMods() doc comment for why this has to happen here and not be left
-  // implicit in the index write-through above.
-  addKnownMods(paths, manifests.map((m) => m.id))
+  // implicit in the index write-through above. Passing each manifest along (not just its id) is what
+  // lets addKnownMods() seed a sane default modOptions entry for mods that ship options, instead of
+  // leaving them silently unselected until someone opens the options drawer.
+  addKnownMods(paths, manifests.map((m) => ({ id: m.id, manifest: m })))
 
   emit({ status: "done", modId: manifests.length === 1 ? manifests[0].id : undefined })
 }
@@ -158,7 +160,7 @@ async function installExtractedRpkgFiles(paths: AppPaths, modsDir: string, index
   }
 
   index.addFolders([rpkgModName])
-  addKnownMods(paths, [rpkgModName])
+  addKnownMods(paths, [{ id: rpkgModName }])
   emit({ status: "done", modId: rpkgModName })
 }
 
@@ -180,7 +182,7 @@ async function installRpkgMod(paths: AppPaths, modsDir: string, index: ModIndex,
   cpSync(sourceFilePath, join(destDir, basename(sourceFilePath)))
 
   index.addFolders([rpkgModName])
-  addKnownMods(paths, [rpkgModName])
+  addKnownMods(paths, [{ id: rpkgModName }])
   emit({ status: "done", modId: rpkgModName })
 }
 
