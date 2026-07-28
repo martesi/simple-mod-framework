@@ -36,7 +36,6 @@
     "lossless-json": "^1.0.5",
     "lucide-react": "^0.475.0",
     "md5": "^2.3.0",
-    "piscina": "5.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.2.0",

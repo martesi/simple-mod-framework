@@ -19,8 +19,8 @@ import type { DeployInstruction, HMLanguageToolsLOCR, Manifest, ManifestOptionDa
 import { ModuleKind, ScriptTarget } from "typescript"
 import { FrameworkVersion, config, logger, options, paths, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
 import { copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
+import { WorkerPool } from "./workerPool"
 
-import Piscina from "piscina"
 import type { Transaction } from "@sentry/tracing"
 import { crc32 } from "crc"
 import fs from "fs-extra"
@@ -1498,10 +1498,10 @@ export default async function deploy(
 		/* ------------------------------------- Multithreaded patching ------------------------------------ */
 		let index = 0
 
-		const workerPool = new Piscina({
-			filename: path.join(__dirname, "patchWorker.js"), // must be absolute - piscina's worker thread resolves this with a plain `require(filename)`, which can't find a bare relative name like "patchWorker.js"
-			maxThreads: Math.max(Math.ceil(os.cpus().length / 4), 2) // For an 8-core CPU with 16 logical processors there are 4 max threads
-		})
+		const workerPool = new WorkerPool(
+			path.join(__dirname, "patchWorker.js"), // must be absolute - `new Worker()` resolves a bare relative name like "patchWorker.js" against the wrong base
+			Math.max(Math.ceil(os.cpus().length / 4), 2) // For an 8-core CPU with 16 logical processors there are 4 max threads
+		)
 
 		// Register this deploy's worker pool with the active core so a fatal error elsewhere in
 		// the deploy (core.logger.error/cleanExit) destroys it as part of cleanup - replaces the

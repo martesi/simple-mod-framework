@@ -15,9 +15,6 @@
 // resolved from node_modules at runtime exactly like before) rather than
 // being bundled in, because several of these packages depend on their own
 // on-disk layout in ways bundling would break:
-//   - piscina resolves its worker file with `resolve(__dirname, "worker.js")`
-//     from *piscina's own* node_modules location - bundling piscina's code
-//     into main.js would make that __dirname point at build/compiled/ instead.
 //   - hash-wasm / hdr-histogram-js load WASM binaries from disk.
 //   - @sentry/* patches node internals / does its own dynamic requires.
 //   - typescript is used at runtime (deploy.ts transpiles mod authors'
@@ -69,7 +66,6 @@ const EXTERNAL = [
 	"luxon",
 	"md5",
 	"md5-file",
-	"piscina",
 	"rfc6902",
 	"semver",
 	"tslib",

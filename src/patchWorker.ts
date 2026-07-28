@@ -10,6 +10,7 @@ import RPKGInstance from "./rpkg"
 import child_process from "child_process"
 import fs from "fs-extra"
 import path from "path"
+import { parentPort } from "worker_threads"
 import { xxhash3 } from "hash-wasm"
 
 import "clarify"
@@ -25,10 +26,10 @@ const execCommand = function (command: string) {
 }
 
 /**
- * Piscina reuses each worker thread for many `.run()` calls, so this only needs to happen once
- * per thread - not once per patch. Guarded rather than done at module scope because it depends on
- * the config/options handed over by whichever call happens to be first, not on anything knowable
- * at import time.
+ * The pool (see workerPool.ts) reuses each worker thread for many tasks, so this only needs to
+ * happen once per thread - not once per patch. Guarded rather than done at module scope because it
+ * depends on the config/options handed over by whichever call happens to be first, not on anything
+ * knowable at import time.
  */
 let workerCoreInitialised = false
 
@@ -41,20 +42,7 @@ function ensureWorkerCore(workerConfig: Config, coreOptions: ResolvedCoreOptions
 	workerCoreInitialised = true
 }
 
-export default async ({
-	tempHash,
-	tempRPKG,
-	tbluHash,
-	tbluRPKG,
-	chunkFolder,
-	assignedTemporaryDirectory,
-	patches,
-	invalidatedData,
-	cacheFolder,
-	config: workerConfig,
-	coreOptions,
-	paths: workerPaths
-}: {
+type PatchTaskData = {
 	tempHash: string
 	tempRPKG: string
 	tbluHash: string
@@ -70,7 +58,27 @@ export default async ({
 	config: Config
 	coreOptions: ResolvedCoreOptions
 	paths: { dataRoot: string; toolsRoot: string }
-}) => {
+}
+
+/**
+ * The actual entity-patch work for one task - unchanged from the Piscina days apart from no
+ * longer being the module's default export (see the parentPort wiring at the bottom of this file,
+ * which is what actually receives tasks now).
+ */
+async function processPatch({
+	tempHash,
+	tempRPKG,
+	tbluHash,
+	tbluRPKG,
+	chunkFolder,
+	assignedTemporaryDirectory,
+	patches,
+	invalidatedData,
+	cacheFolder,
+	config: workerConfig,
+	coreOptions,
+	paths: workerPaths
+}: PatchTaskData) {
 	ensureWorkerCore(workerConfig, coreOptions, workerPaths)
 
 	fs.ensureDirSync(path.join(paths.dataRoot, assignedTemporaryDirectory))
@@ -241,3 +249,35 @@ export default async ({
 
 	return
 }
+
+/**
+ * Wire this file up to the pool in workerPool.ts: receive `{ id, data }` over parentPort, run the
+ * patch, and reply with `{ id, ok: true, result }` or `{ id, ok: false, error }` on the same
+ * channel. Replaces Piscina's `module.exports = async (data) => ...` convention - the actual patch
+ * logic in processPatch() above is unchanged.
+ *
+ * `parentPort` is only ever null when this file is imported outside a worker thread (it isn't -
+ * nothing else imports patchWorker.ts, see workerPool.ts's doc comment), so this throws rather than
+ * silently doing nothing.
+ */
+if (!parentPort) {
+	throw new Error("patchWorker.ts must be run inside a worker thread - no parentPort available")
+}
+
+const workerParentPort = parentPort
+
+workerParentPort.on("message", async ({ id, data }: { id: number; data: PatchTaskData }) => {
+	try {
+		const result = await processPatch(data)
+		workerParentPort.postMessage({ id, ok: true, result })
+	} catch (error) {
+		workerParentPort.postMessage({
+			id,
+			ok: false,
+			error:
+				error instanceof Error
+					? { name: error.name, message: error.message, stack: error.stack }
+					: { name: "Error", message: String(error), stack: undefined }
+		})
+	}
+})

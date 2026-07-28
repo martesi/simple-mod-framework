@@ -112,7 +112,7 @@ export interface Core {
 	/**
 	 * The options this Core was created with, normalised to concrete values. Lets a caller that
 	 * only has access to a Core (not the original CoreOptions it was constructed with) spin up an
-	 * equivalent one elsewhere - e.g. a Piscina worker thread bootstrapping its own Core so its
+	 * equivalent one elsewhere - e.g. a WorkerPool worker thread bootstrapping its own Core so its
 	 * logging matches the thread that created the pool (see patchWorker.ts). Worker threads are
 	 * separate module realms with no access to the main thread's in-memory state, so this has to
 	 * be threaded through function arguments (the task payload passed to `workerPool.run()`)

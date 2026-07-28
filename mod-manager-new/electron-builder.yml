@@ -3,18 +3,15 @@ productName: Mod Manager
 directories:
   output: dist
   buildResources: buildResources
-# Unlike the old Mod Manager (which excludes everything but out/**/* here,
-# safe because its main bundle has zero externalized runtime deps), this
-# app's `files` is left at electron-builder's default so a filtered
-# node_modules (production `dependencies` only) still gets carried into
-# app.asar alongside out/**/*. That's not just "being careful": Piscina
-# (src/deploy.ts's worker pool - see deployPipeline.ts) locates its own
-# internal worker bootstrap file relative to wherever node_modules/piscina
-# physically sits at runtime, regardless of how much of *our own* code Vite
-# bundles into out/main/index.js - see electron.vite.config.ts's doc comment.
-# LEI-132's hand-rolled worker_threads pool is expected to remove this
-# wrinkle (and let this app go back to the old app's out/**/*-only files list).
+# Matches the old Mod Manager's own electron-builder.yml: safe to exclude
+# everything but out/**/* (no node_modules carried into app.asar) because
+# main/preload are fully bundled and, as of LEI-132, src/deploy.ts's worker
+# pool is the hand-rolled node:worker_threads WorkerPool (src/workerPool.ts)
+# rather than Piscina - there's no package with its own on-disk-relative
+# worker-bootstrap resolution left that would need node_modules physically
+# present at runtime (see electron.vite.config.ts's doc comment).
 files:
+  - '!**/*'
   - 'out/**/*'
 # The rpkg-cli/ResourceTool.exe/etc. binaries plus the hitman-hashes data
 # fetch-hashes.js downloads (see scripts/fetch-third-party.js,
