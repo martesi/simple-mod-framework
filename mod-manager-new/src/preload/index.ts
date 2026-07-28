@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron"
-import { randomUUID } from "node:crypto"
 import { electronAPI } from "@electron-toolkit/preload"
 
 /**
@@ -31,7 +30,15 @@ const smf = {
     rebuildIndex: () => ipcRenderer.invoke("mods:rebuildIndex"),
 
     beginAdd: (file: { name: string; size: number; path: string }): string => {
-      const taskId = randomUUID()
+      // No node:crypto here on purpose - Electron's sandboxed preload loader
+      // (webPreferences.sandbox: true, src/main/index.ts) only polyfills a
+      // small allowlist of Node builtins (events/timers/url) and rejects
+      // *any* `require`/`import` of "crypto", prefixed or not, with "module
+      // not found". The Web Crypto API's randomUUID() is a real browser
+      // global available in this context regardless (same as calling
+      // `crypto.randomUUID()` from the renderer itself), so it needs no
+      // require at all.
+      const taskId = crypto.randomUUID()
       void ipcRenderer.invoke("mods:beginAdd", { taskId, file })
       return taskId
     },

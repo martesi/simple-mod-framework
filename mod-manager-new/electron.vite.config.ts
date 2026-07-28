@@ -21,6 +21,23 @@ import react from "@vitejs/plugin-react"
 export default defineConfig({
   main: {
     build: {
+      // Same fix as preload below, applied preemptively here rather than
+      // after the fact: electron-vite's build.externalizeDeps defaults to
+      // true, which leaves every package.json "dependencies" entry (as
+      // opposed to devDependencies - typescript is why that one already
+      // ends up bundled, see the output.format comment below) as a bare
+      // require("pkg-name") in out/main/index.cjs instead of inlining it.
+      // That's invisible in `npm run dev` because a real node_modules folder
+      // happens to be sitting on disk next to the project - but
+      // electron-builder.yml ships only `out/**/*` with no node_modules in
+      // the packaged app, so main's own fs-extra/json5/chalk/semver/etc.
+      // requires (all "dependencies") would 404 the same way
+      // @electron-toolkit/preload just did in preload, the first time this
+      // actually gets packaged rather than run from source. Disabling it
+      // bundles all of it into index.cjs, matching what electron-builder.yml's
+      // own doc comment already assumes is true ("no node_modules carried
+      // into app.asar because main/preload are fully bundled").
+      externalizeDeps: false,
       rollupOptions: {
         input: {
           // The default single "index" entry only emits out/main/index.cjs.
@@ -61,7 +78,39 @@ export default defineConfig({
       }
     }
   },
-  preload: {},
+  preload: {
+    build: {
+      // electron-vite's build.externalizeDeps defaults to true regardless of
+      // this file's top-of-file "fully bundled, no externalizeDepsPlugin"
+      // comment - that comment was only ever made true for main by the CJS
+      // format override below, which is unrelated. Left at its default here,
+      // every package.json "dependencies" entry (as opposed to devDependencies
+      // like typescript, which is why main already bundles that one) gets
+      // turned into a bare `require("pkg-name")` in the output - which is how
+      // @electron-toolkit/preload ended up as an unbundled require() in
+      // index.cjs. That's fine in main (a real Node process with node_modules
+      // on disk) but fatal in a sandboxed preload script, whose polyfilled
+      // require only resolves a small builtin allowlist (see the crypto fix
+      // above) and 'electron' itself - never arbitrary node_modules packages.
+      // Disabling it here bundles @electron-toolkit/preload's source directly
+      // into index.cjs instead of leaving a require() for it.
+      externalizeDeps: false,
+      rollupOptions: {
+        output: {
+          // Same fix as main above: this package.json's "type": "module" makes
+          // electron-vite default preload output to ESM (out/preload/index.mjs).
+          // Electron's sandboxed preload loader (webPreferences.sandbox: true,
+          // set in src/main/index.ts) runs preload scripts through a bespoke,
+          // synchronous CommonJS-only loader - it chokes on a bare top-level
+          // `import` statement with "Cannot use import statement outside a
+          // module" even though the file is correctly named .mjs and Node
+          // itself would happily treat it as ESM. Forcing cjs here (renamed to
+          // index.cjs, same as main/index.cjs) sidesteps that loader entirely.
+          format: "cjs"
+        }
+      }
+    }
+  },
   renderer: {
     resolve: {
       alias: {

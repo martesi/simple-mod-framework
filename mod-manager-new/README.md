@@ -1,21 +1,23 @@
 # Mod Manager UI (mod-manager-new)
 
-React 19 + shadcn/ui (on Base UI) rebuild of the Mod Manager renderer — **UI
-only** (LEI-137), wired up as a real Electron app via electron-vite so it can
-be run directly, not just previewed in a browser.
+React 19 + shadcn/ui (on Base UI) rebuild of the Mod Manager renderer
+(LEI-137), wired up as a real Electron app via electron-vite.
 
-`src/main` and `src/preload` are intentionally inert stubs - just enough to
-open a window and load the renderer. There is no fs/child_process access, no
-real `ipcMain.handle` wiring, and no Deploy.exe invocation here; that's
-LEI-134 (moving fs/child_process off the renderer) and LEI-133 (embedded core
-+ game directory picker + userData settings). Everything in the renderer
-talks to a typed, fully mocked contract instead:
-`src/renderer/src/lib/ipc.ts` / `ipc.mock.ts`.
+`src/main`/`src/preload` are the real backend now, not stubs. `src/main/ipcHandlers.ts`
+registers the actual `ipcMain.handle` channels (config, mods, deploy) backed by
+`modIndex.ts`/`modOps.ts`/`deployManager.ts`/`deployPipeline.ts` - the framework
+core is embedded in-process (LEI-133), including the game-directory picker and
+userData-backed settings. `src/preload/index.ts` exposes those channels as
+`window.smf`, with no raw `fs`/`child_process` handed to the renderer
+(LEI-134).
 
-When LEI-134/LEI-133 land, expose the real channels from `src/preload/index.ts`
-behind the same `SmfApi` shape and swap the mock for a thin wrapper around
-`window.smf` in `src/renderer/src/main.tsx` - the component tree doesn't need
-to change.
+The renderer still talks only to the typed `SmfApi` contract in
+`src/renderer/src/lib/ipc.ts`. `src/renderer/src/main.tsx` is the single swap
+point: it uses `ipc.electron.ts` (the real `window.smf`-backed implementation)
+whenever the app is running inside real Electron, and falls back to the
+in-memory `ipc.mock.ts` only when the renderer is previewed outside Electron
+(e.g. a plain `vite` browser preview). The component tree never needs to
+change either way.
 
 Only the two screens covered by the `new-ui/Mod Manager.dc.html` design comp
 are implemented: **Mods** (list, drag reorder, enable/disable, deploy) and
