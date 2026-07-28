@@ -9,7 +9,7 @@
 // See rust/src/lib.rs in git history for the original implementation this was
 // ported from.
 
-import checkDiskSpace from "check-disk-space"
+import checkDiskSpaceImport from "check-disk-space"
 import fs from "fs-extra"
 import klaw from "klaw-sync"
 import path from "path"
@@ -115,6 +115,17 @@ export function stageDependenciesFrom(fromFolder: string, toStagingDir: string):
 		}
 	}
 }
+
+// check-disk-space ships as a dual ESM/CJS package (exports.default = fn, plus an __esModule
+// marker). tsc's/bun's default-import interop resolves that correctly, but electron-vite's
+// production build (mod-manager-new/electron.vite.config.ts - main is fully bundled only when
+// `command === "build"`) runs it through Rollup's commonjs plugin instead, which doesn't unwrap
+// the nested `.default` the same way and leaves `checkDiskSpaceImport` as the whole module
+// namespace object rather than the function - "checkDiskSpace is not a function" at runtime,
+// only in packaged builds, never in `electron-vite dev` (where the package stays a real
+// require() external). Unwrap defensively so this works regardless of which bundler (or none)
+// resolved the import.
+const checkDiskSpace = (typeof checkDiskSpaceImport === "function" ? checkDiskSpaceImport : (checkDiskSpaceImport as any).default) as typeof checkDiskSpaceImport
 
 /**
  * Available disk space (in bytes) on the drive containing `dataRoot` - the injected writable

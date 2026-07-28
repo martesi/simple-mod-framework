@@ -36,6 +36,8 @@ interface AppState {
   systemDark: boolean
 
   init(): Promise<void>
+  /** Subscribes to the `smf` IPC push channels (deploy progress, mod task updates) plus the OS dark-mode media query, and returns a cleanup function that undoes all of it. Split out of `init()` (see App.tsx) so React - StrictMode's dev-mode double-invoke included - can mount/cleanup/remount this effect and always land on exactly one live subscription of each, instead of `init()` leaking a second one every time it re-ran. */
+  initListeners(): () => void
 
   setSearch(search: string): void
   search: string
@@ -99,9 +101,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     // comments) - i.e. "no config found yet". Open straight into the wizard
     // in that case instead of the normal mods screen, matching new-ui/Mod
     // Manager.dc.html's wizardOpen:true initial state.
+    // Plain data fetch, no subscriptions - safe to call more than once (StrictMode's double
+    // effect invoke included), since re-running it just re-fetches and re-sets the same kind of
+    // data rather than accumulating anything. See initListeners() for the subscription half.
     set({ config, mods, defaultPaths, loaded: true, wizard: { open: !config.gamePath, step: 0 } })
+  },
 
-    smf.mods.onTaskUpdate((update) => {
+  initListeners() {
+    const smf = getSmfApi()
+
+    const unsubscribeTaskUpdate = smf.mods.onTaskUpdate((update) => {
       set((s) => ({ addTasks: { ...s.addTasks, [update.taskId]: { ...update, startedAt: s.addTasks[update.taskId]?.startedAt ?? Date.now() } } }))
 
       if (update.status === "done") {
@@ -129,7 +138,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     })
 
-    smf.deploy.onProgress((progress) => {
+    const unsubscribeProgress = smf.deploy.onProgress((progress) => {
       set((s) => ({
         deploy: {
           ...s.deploy,
@@ -139,9 +148,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
     })
 
+    let mq: MediaQueryList | undefined
+    let onSystemDarkChange: ((e: MediaQueryListEvent) => void) | undefined
     if (typeof window !== "undefined") {
-      const mq = window.matchMedia("(prefers-color-scheme: dark)")
-      mq.addEventListener("change", (e) => set({ systemDark: e.matches }))
+      mq = window.matchMedia("(prefers-color-scheme: dark)")
+      onSystemDarkChange = (e) => set({ systemDark: e.matches })
+      mq.addEventListener("change", onSystemDarkChange)
+    }
+
+    return () => {
+      unsubscribeTaskUpdate()
+      unsubscribeProgress()
+      mq?.removeEventListener("change", onSystemDarkChange!)
     }
   },
 

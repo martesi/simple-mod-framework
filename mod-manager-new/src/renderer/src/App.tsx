@@ -10,6 +10,7 @@ import { SettingsScreen } from "@/components/settings/SettingsScreen"
 
 export default function App() {
   const init = useAppStore((s) => s.init)
+  const initListeners = useAppStore((s) => s.initListeners)
   const loaded = useAppStore((s) => s.loaded)
   const config = useAppStore((s) => s.config)
   const systemDark = useAppStore((s) => s.systemDark)
@@ -18,6 +19,18 @@ export default function App() {
   useEffect(() => {
     init()
   }, [init])
+
+  useEffect(() => {
+    // Separate from the init() effect above on purpose: this one subscribes to IPC push channels
+    // and a media-query listener, so - unlike the plain data fetch in init(), which is harmless to
+    // re-run - it needs a real cleanup. Returning one here means React 18 StrictMode's dev-mode
+    // mount -> cleanup -> mount double-invoke actually exercises the unsubscribe path (the same way
+    // the drag/drop effect below already does) and leaves exactly one live subscription of each,
+    // instead of the previous version (which subscribed from inside init() with no cleanup, so
+    // StrictMode's second invoke permanently doubled every deploy:progress / mods:taskUpdate
+    // listener - see app-store.ts's initListeners() doc comment).
+    return initListeners()
+  }, [initListeners])
 
   useEffect(() => {
     // Without this, dropping a file anywhere in the window *other* than the Add Mod dialog's own
