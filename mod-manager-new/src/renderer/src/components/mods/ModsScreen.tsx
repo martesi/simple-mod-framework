@@ -13,7 +13,6 @@ import type { ModEntry } from "@/lib/manifest-types"
 import { SortableModRow } from "./SortableModRow"
 import { AddModDialog } from "./AddModDialog"
 import { ModSettingsDrawer } from "./ModSettingsDrawer"
-import { DeployDialog } from "./DeployDialog"
 
 function modLabel(mod: ModEntry) {
   return mod.isFrameworkMod ? `${mod.manifest!.name} ${mod.manifest!.description}` : mod.rpkgModName!
@@ -124,7 +123,6 @@ export function ModsScreen() {
 
       <AddModDialog open={addOpen} onOpenChange={setAddOpen} />
       <ModSettingsDrawer mod={settingsMod} onClose={() => setSettingsModId(null)} />
-      <DeployDialog />
 
       <Dialog open={!!removeCandidate} onOpenChange={(open) => !open && setRemoveCandidate(null)}>
         <DialogContent>

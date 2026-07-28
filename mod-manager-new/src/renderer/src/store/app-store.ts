@@ -2,6 +2,7 @@ import { create } from "zustand"
 import { getSmfApi } from "@/lib/ipc"
 import type { DeployProgress, DeploySnapshot, ModTaskUpdate } from "@/lib/ipc"
 import type { Config, ModEntry } from "@/lib/manifest-types"
+import { WIZARD_STEPS } from "@/lib/wizard-steps"
 
 export interface AddTask extends ModTaskUpdate {
   startedAt: number
@@ -9,10 +10,17 @@ export interface AddTask extends ModTaskUpdate {
 
 interface DeployState {
   open: boolean
+  /** Whether the toast is showing the step list, as opposed to just the collapsed header + progress bar. */
+  expanded: boolean
   snapshot: DeploySnapshot | null
   progress: DeployProgress | null
   log: string[]
   logExpanded: boolean
+}
+
+interface WizardState {
+  open: boolean
+  step: number
 }
 
 interface AppState {
@@ -39,12 +47,24 @@ interface AppState {
 
   startDeploy(): Promise<void>
   closeDeploy(): void
+  toggleDeployExpanded(): void
   toggleDeployLog(): void
 
   setThemeMode(mode: Config["themeMode"]): void
   setAccent(accent: Config["accent"]): void
   toggleDevMode(): void
   setReportErrors(value: boolean): void
+
+  setGamePath(path: string): void
+  setCachePath(path: string): void
+  setModPath(path: string): void
+  setLanguage(language: string): void
+
+  wizard: WizardState
+  openWizard(): void
+  closeWizard(): void
+  wizardBack(): void
+  wizardNext(): void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -54,7 +74,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   addTasks: {},
   search: "",
   systemDark: typeof window !== "undefined" ? (window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false) : false,
-  deploy: { open: false, snapshot: null, progress: null, log: [], logExpanded: false },
+  deploy: { open: false, expanded: false, snapshot: null, progress: null, log: [], logExpanded: false },
+  wizard: { open: false, step: 0 },
 
   async init() {
     const smf = getSmfApi()
@@ -172,11 +193,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async startDeploy() {
     const snapshot = await getSmfApi().deploy.start()
-    set({ deploy: { open: true, snapshot, progress: null, log: [], logExpanded: false } })
+    set({ deploy: { open: true, expanded: false, snapshot, progress: null, log: [], logExpanded: false } })
   },
 
   closeDeploy() {
     set((s) => ({ deploy: { ...s.deploy, open: false } }))
+  },
+
+  toggleDeployExpanded() {
+    set((s) => ({ deploy: { ...s.deploy, expanded: !s.deploy.expanded } }))
   },
 
   toggleDeployLog() {
@@ -210,5 +235,52 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!config) return
     set({ config: { ...config, reportErrors: value } })
     getSmfApi().config.merge({ reportErrors: value })
+  },
+
+  setGamePath(gamePath) {
+    const { config } = get()
+    if (!config) return
+    set({ config: { ...config, gamePath } })
+    getSmfApi().config.merge({ gamePath })
+  },
+
+  setCachePath(cachePath) {
+    const { config } = get()
+    if (!config) return
+    set({ config: { ...config, cachePath } })
+    getSmfApi().config.merge({ cachePath })
+  },
+
+  setModPath(modPath) {
+    const { config } = get()
+    if (!config) return
+    set({ config: { ...config, modPath } })
+    getSmfApi().config.merge({ modPath })
+  },
+
+  setLanguage(language) {
+    const { config } = get()
+    if (!config) return
+    set({ config: { ...config, language } })
+    getSmfApi().config.merge({ language })
+  },
+
+  openWizard() {
+    set({ wizard: { open: true, step: 0 } })
+  },
+
+  closeWizard() {
+    set((s) => ({ wizard: { ...s.wizard, open: false } }))
+  },
+
+  wizardBack() {
+    set((s) => ({ wizard: { ...s.wizard, step: Math.max(0, s.wizard.step - 1) } }))
+  },
+
+  wizardNext() {
+    set((s) => {
+      if (s.wizard.step >= WIZARD_STEPS.length - 1) return { wizard: { ...s.wizard, open: false } }
+      return { wizard: { ...s.wizard, step: s.wizard.step + 1 } }
+    })
   }
 }))

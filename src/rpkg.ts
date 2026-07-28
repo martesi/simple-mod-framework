@@ -37,8 +37,8 @@ class RPKGInstance {
 	private initialisedWaiters: PendingCall[] = []
 	private readyWaiter?: PendingCall
 
-	/** @param rpkgCliPath Path to the rpkg-cli executable. Defaults to `Third-Party/rpkg-cli` under the current working directory, matching the CLI's historical layout. */
-	constructor(rpkgCliPath: string = path.join(process.cwd(), "Third-Party", "rpkg-cli")) {
+	/** @param rpkgCliPath Path to the rpkg-cli executable - callers now always pass this explicitly (usually `path.join(paths.toolsRoot, "Third-Party", "rpkg-cli")`) instead of relying on a `process.cwd()`-based default (see LEI-130). */
+	constructor(rpkgCliPath: string) {
 		this.rpkgProcess = child_process.spawn(rpkgCliPath, ["-i"])
 		this.output = ""
 		this.previousOutput = ""
@@ -133,9 +133,11 @@ class RPKGInstance {
 	}
 
 	async getRPKGOfHash(runtimePath: string, hash: string): Promise<string> {
-		const result = [
-			...(await this.callFunction(`-hash_probe "${path.resolve(process.cwd(), runtimePath)}" -filter "${hash}"`)).matchAll(/is in RPKG file: (chunk[0-9]*(?:patch[1-9])?)\.rpkg/g)
-		]
+		// runtimePath is expected to already be an absolute path by the time it gets here (see
+		// core.ts's createCore(), which resolves config.runtimePath against paths.dataRoot) -
+		// path.resolve() with no base is a no-op for an absolute path and otherwise falls back to
+		// process.cwd(), same as it always implicitly did.
+		const result = [...(await this.callFunction(`-hash_probe "${path.resolve(runtimePath)}" -filter "${hash}"`)).matchAll(/is in RPKG file: (chunk[0-9]*(?:patch[1-9])?)\.rpkg/g)]
 
 		return result
 			.map((a) => a[1])

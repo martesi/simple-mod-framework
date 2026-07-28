@@ -34,6 +34,7 @@ export function setCurrentCore(core: Core) {
 	config = core.config
 	logger = core.logger
 	options = core.options
+	paths = core.paths
 }
 
 export function getCurrentCore(): Core {
@@ -58,6 +59,8 @@ export let config: Config
 export let logger: Logger
 // eslint-disable-next-line prefer-const
 export let options: ResolvedCoreOptions
+// eslint-disable-next-line prefer-const
+export let paths: Core["paths"]
 
 export function registerCleanup(fn: CleanupCallback): void {
 	getCurrentCore().registerCleanup(fn)

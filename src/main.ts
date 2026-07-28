@@ -43,11 +43,18 @@ const cliArgs = arg(
 	}
 )
 
-const core = createCore(path.join(process.cwd(), "config.json"), {
+// The CLI's transitional "everything sits next to the exe" layout (see LEI-130) - data and tools
+// both live in the same portable folder, unlike a real embedder (e.g. the Electron mod manager),
+// which should point these at userData/resourcesPath instead.
+const dataRoot = process.cwd()
+const toolsRoot = process.cwd()
+
+const core = createCore(path.join(dataRoot, "config.json"), {
 	useConsoleLogging: cliArgs["--useConsoleLogging"],
 	pauseAfterLogging: cliArgs["--pauseAfterLogging"],
 	doNotPause: cliArgs["--doNotPause"] ?? false, // the CLI pauses on a fatal error by default, unlike embedded callers of createCore()
-	logLevel: cliArgs["--logLevel"]?.length ? cliArgs["--logLevel"] : undefined
+	logLevel: cliArgs["--logLevel"]?.length ? cliArgs["--logLevel"] : undefined,
+	paths: { dataRoot, toolsRoot }
 })
 
 setCurrentCore(core)
@@ -263,7 +270,7 @@ async function doAnalyseModThing() {
 	await core.logger.verbose("Initialising RPKG instance")
 	await core.rpkgInstance.waitForInitialised()
 
-	fs.ensureDirSync(path.join(process.cwd(), "cache"))
+	fs.ensureDirSync(path.join(dataRoot, "cache"))
 	loadRPKGHashCache()
 
 	const modId = cliArgs["--analyseMod"]!
@@ -310,31 +317,31 @@ async function doTheThing() {
 	}
 
 	await core.logger.verbose("Emptying folders")
-	fs.emptyDirSync(path.join(process.cwd(), "staging"))
-	fs.emptyDirSync(path.join(process.cwd(), "temp"))
+	fs.emptyDirSync(path.join(dataRoot, "staging"))
+	fs.emptyDirSync(path.join(dataRoot, "temp"))
 
 	await core.logger.verbose("Beginning discovery")
 	const fileMap = await discover()
-	fs.ensureDirSync(path.join(process.cwd(), "cache"))
+	fs.ensureDirSync(path.join(dataRoot, "cache"))
 
 	await core.logger.verbose("Checking cache versions")
-	if (fs.existsSync(path.join(process.cwd(), "cache", "map.json"))) {
+	if (fs.existsSync(path.join(dataRoot, "cache", "map.json"))) {
 		if (
-			fs.readJSONSync(path.join(process.cwd(), "cache", "map.json")).frameworkVersion < core.FrameworkVersion ||
-			fs.readJSONSync(path.join(process.cwd(), "cache", "map.json")).game !==
+			fs.readJSONSync(path.join(dataRoot, "cache", "map.json")).frameworkVersion < core.FrameworkVersion ||
+			fs.readJSONSync(path.join(dataRoot, "cache", "map.json")).game !==
 				(fs.existsSync(path.join(core.config.retailPath, "Runtime", "chunk0.rpkg"))
 					? md5File.sync(path.join(core.config.retailPath, "..", "MicrosoftGame.Config"))
 					: md5File.sync(path.join(core.config.runtimePath, "..", "Retail", "HITMAN3.exe")))
 		) {
-			fs.emptyDirSync(path.join(process.cwd(), "cache")) // Empty the cache when the framework or game updates
+			fs.emptyDirSync(path.join(dataRoot, "cache")) // Empty the cache when the framework or game updates
 		}
 	}
 
 	await core.logger.verbose("Beginning difference")
-	const { invalidData } = await difference(fs.existsSync(path.join(process.cwd(), "cache", "map.json")) ? fs.readJSONSync(path.join(process.cwd(), "cache", "map.json")).files : {}, fileMap)
+	const { invalidData } = await difference(fs.existsSync(path.join(dataRoot, "cache", "map.json")) ? fs.readJSONSync(path.join(dataRoot, "cache", "map.json")).files : {}, fileMap)
 
 	await core.logger.verbose("Writing cache")
-	fs.writeJSONSync(path.join(process.cwd(), "cache", "map.json"), {
+	fs.writeJSONSync(path.join(dataRoot, "cache", "map.json"), {
 		files: fileMap,
 		frameworkVersion: core.FrameworkVersion,
 		game: fs.existsSync(path.join(core.config.retailPath, "Runtime", "chunk0.rpkg"))

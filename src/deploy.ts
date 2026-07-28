@@ -17,7 +17,7 @@ import analyseMod, {
 } from "./analyseMod"
 import type { DeployInstruction, HMLanguageToolsLOCR, Manifest, ManifestOptionData, ModScript } from "./types"
 import { ModuleKind, ScriptTarget } from "typescript"
-import { FrameworkVersion, config, logger, options, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
+import { FrameworkVersion, config, logger, options, paths, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
 import { copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
 
 import Piscina from "piscina"
@@ -109,9 +109,9 @@ export default async function deploy(
 		// NOT Mod folder exists, mod has no manifest, mod has RPKGs (mod is an RPKG-only mod)
 		if (
 			!(
-				fs.existsSync(path.join(process.cwd(), "Mods", mod)) &&
-				!fs.existsSync(path.join(process.cwd(), "Mods", mod, "manifest.json")) &&
-				klaw(path.join(process.cwd(), "Mods", mod))
+				fs.existsSync(path.join(config.modsPath, mod)) &&
+				!fs.existsSync(path.join(config.modsPath, mod, "manifest.json")) &&
+				klaw(path.join(config.modsPath, mod))
 					.filter((a) => a.stats.isFile())
 					.map((a) => a.path)
 					.some((a) => a.endsWith(".rpkg"))
@@ -119,8 +119,8 @@ export default async function deploy(
 		) {
 			// Find mod with ID in Mods folder, set the current mod to that folder
 			const foundMod = fs
-				.readdirSync(path.join(process.cwd(), "Mods"))
-				.find((a) => fs.existsSync(path.join(process.cwd(), "Mods", a, "manifest.json")) && json5.parse(fs.readFileSync(path.join(process.cwd(), "Mods", a, "manifest.json"), "utf8")).id === mod)
+				.readdirSync(config.modsPath)
+				.find((a) => fs.existsSync(path.join(config.modsPath, a, "manifest.json")) && json5.parse(fs.readFileSync(path.join(config.modsPath, a, "manifest.json"), "utf8")).id === mod)
 
 			if (!foundMod) {
 				await logger.error(`Could not resolve mod ${mod} to its folder in Mods!`)
@@ -130,7 +130,7 @@ export default async function deploy(
 			mod = foundMod
 		} // Essentially, if the mod isn't an RPKG mod, it is referenced by its ID, so this finds the mod folder with the right ID
 
-		if (!fs.existsSync(path.join(process.cwd(), "Mods", mod, "manifest.json"))) {
+		if (!fs.existsSync(path.join(config.modsPath, mod, "manifest.json"))) {
 			const sentryModTransaction = sentryModsTransaction.startChild({
 				op: "stage",
 				description: mod
@@ -139,35 +139,35 @@ export default async function deploy(
 
 			await logger.info(`Staging RPKG mod: ${mod}`)
 
-			for (const chunkFolder of fs.readdirSync(path.join(process.cwd(), "Mods", mod))) {
-				fs.ensureDirSync(path.join(process.cwd(), "staging", chunkFolder))
+			for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, mod))) {
+				fs.ensureDirSync(path.join(paths.dataRoot, "staging", chunkFolder))
 
-				fs.emptyDirSync(path.join(process.cwd(), "temp"))
+				fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
-				for (const contentFile of fs.readdirSync(path.join(process.cwd(), "Mods", mod, chunkFolder))) {
+				for (const contentFile of fs.readdirSync(path.join(config.modsPath, mod, chunkFolder))) {
 					if (
-						invalidatedData.some((a) => a.filePath === path.join(process.cwd(), "Mods", mod, chunkFolder, contentFile)) || // must redeploy, invalid cache
-						!(await copyFromCache(mod, path.join(chunkFolder, contentFile), path.join(process.cwd(), "temp"))) // cache is not available
+						invalidatedData.some((a) => a.filePath === path.join(config.modsPath, mod, chunkFolder, contentFile)) || // must redeploy, invalid cache
+						!(await copyFromCache(mod, path.join(chunkFolder, contentFile), path.join(paths.dataRoot, "temp"))) // cache is not available
 					) {
-						await callRPKGFunction(`-extract_from_rpkg "${path.join(process.cwd(), "Mods", mod, chunkFolder, contentFile)}" -output_path "${path.join(process.cwd(), "temp")}"`)
-						await copyToCache(mod, path.join(process.cwd(), "temp"), path.join(chunkFolder, contentFile))
+						await callRPKGFunction(`-extract_from_rpkg "${path.join(config.modsPath, mod, chunkFolder, contentFile)}" -output_path "${path.join(paths.dataRoot, "temp")}"`)
+						await copyToCache(mod, path.join(paths.dataRoot, "temp"), path.join(chunkFolder, contentFile))
 					}
 				}
 
 				allRPKGTypes[chunkFolder] = "patch"
 
-				const allFiles = klaw(path.join(process.cwd(), "temp"))
+				const allFiles = klaw(path.join(paths.dataRoot, "temp"))
 					.filter((a) => a.stats.isFile())
 					.map((a) => a.path)
 
-				allFiles.forEach((a) => fs.copyFileSync(a, path.join(process.cwd(), "staging", chunkFolder, path.basename(a))))
+				allFiles.forEach((a) => fs.copyFileSync(a, path.join(paths.dataRoot, "staging", chunkFolder, path.basename(a))))
 
-				fs.emptyDirSync(path.join(process.cwd(), "temp"))
+				fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 			}
 
 			sentryModTransaction.finish()
 		} else {
-			const manifest: Manifest = json5.parse(fs.readFileSync(path.join(process.cwd(), "Mods", mod, "manifest.json"), "utf8"))
+			const manifest: Manifest = json5.parse(fs.readFileSync(path.join(config.modsPath, mod, "manifest.json"), "utf8"))
 
 			const sentryModTransaction = sentryModsTransaction.startChild({
 				op: "analyse",
@@ -232,7 +232,7 @@ export default async function deploy(
 				await logger.verbose(`Executing script: ${files[0]}`)
 
 				const compiledScriptPath = ts.compile(
-					files.map((a) => path.join(process.cwd(), "Mods", instruction.cacheFolder, a)),
+					files.map((a) => path.join(config.modsPath, instruction.cacheFolder, a)),
 					{
 						esModuleInterop: true,
 						allowJs: true,
@@ -240,20 +240,20 @@ export default async function deploy(
 						module: ModuleKind.CommonJS,
 						resolveJsonModule: true
 					},
-					path.join(process.cwd(), "Mods", instruction.cacheFolder)
+					path.join(config.modsPath, instruction.cacheFolder)
 				)
 
 				// eslint-disable-next-line @typescript-eslint/no-var-requires
 				const modScript = (await require(compiledScriptPath)) as ModScript
 
-				fs.ensureDirSync(path.join(process.cwd(), "scriptTempFolder"))
+				fs.ensureDirSync(path.join(paths.dataRoot, "scriptTempFolder"))
 
 				await modScript.beforeDeploy(
 					{
 						config,
 						deployInstruction: instruction,
-						modRoot: path.join(process.cwd(), "Mods", instruction.cacheFolder),
-						tempFolder: path.join(process.cwd(), "scriptTempFolder")
+						modRoot: path.join(config.modsPath, instruction.cacheFolder),
+						tempFolder: path.join(paths.dataRoot, "scriptTempFolder")
 					},
 					{
 						rpkg: {
@@ -261,7 +261,7 @@ export default async function deploy(
 							getRPKGOfHash,
 							async extractFileFromRPKG(hash: string, rpkg: string) {
 								await logger.verbose(`Extracting ${hash} from ${rpkg}`)
-								await rpkgInstance.callFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${rpkg}.rpkg`)}" -filter "${hash}" -output_path ${path.join(process.cwd(), "scriptTempFolder")}`)
+								await rpkgInstance.callFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${rpkg}.rpkg`)}" -filter "${hash}" -output_path ${path.join(paths.dataRoot, "scriptTempFolder")}`)
 							}
 						},
 						utils: {
@@ -281,7 +281,7 @@ export default async function deploy(
 					}
 				)
 
-				fs.removeSync(path.join(process.cwd(), "scriptTempFolder"))
+				fs.removeSync(path.join(paths.dataRoot, "scriptTempFolder"))
 			}
 
 			sentryScriptsTransaction.finish()
@@ -336,35 +336,35 @@ export default async function deploy(
 		if (instruction.content.some((a) => a.type === "contract.json")) {
 			contractsORESChunk = await getRPKGOfHash("002B07020D21D727")
 
-			if (invalidatedData.some((a) => a.data.affected.includes("002B07020D21D727")) || !(await copyFromCache(instruction.cacheFolder, "contractsORES", path.join(process.cwd(), "temp2")))) {
+			if (invalidatedData.some((a) => a.data.affected.includes("002B07020D21D727")) || !(await copyFromCache(instruction.cacheFolder, "contractsORES", path.join(paths.dataRoot, "temp2")))) {
 				contractsCacheInvalid = true
 
 				// we need to re-deploy the contracts ORES OR the contracts ORES couldn't be copied from cache
 				// extract the contracts ORES and copy it to the temp2 directory
 
-				fs.emptyDirSync(path.join(process.cwd(), "temp2"))
+				fs.emptyDirSync(path.join(paths.dataRoot, "temp2"))
 
-				if (!fs.existsSync(path.join(process.cwd(), "staging", "chunk0", "002B07020D21D727.ORES"))) {
+				if (!fs.existsSync(path.join(paths.dataRoot, "staging", "chunk0", "002B07020D21D727.ORES"))) {
 					await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${contractsORESChunk}.rpkg`)}" -filter "002B07020D21D727" -output_path temp2`) // Extract the contracts ORES
 				} else {
-					fs.ensureDirSync(path.join(process.cwd(), "temp2", contractsORESChunk, "ORES"))
-					fs.copyFileSync(path.join(process.cwd(), "staging", "chunk0", "002B07020D21D727.ORES"), path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES")) // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
-					fs.copyFileSync(path.join(process.cwd(), "staging", "chunk0", "002B07020D21D727.ORES.meta"), path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta"))
+					fs.ensureDirSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES"))
+					fs.copyFileSync(path.join(paths.dataRoot, "staging", "chunk0", "002B07020D21D727.ORES"), path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES")) // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
+					fs.copyFileSync(path.join(paths.dataRoot, "staging", "chunk0", "002B07020D21D727.ORES.meta"), path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta"))
 				}
 
-				execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES")}"`)
+				execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES")}"`)
 
-				await callRPKGFunction(`-hash_meta_to_json "${path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta")}"`)
+				await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta")}"`)
 			}
 
-			contractsORESContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.JSON"), "utf8"))
-			contractsORESMetaContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta.JSON"), "utf8"))
+			contractsORESContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.JSON"), "utf8"))
+			contractsORESMetaContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta.JSON"), "utf8"))
 		}
 
 		for (const content of instruction.content) {
 			const contentIdentifier = content.source === "disk" ? content.path : content.identifier
 
-			fs.ensureDirSync(path.join(process.cwd(), "staging", `chunk${content.chunk}`))
+			fs.ensureDirSync(path.join(paths.dataRoot, "staging", `chunk${content.chunk}`))
 
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			let entityContent: any
@@ -450,25 +450,25 @@ export default async function deploy(
 						if (content.source === "disk") {
 							await logger.info(`Optimising entity.json file ${contentIdentifier}`)
 
-							fs.ensureDirSync(path.join(process.cwd(), "qn-update"))
+							fs.ensureDirSync(path.join(paths.dataRoot, "qn-update"))
 
 							const comments = Object.entries(entityContent.entities).filter((a) => (a[1] as { type: string | undefined }).type === "comment")
 
 							await getQuickEntityFromVersion(entityContent.quickEntityVersion.value).generate(
 								"HM3",
 								content.path,
-								path.join(process.cwd(), "qn-update", "temp.json"),
-								path.join(process.cwd(), "qn-update", "temp.meta.json"),
-								path.join(process.cwd(), "qn-update", "tblu.json"),
-								path.join(process.cwd(), "qn-update", "tblu.meta.json")
+								path.join(paths.dataRoot, "qn-update", "temp.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.meta.json")
 							)
 
 							await getQuickEntityFromVersion("3.1").convert(
 								"HM3",
-								path.join(process.cwd(), "qn-update", "temp.json"),
-								path.join(process.cwd(), "qn-update", "temp.meta.json"),
-								path.join(process.cwd(), "qn-update", "tblu.json"),
-								path.join(process.cwd(), "qn-update", "tblu.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.meta.json"),
 								content.path
 							)
 
@@ -487,7 +487,7 @@ export default async function deploy(
 								)
 							)
 
-							fs.removeSync(path.join(process.cwd(), "qn-update"))
+							fs.removeSync(path.join(paths.dataRoot, "qn-update"))
 
 							entityContent = LosslessJSON.parse(fs.readFileSync(content.path, "utf8"))
 
@@ -505,25 +505,25 @@ export default async function deploy(
 						if (content.source === "disk") {
 							await logger.info(`Optimising entity.json file ${contentIdentifier}`)
 
-							fs.ensureDirSync(path.join(process.cwd(), "qn-update"))
+							fs.ensureDirSync(path.join(paths.dataRoot, "qn-update"))
 
 							const comments = entityContent.comments
 
 							await getQuickEntityFromVersion(entityContent.quickEntityVersion.value).generate(
 								"HM3",
 								content.path,
-								path.join(process.cwd(), "qn-update", "temp.json"),
-								path.join(process.cwd(), "qn-update", "temp.meta.json"),
-								path.join(process.cwd(), "qn-update", "tblu.json"),
-								path.join(process.cwd(), "qn-update", "tblu.meta.json")
+								path.join(paths.dataRoot, "qn-update", "temp.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.meta.json")
 							)
 
 							await getQuickEntityFromVersion("3.1").convert(
 								"HM3",
-								path.join(process.cwd(), "qn-update", "temp.json"),
-								path.join(process.cwd(), "qn-update", "temp.meta.json"),
-								path.join(process.cwd(), "qn-update", "tblu.json"),
-								path.join(process.cwd(), "qn-update", "tblu.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.meta.json"),
 								content.path
 							)
 
@@ -536,7 +536,7 @@ export default async function deploy(
 								)
 							)
 
-							fs.removeSync(path.join(process.cwd(), "qn-update"))
+							fs.removeSync(path.join(paths.dataRoot, "qn-update"))
 
 							entityContent = LosslessJSON.parse(fs.readFileSync(content.path, "utf8"))
 
@@ -558,7 +558,7 @@ export default async function deploy(
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
-							path.join(process.cwd(), "staging", `chunk${content.chunk}`)
+							path.join(paths.dataRoot, "staging", `chunk${content.chunk}`)
 						)) // cache is not available
 					) {
 						let contentPath
@@ -566,9 +566,9 @@ export default async function deploy(
 						if (content.source === "disk") {
 							contentPath = content.path
 						} else {
-							fs.ensureDirSync(path.join(process.cwd(), "virtual"))
-							fs.writeFileSync(path.join(process.cwd(), "virtual", "entity.json"), Buffer.from(await content.content.arrayBuffer()))
-							contentPath = path.join(process.cwd(), "virtual", "entity.json")
+							fs.ensureDirSync(path.join(paths.dataRoot, "virtual"))
+							fs.writeFileSync(path.join(paths.dataRoot, "virtual", "entity.json"), Buffer.from(await content.content.arrayBuffer()))
+							contentPath = path.join(paths.dataRoot, "virtual", "entity.json")
 						}
 
 						try {
@@ -577,52 +577,52 @@ export default async function deploy(
 							await getQuickEntityFromVersion(entityContent.quickEntityVersion.value).generate(
 								"HM3",
 								contentPath,
-								path.join(process.cwd(), "temp", "temp.TEMP.json"),
-								path.join(process.cwd(), "temp", `${entityContent.tempHash}.TEMP.meta.json`),
-								path.join(process.cwd(), "temp", "temp.TBLU.json"),
-								path.join(process.cwd(), "temp", `${entityContent.tbluHash}.TBLU.meta.json`)
+								path.join(paths.dataRoot, "temp", "temp.TEMP.json"),
+								path.join(paths.dataRoot, "temp", `${entityContent.tempHash}.TEMP.meta.json`),
+								path.join(paths.dataRoot, "temp", "temp.TBLU.json"),
+								path.join(paths.dataRoot, "temp", `${entityContent.tbluHash}.TBLU.meta.json`)
 							)
 						} catch {
 							await logger.error(`Could not generate entity ${contentIdentifier}!`)
 						}
 
-						fs.removeSync(path.join(process.cwd(), "virtual"))
+						fs.removeSync(path.join(paths.dataRoot, "virtual"))
 
 						// Generate the RT source from the QN json
 						execCommand(
-							`"${thirdParty("ResourceTool.exe")}" HM3 generate TEMP "${path.join(process.cwd(), "temp", "temp.TEMP.json")}" "${path.join(
-								process.cwd(),
+							`"${thirdParty("ResourceTool.exe")}" HM3 generate TEMP "${path.join(paths.dataRoot, "temp", "temp.TEMP.json")}" "${path.join(
+								paths.dataRoot,
 								"temp",
 								`${entityContent.tempHash}.TEMP`
 							)}" --simple`
 						)
 						execCommand(
-							`"${thirdParty("ResourceTool.exe")}" HM3 generate TBLU "${path.join(process.cwd(), "temp", "temp.TBLU.json")}" "${path.join(
-								process.cwd(),
+							`"${thirdParty("ResourceTool.exe")}" HM3 generate TBLU "${path.join(paths.dataRoot, "temp", "temp.TBLU.json")}" "${path.join(
+								paths.dataRoot,
 								"temp",
 								`${entityContent.tbluHash}.TBLU`
 							)}" --simple`
 						)
 
-						await callRPKGFunction(`-json_to_hash_meta "${path.join(process.cwd(), "temp", `${entityContent.tempHash}.TEMP.meta.json`)}"`)
-						await callRPKGFunction(`-json_to_hash_meta "${path.join(process.cwd(), "temp", `${entityContent.tbluHash}.TBLU.meta.json`)}"`)
+						await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, "temp", `${entityContent.tempHash}.TEMP.meta.json`)}"`)
+						await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, "temp", `${entityContent.tbluHash}.TBLU.meta.json`)}"`)
 						// Generate the binary files from the RT json
 
-						fs.copyFileSync(path.join(process.cwd(), "temp", `${entityContent.tempHash}.TEMP`), path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${entityContent.tempHash}.TEMP`))
+						fs.copyFileSync(path.join(paths.dataRoot, "temp", `${entityContent.tempHash}.TEMP`), path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${entityContent.tempHash}.TEMP`))
 						fs.copyFileSync(
-							path.join(process.cwd(), "temp", `${entityContent.tempHash}.TEMP.meta`),
-							path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${entityContent.tempHash}.TEMP.meta`)
+							path.join(paths.dataRoot, "temp", `${entityContent.tempHash}.TEMP.meta`),
+							path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${entityContent.tempHash}.TEMP.meta`)
 						)
-						fs.copyFileSync(path.join(process.cwd(), "temp", `${entityContent.tbluHash}.TBLU`), path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${entityContent.tbluHash}.TBLU`))
+						fs.copyFileSync(path.join(paths.dataRoot, "temp", `${entityContent.tbluHash}.TBLU`), path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${entityContent.tbluHash}.TBLU`))
 						fs.copyFileSync(
-							path.join(process.cwd(), "temp", `${entityContent.tbluHash}.TBLU.meta`),
-							path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${entityContent.tbluHash}.TBLU.meta`)
+							path.join(paths.dataRoot, "temp", `${entityContent.tbluHash}.TBLU.meta`),
+							path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${entityContent.tbluHash}.TBLU.meta`)
 						)
 						// Copy the binary files to the staging directory
 
 						await copyToCache(
 							instruction.cacheFolder,
-							path.join(process.cwd(), "temp"),
+							path.join(paths.dataRoot, "temp"),
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`)
 						)
 						// Copy the binary files to the cache
@@ -650,102 +650,102 @@ export default async function deploy(
 
 							await Promise.all([
 								execCommand(
-									`"${path.join(process.cwd(), "Third-Party", "ResourceTool.exe")}" HM3 convert TEMP "${path.join(
-										process.cwd(),
+									`"${path.join(paths.toolsRoot, "Third-Party", "ResourceTool.exe")}" HM3 convert TEMP "${path.join(
+										paths.dataRoot,
 										"qn-update",
 										tempRPKG,
 										"TEMP",
 										`${entityContent.tempHash}.TEMP`
-									)}" "${path.join(process.cwd(), "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP`)}.json" --simple`
+									)}" "${path.join(paths.dataRoot, "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP`)}.json" --simple`
 								),
 								execCommand(
-									`"${path.join(process.cwd(), "Third-Party", "ResourceTool.exe")}" HM3 convert TBLU "${path.join(
-										process.cwd(),
+									`"${path.join(paths.toolsRoot, "Third-Party", "ResourceTool.exe")}" HM3 convert TBLU "${path.join(
+										paths.dataRoot,
 										"qn-update",
 										tbluRPKG,
 										"TBLU",
 										`${entityContent.tbluHash}.TBLU`
-									)}" "${path.join(process.cwd(), "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU`)}.json" --simple`
+									)}" "${path.join(paths.dataRoot, "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU`)}.json" --simple`
 								)
 							])
 
-							await callRPKGFunction(`-hash_meta_to_json "${path.join(process.cwd(), "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.meta`)}"`)
-							await callRPKGFunction(`-hash_meta_to_json "${path.join(process.cwd(), "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.meta`)}"`)
+							await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.meta`)}"`)
+							await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.meta`)}"`)
 
 							if (+entityContent.patchVersion.value < 3) {
 								await getQuickEntityFromPatchVersion(entityContent.patchVersion.value).convert(
 									"HM3",
 									"ids",
-									path.join(process.cwd(), "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.json`),
-									path.join(process.cwd(), "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.meta.JSON`),
-									path.join(process.cwd(), "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.json`),
-									path.join(process.cwd(), "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.meta.JSON`),
+									path.join(paths.dataRoot, "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.json`),
+									path.join(paths.dataRoot, "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.meta.JSON`),
+									path.join(paths.dataRoot, "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.json`),
+									path.join(paths.dataRoot, "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.meta.JSON`),
 									// @ts-expect-error Two different versions of the same function; TypeScript doesn't have a way of overloading a "type-only" function
-									path.join(process.cwd(), "qn-update", "QuickEntityJSON.json")
+									path.join(paths.dataRoot, "qn-update", "QuickEntityJSON.json")
 								) // Generate the QN json from the RT files
 							} else {
 								await getQuickEntityFromPatchVersion(entityContent.patchVersion.value).convert(
 									"HM3",
-									path.join(process.cwd(), "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.json`),
-									path.join(process.cwd(), "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.meta.JSON`),
-									path.join(process.cwd(), "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.json`),
-									path.join(process.cwd(), "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.meta.JSON`),
-									path.join(process.cwd(), "qn-update", "QuickEntityJSON.json")
+									path.join(paths.dataRoot, "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.json`),
+									path.join(paths.dataRoot, "qn-update", tempRPKG, "TEMP", `${entityContent.tempHash}.TEMP.meta.JSON`),
+									path.join(paths.dataRoot, "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.json`),
+									path.join(paths.dataRoot, "qn-update", tbluRPKG, "TBLU", `${entityContent.tbluHash}.TBLU.meta.JSON`),
+									path.join(paths.dataRoot, "qn-update", "QuickEntityJSON.json")
 								) // Generate the QN json from the RT files
 							}
 
-							fs.writeFileSync(path.join(process.cwd(), "qn-update", "patch.json"), LosslessJSON.stringify(entityContent))
+							fs.writeFileSync(path.join(paths.dataRoot, "qn-update", "patch.json"), LosslessJSON.stringify(entityContent))
 
 							await getQuickEntityFromPatchVersion(entityContent.patchVersion.value).applyPatchJSON(
-								path.join(process.cwd(), "qn-update", "QuickEntityJSON.json"),
-								path.join(process.cwd(), "qn-update", "patch.json"),
-								path.join(process.cwd(), "qn-update", "PatchedQuickEntityJSON.json")
+								path.join(paths.dataRoot, "qn-update", "QuickEntityJSON.json"),
+								path.join(paths.dataRoot, "qn-update", "patch.json"),
+								path.join(paths.dataRoot, "qn-update", "PatchedQuickEntityJSON.json")
 							) // Patch the QN json
 
 							await getQuickEntityFromPatchVersion(entityContent.patchVersion.value).generate(
 								"HM3",
-								path.join(process.cwd(), "qn-update", "QuickEntityJSON.json"),
-								path.join(process.cwd(), "qn-update", "temp.json"),
-								path.join(process.cwd(), "qn-update", "temp.meta.json"),
-								path.join(process.cwd(), "qn-update", "tblu.json"),
-								path.join(process.cwd(), "qn-update", "tblu.meta.json")
+								path.join(paths.dataRoot, "qn-update", "QuickEntityJSON.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.meta.json")
 							)
 
 							await getQuickEntityFromVersion("3.1").convert(
 								"HM3",
-								path.join(process.cwd(), "qn-update", "temp.json"),
-								path.join(process.cwd(), "qn-update", "temp.meta.json"),
-								path.join(process.cwd(), "qn-update", "tblu.json"),
-								path.join(process.cwd(), "qn-update", "tblu.meta.json"),
-								path.join(process.cwd(), "qn-update", "QuickEntityJSON-qn31.json")
+								path.join(paths.dataRoot, "qn-update", "temp.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "QuickEntityJSON-qn31.json")
 							)
 
 							await getQuickEntityFromPatchVersion(entityContent.patchVersion.value).generate(
 								"HM3",
-								path.join(process.cwd(), "qn-update", "PatchedQuickEntityJSON.json"),
-								path.join(process.cwd(), "qn-update", "temp.json"),
-								path.join(process.cwd(), "qn-update", "temp.meta.json"),
-								path.join(process.cwd(), "qn-update", "tblu.json"),
-								path.join(process.cwd(), "qn-update", "tblu.meta.json")
+								path.join(paths.dataRoot, "qn-update", "PatchedQuickEntityJSON.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.meta.json")
 							)
 
 							await getQuickEntityFromVersion("3.1").convert(
 								"HM3",
-								path.join(process.cwd(), "qn-update", "temp.json"),
-								path.join(process.cwd(), "qn-update", "temp.meta.json"),
-								path.join(process.cwd(), "qn-update", "tblu.json"),
-								path.join(process.cwd(), "qn-update", "tblu.meta.json"),
-								path.join(process.cwd(), "qn-update", "PatchedQuickEntityJSON-qn31.json")
+								path.join(paths.dataRoot, "qn-update", "temp.json"),
+								path.join(paths.dataRoot, "qn-update", "temp.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.json"),
+								path.join(paths.dataRoot, "qn-update", "tblu.meta.json"),
+								path.join(paths.dataRoot, "qn-update", "PatchedQuickEntityJSON-qn31.json")
 							)
 
 							// @ts-expect-error The method isn't defined on the interface but is defined in the actual shim
 							await getQuickEntityFromVersion("3.1").createPatchJSON(
-								path.join(process.cwd(), "qn-update", "QuickEntityJSON-qn31.json"),
-								path.join(process.cwd(), "qn-update", "PatchedQuickEntityJSON-qn31.json"),
+								path.join(paths.dataRoot, "qn-update", "QuickEntityJSON-qn31.json"),
+								path.join(paths.dataRoot, "qn-update", "PatchedQuickEntityJSON-qn31.json"),
 								content.path
 							)
 
-							fs.removeSync(path.join(process.cwd(), "qn-update"))
+							fs.removeSync(path.join(paths.dataRoot, "qn-update"))
 
 							entityContent = LosslessJSON.parse(fs.readFileSync(content.path, "utf8"))
 							entityContent.path = contentIdentifier
@@ -789,35 +789,35 @@ export default async function deploy(
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
-							path.join(process.cwd(), "temp", oresChunk)
+							path.join(paths.dataRoot, "temp", oresChunk)
 						)) // cache is not available
 					) {
 						await extractOrCopyToTemp(oresChunk, "0057C2C3941115CA", "ORES") // Extract the ORES to temp
 
-						execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES")}"`)
-						const oresContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), "utf8"))
+						execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES")}"`)
+						const oresContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), "utf8"))
 
 						await logger.verbose("Deep merge")
 						const oresToPatch = Object.fromEntries(oresContent.map((a: { Id: string }) => [a.Id, a]))
 						deepMerge(oresToPatch, entityContent)
 						const oresToWrite = Object.entries(oresToPatch).map((a) => ({ ...a[1], Id: a[1].Id || a[0] }))
 
-						fs.writeFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), JSON.stringify(oresToWrite))
-						fs.rmSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES"))
-						execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.json")}"`)
+						fs.writeFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), JSON.stringify(oresToWrite))
+						fs.rmSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES"))
+						execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.json")}"`)
 
 						await copyToCache(
 							instruction.cacheFolder,
-							path.join(process.cwd(), "temp", oresChunk),
+							path.join(paths.dataRoot, "temp", oresChunk),
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`)
 						)
 					}
 
-					execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES")}"`)
-					lastServerSideStates["unlockables"] = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), "utf8"))
+					execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES")}"`)
+					lastServerSideStates["unlockables"] = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), "utf8"))
 
-					fs.copyFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES"), path.join(process.cwd(), "staging", "chunk0", "0057C2C3941115CA.ORES"))
-					fs.copyFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.meta"), path.join(process.cwd(), "staging", "chunk0", "0057C2C3941115CA.ORES.meta"))
+					fs.copyFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES"), path.join(paths.dataRoot, "staging", "chunk0", "0057C2C3941115CA.ORES"))
+					fs.copyFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.meta"), path.join(paths.dataRoot, "staging", "chunk0", "0057C2C3941115CA.ORES.meta"))
 					break
 				}
 				case "repository.json": {
@@ -832,12 +832,12 @@ export default async function deploy(
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
-							path.join(process.cwd(), "temp", repoRPKG)
+							path.join(paths.dataRoot, "temp", repoRPKG)
 						)) // cache is not available
 					) {
 						await extractOrCopyToTemp(repoRPKG, "00204D1AFD76AB13", "REPO") // Extract the REPO to temp
 
-						const repoContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO"), "utf8"))
+						const repoContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO"), "utf8"))
 
 						const repoToPatch = Object.fromEntries(repoContent.map((a: { [x: string]: unknown }) => [a["ID_"], a]))
 						deepMerge(repoToPatch, entityContent)
@@ -845,8 +845,8 @@ export default async function deploy(
 
 						const editedItems = new Set(Object.keys(entityContent))
 
-						await callRPKGFunction(`-hash_meta_to_json "${path.join(process.cwd(), "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta")}"`)
-						const metaContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON"), "utf8"))
+						await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta")}"`)
+						const metaContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON"), "utf8"))
 						for (const repoItem of repoToWrite) {
 							if (editedItems.has(repoItem.ID_)) {
 								if (repoItem.Runtime) {
@@ -872,21 +872,21 @@ export default async function deploy(
 								}
 							}
 						}
-						fs.writeFileSync(path.join(process.cwd(), "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON"), JSON.stringify(metaContent))
-						fs.rmSync(path.join(process.cwd(), "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta"))
-						await callRPKGFunction(`-json_to_hash_meta "${path.join(process.cwd(), "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON")}"`) // Add all runtimes to REPO depends
+						fs.writeFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON"), JSON.stringify(metaContent))
+						fs.rmSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta"))
+						await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON")}"`) // Add all runtimes to REPO depends
 
-						fs.writeFileSync(path.join(process.cwd(), "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO"), JSON.stringify(repoToWrite))
+						fs.writeFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO"), JSON.stringify(repoToWrite))
 
 						await copyToCache(
 							instruction.cacheFolder,
-							path.join(process.cwd(), "temp", repoRPKG),
+							path.join(paths.dataRoot, "temp", repoRPKG),
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`)
 						)
 					}
 
-					fs.copyFileSync(path.join(process.cwd(), "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO"), path.join(process.cwd(), "staging", "chunk0", "00204D1AFD76AB13.REPO"))
-					fs.copyFileSync(path.join(process.cwd(), "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta"), path.join(process.cwd(), "staging", "chunk0", "00204D1AFD76AB13.REPO.meta"))
+					fs.copyFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO"), path.join(paths.dataRoot, "staging", "chunk0", "00204D1AFD76AB13.REPO"))
+					fs.copyFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta"), path.join(paths.dataRoot, "staging", "chunk0", "00204D1AFD76AB13.REPO.meta"))
 					break
 				}
 				case "contract.json": {
@@ -922,7 +922,7 @@ export default async function deploy(
 						contractHash = Object.entries(contractsORESContent).find((a) => a[1] === entityContent.Metadata.Id)![0]
 					}
 
-					fs.writeFileSync(path.join(process.cwd(), "staging", "chunk0", `${contractHash}.JSON`), LosslessJSON.stringify(entityContent)) // Write the actual contract to the staging directory
+					fs.writeFileSync(path.join(paths.dataRoot, "staging", "chunk0", `${contractHash}.JSON`), LosslessJSON.stringify(entityContent)) // Write the actual contract to the staging directory
 					break
 				}
 				case "JSON.patch.json": {
@@ -981,21 +981,21 @@ export default async function deploy(
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
-							path.join(process.cwd(), "temp", rpkgOfFile)
+							path.join(paths.dataRoot, "temp", rpkgOfFile)
 						)) // cache is not available
 					) {
 						await extractOrCopyToTemp(rpkgOfFile, entityContent.file, fileType, `chunk${content.chunk}`) // Extract the JSON to temp
 
 						if (entityContent.type === "ORES") {
-							execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`)}"`)
-							fs.rmSync(path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`))
+							execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`)}"`)
+							fs.rmSync(path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`))
 							fs.renameSync(
-								path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.json`),
-								path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`)
+								path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.json`),
+								path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`)
 							)
 						}
 
-						let fileContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`), "utf8"))
+						let fileContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`), "utf8"))
 
 						if (entityContent.type === "ORES" && Array.isArray(fileContent)) {
 							fileContent = Object.fromEntries(fileContent.map((a) => [a.Id, a])) // Change unlockables ORES to be an object
@@ -1011,38 +1011,38 @@ export default async function deploy(
 
 						if (entityContent.type === "ORES") {
 							fs.renameSync(
-								path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`),
-								path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.json`)
+								path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`),
+								path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.json`)
 							)
-							fs.writeFileSync(path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.json`), JSON.stringify(fileContent))
-							execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.json`)}"`)
+							fs.writeFileSync(path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.json`), JSON.stringify(fileContent))
+							execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.json`)}"`)
 						} else {
-							fs.writeFileSync(path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`), JSON.stringify(fileContent))
+							fs.writeFileSync(path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`), JSON.stringify(fileContent))
 						}
 
 						await copyToCache(
 							instruction.cacheFolder,
-							path.join(process.cwd(), "temp", rpkgOfFile),
+							path.join(paths.dataRoot, "temp", rpkgOfFile),
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`)
 						)
 					}
 
 					if (contractsORESContent[entityContent.file]) {
-						const fileContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`), "utf8"))
+						const fileContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`), "utf8"))
 						lastServerSideStates["contracts"][fileContent.Metadata.Id] = fileContent
 					} else if (entityContent.type === "ORES" && entityContent.file === "0057C2C3941115CA") {
-						execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`)}"`)
-						const fileContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.JSON`), "utf8"))
+						execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`)}"`)
+						const fileContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.JSON`), "utf8"))
 						lastServerSideStates["unlockables"] = fileContent
 					}
 
 					fs.copyFileSync(
-						path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`),
-						path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${entityContent.file}.${fileType}`)
+						path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}`),
+						path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${entityContent.file}.${fileType}`)
 					)
 					fs.copyFileSync(
-						path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.meta`),
-						path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${entityContent.file}.${fileType}.meta`)
+						path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${entityContent.file}.${fileType}.meta`),
+						path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${entityContent.file}.${fileType}.meta`)
 					)
 					break
 				}
@@ -1053,14 +1053,14 @@ export default async function deploy(
 					if (content.source === "disk") {
 						contentFilePath = content.path
 					} else {
-						fs.ensureDirSync(path.join(process.cwd(), "virtual"))
-						fs.writeFileSync(path.join(process.cwd(), "virtual", "material.json"), Buffer.from(await content.content.arrayBuffer()))
-						contentFilePath = path.join(process.cwd(), "virtual", "material.json")
+						fs.ensureDirSync(path.join(paths.dataRoot, "virtual"))
+						fs.writeFileSync(path.join(paths.dataRoot, "virtual", "material.json"), Buffer.from(await content.content.arrayBuffer()))
+						contentFilePath = path.join(paths.dataRoot, "virtual", "material.json")
 					}
 
-					await callRPKGFunction(`-json_to_material "${contentFilePath}" -output_path "${path.join(process.cwd(), "staging", `chunk${content.chunk}`)}"`)
+					await callRPKGFunction(`-json_to_material "${contentFilePath}" -output_path "${path.join(paths.dataRoot, "staging", `chunk${content.chunk}`)}"`)
 
-					fs.removeSync(path.join(process.cwd(), "virtual"))
+					fs.removeSync(path.join(paths.dataRoot, "virtual"))
 					break
 				}
 				case "texture.tga": {
@@ -1071,10 +1071,10 @@ export default async function deploy(
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
-							path.join(process.cwd(), "temp", `chunk${content.chunk}`)
+							path.join(paths.dataRoot, "temp", `chunk${content.chunk}`)
 						)) // cache is not available
 					) {
-						fs.ensureDirSync(path.join(process.cwd(), "temp", `chunk${content.chunk}`))
+						fs.ensureDirSync(path.join(paths.dataRoot, "temp", `chunk${content.chunk}`))
 
 						if ((content.source === "disk" && path.basename(content.path).split(".")[0].split("~").length > 1) || (content.source === "virtual" && content.extraInformation.texdHash)) {
 							// TEXT and TEXD
@@ -1083,20 +1083,20 @@ export default async function deploy(
 							if (content.source === "disk") {
 								contentFilePath = content.path
 							} else {
-								fs.ensureDirSync(path.join(process.cwd(), "virtual"))
-								fs.writeFileSync(path.join(process.cwd(), "virtual", "texture.tga"), Buffer.from(await content.content.arrayBuffer()))
-								fs.writeFileSync(path.join(process.cwd(), "virtual", "texture.tga.meta"), Buffer.from(await content.extraInformation.textureMeta!.arrayBuffer()))
-								contentFilePath = path.join(process.cwd(), "virtual", "texture.tga")
+								fs.ensureDirSync(path.join(paths.dataRoot, "virtual"))
+								fs.writeFileSync(path.join(paths.dataRoot, "virtual", "texture.tga"), Buffer.from(await content.content.arrayBuffer()))
+								fs.writeFileSync(path.join(paths.dataRoot, "virtual", "texture.tga.meta"), Buffer.from(await content.extraInformation.textureMeta!.arrayBuffer()))
+								contentFilePath = path.join(paths.dataRoot, "virtual", "texture.tga")
 							}
 
 							execCommand(
 								`"${thirdParty("HMTextureTools")}" rebuild H3 "${contentFilePath}" --metapath "${`${contentFilePath}.meta`}" "${path.join(
-									process.cwd(),
+									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
 									`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[0] : content.extraInformation.textHash}.TEXT`
 								)}" --rebuildboth --texdoutput "${path.join(
-									process.cwd(),
+									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
 									`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[1] : content.extraInformation.texdHash}.TEXD`
@@ -1105,7 +1105,7 @@ export default async function deploy(
 
 							fs.writeFileSync(
 								path.join(
-									process.cwd(),
+									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
 									`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[0] : content.extraInformation.textHash}.TEXT.meta.JSON`
@@ -1131,7 +1131,7 @@ export default async function deploy(
 
 							fs.writeFileSync(
 								path.join(
-									process.cwd(),
+									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
 									`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[1] : content.extraInformation.texdHash}.TEXD.meta.JSON`
@@ -1152,7 +1152,7 @@ export default async function deploy(
 
 							await callRPKGFunction(
 								`-json_to_hash_meta "${path.join(
-									process.cwd(),
+									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
 									`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[0] : content.extraInformation.textHash}.TEXT.meta.JSON`
@@ -1161,14 +1161,14 @@ export default async function deploy(
 
 							await callRPKGFunction(
 								`-json_to_hash_meta "${path.join(
-									process.cwd(),
+									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
 									`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[1] : content.extraInformation.texdHash}.TEXD.meta.JSON`
 								)}"`
 							) // Rebuild the TEXD meta
 
-							fs.removeSync(path.join(process.cwd(), "virtual"))
+							fs.removeSync(path.join(paths.dataRoot, "virtual"))
 						} else {
 							// TEXT only
 
@@ -1176,15 +1176,15 @@ export default async function deploy(
 							if (content.source === "disk") {
 								contentFilePath = content.path
 							} else {
-								fs.ensureDirSync(path.join(process.cwd(), "virtual"))
-								fs.writeFileSync(path.join(process.cwd(), "virtual", "texture.tga"), Buffer.from(await content.content.arrayBuffer()))
-								fs.writeFileSync(path.join(process.cwd(), "virtual", "texture.tga.meta"), Buffer.from(await content.extraInformation.textureMeta!.arrayBuffer()))
-								contentFilePath = path.join(process.cwd(), "virtual", "texture.tga")
+								fs.ensureDirSync(path.join(paths.dataRoot, "virtual"))
+								fs.writeFileSync(path.join(paths.dataRoot, "virtual", "texture.tga"), Buffer.from(await content.content.arrayBuffer()))
+								fs.writeFileSync(path.join(paths.dataRoot, "virtual", "texture.tga.meta"), Buffer.from(await content.extraInformation.textureMeta!.arrayBuffer()))
+								contentFilePath = path.join(paths.dataRoot, "virtual", "texture.tga")
 							}
 
 							execCommand(
 								`"${thirdParty("HMTextureTools")}" rebuild H3 "${contentFilePath}" --metapath "${`${contentFilePath}.meta`}" "${path.join(
-									process.cwd(),
+									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
 									`${path.basename(contentFilePath).split(".")[0]}.TEXT`
@@ -1193,7 +1193,7 @@ export default async function deploy(
 
 							fs.writeFileSync(
 								path.join(
-									process.cwd(),
+									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
 									`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[0] : content.extraInformation.textHash}.TEXT.meta.json`
@@ -1214,35 +1214,35 @@ export default async function deploy(
 
 							await callRPKGFunction(
 								`-json_to_hash_meta "${path.join(
-									process.cwd(),
+									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
 									`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[0] : content.extraInformation.textHash}.TEXT.meta.json`
 								)}"`
 							) // Rebuild the meta
 
-							fs.removeSync(path.join(process.cwd(), "virtual"))
+							fs.removeSync(path.join(paths.dataRoot, "virtual"))
 						}
 
 						await copyToCache(
 							instruction.cacheFolder,
-							path.join(process.cwd(), "temp", `chunk${content.chunk}`),
+							path.join(paths.dataRoot, "temp", `chunk${content.chunk}`),
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`)
 						)
 					}
 
-					fs.ensureDirSync(path.join(process.cwd(), "staging", `chunk${content.chunk}`))
+					fs.ensureDirSync(path.join(paths.dataRoot, "staging", `chunk${content.chunk}`))
 
 					// Copy TEXT stuff
 					fs.copyFileSync(
 						path.join(
-							process.cwd(),
+							paths.dataRoot,
 							"temp",
 							`chunk${content.chunk}`,
 							`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[0] : content.extraInformation.textHash}.TEXT`
 						),
 						path.join(
-							process.cwd(),
+							paths.dataRoot,
 							"staging",
 							`chunk${content.chunk}`,
 							`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[0] : content.extraInformation.textHash}.TEXT`
@@ -1250,13 +1250,13 @@ export default async function deploy(
 					)
 					fs.copyFileSync(
 						path.join(
-							process.cwd(),
+							paths.dataRoot,
 							"temp",
 							`chunk${content.chunk}`,
 							`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[0] : content.extraInformation.textHash}.TEXT.meta`
 						),
 						path.join(
-							process.cwd(),
+							paths.dataRoot,
 							"staging",
 							`chunk${content.chunk}`,
 							`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[0] : content.extraInformation.textHash}.TEXT.meta`
@@ -1267,13 +1267,13 @@ export default async function deploy(
 					if ((content.source === "disk" && path.basename(content.path).split(".")[0].split("~").length > 1) || (content.source === "virtual" && content.extraInformation.texdHash)) {
 						fs.copyFileSync(
 							path.join(
-								process.cwd(),
+								paths.dataRoot,
 								"temp",
 								`chunk${content.chunk}`,
 								`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[1] : content.extraInformation.texdHash}.TEXD`
 							),
 							path.join(
-								process.cwd(),
+								paths.dataRoot,
 								"staging",
 								`chunk${content.chunk}`,
 								`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[1] : content.extraInformation.texdHash}.TEXD`
@@ -1281,13 +1281,13 @@ export default async function deploy(
 						)
 						fs.copyFileSync(
 							path.join(
-								process.cwd(),
+								paths.dataRoot,
 								"temp",
 								`chunk${content.chunk}`,
 								`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[1] : content.extraInformation.texdHash}.TEXD.meta`
 							),
 							path.join(
-								process.cwd(),
+								paths.dataRoot,
 								"staging",
 								`chunk${content.chunk}`,
 								`${content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[1] : content.extraInformation.texdHash}.TEXD.meta`
@@ -1320,10 +1320,10 @@ export default async function deploy(
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
-							path.join(process.cwd(), "temp", `chunk${content.chunk}`)
+							path.join(paths.dataRoot, "temp", `chunk${content.chunk}`)
 						)) // cache is not available
 					) {
-						fs.ensureDirSync(path.join(process.cwd(), "temp", `chunk${content.chunk}`))
+						fs.ensureDirSync(path.join(paths.dataRoot, "temp", `chunk${content.chunk}`))
 
 						const rpkgOfFile = await getRPKGOfHash(runtimeID)
 
@@ -1333,35 +1333,35 @@ export default async function deploy(
 						if (content.source === "disk") {
 							contentFilePath = content.path
 						} else {
-							fs.ensureDirSync(path.join(process.cwd(), "virtual"))
-							fs.writeFileSync(path.join(process.cwd(), "virtual", "patch.delta"), Buffer.from(await content.content.arrayBuffer()))
-							contentFilePath = path.join(process.cwd(), "virtual", "patch.delta")
+							fs.ensureDirSync(path.join(paths.dataRoot, "virtual"))
+							fs.writeFileSync(path.join(paths.dataRoot, "virtual", "patch.delta"), Buffer.from(await content.content.arrayBuffer()))
+							contentFilePath = path.join(paths.dataRoot, "virtual", "patch.delta")
 						}
 
 						execCommand(
-							`"${thirdParty("xdelta3")}" -d -s "${path.join(process.cwd(), "temp", rpkgOfFile, fileType, `${runtimeID}.${fileType}`)}" "${contentFilePath}" "${path.join(
-								process.cwd(),
+							`"${thirdParty("xdelta3")}" -d -s "${path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${runtimeID}.${fileType}`)}" "${contentFilePath}" "${path.join(
+								paths.dataRoot,
 								"temp",
 								`chunk${content.chunk}`,
 								`${runtimeID}.${fileType}`
 							)}"`
 						) // Patch file with delta
 
-						fs.removeSync(path.join(process.cwd(), "virtual"))
+						fs.removeSync(path.join(paths.dataRoot, "virtual"))
 
 						await copyToCache(
 							instruction.cacheFolder,
-							path.join(process.cwd(), "temp", `chunk${content.chunk}`),
+							path.join(paths.dataRoot, "temp", `chunk${content.chunk}`),
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`)
 						)
 					}
 
-					fs.ensureDirSync(path.join(process.cwd(), "staging", `chunk${content.chunk}`))
+					fs.ensureDirSync(path.join(paths.dataRoot, "staging", `chunk${content.chunk}`))
 
 					// Copy patched file to staging
 					fs.copyFileSync(
-						path.join(process.cwd(), "temp", `chunk${content.chunk}`, `${runtimeID}.${fileType}`),
-						path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${runtimeID}.${fileType}`)
+						path.join(paths.dataRoot, "temp", `chunk${content.chunk}`, `${runtimeID}.${fileType}`),
+						path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${runtimeID}.${fileType}`)
 					)
 					break
 				}
@@ -1396,40 +1396,40 @@ export default async function deploy(
 
 					if (
 						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
-						!(await copyFromCache(instruction.cacheFolder, path.join(`chunk${content.chunk}`, await xxhash3(contentIdentifier)), path.join(process.cwd(), "temp", `chunk${content.chunk}`))) // cache is not available
+						!(await copyFromCache(instruction.cacheFolder, path.join(`chunk${content.chunk}`, await xxhash3(contentIdentifier)), path.join(paths.dataRoot, "temp", `chunk${content.chunk}`))) // cache is not available
 					) {
-						fs.ensureDirSync(path.join(process.cwd(), "temp", `chunk${content.chunk}`))
+						fs.ensureDirSync(path.join(paths.dataRoot, "temp", `chunk${content.chunk}`))
 
 						let contentFilePath
 						if (content.source === "disk") {
 							contentFilePath = content.path
 						} else {
-							fs.ensureDirSync(path.join(process.cwd(), "virtual"))
-							fs.writeFileSync(path.join(process.cwd(), "virtual", content.type), Buffer.from(await content.content.arrayBuffer()))
-							contentFilePath = path.join(process.cwd(), "virtual", content.type)
+							fs.ensureDirSync(path.join(paths.dataRoot, "virtual"))
+							fs.writeFileSync(path.join(paths.dataRoot, "virtual", content.type), Buffer.from(await content.content.arrayBuffer()))
+							contentFilePath = path.join(paths.dataRoot, "virtual", content.type)
 						}
 
 						execCommand(
 							`"${thirdParty("HMLanguageTools")}" rebuild H3 ${binaryType} "${contentFilePath}" "${path.join(
-								process.cwd(),
+								paths.dataRoot,
 								"temp",
 								`chunk${content.chunk}`,
 								`${hash}.${binaryType}`
-							)}" --metapath "${path.join(process.cwd(), "temp", `chunk${content.chunk}`, `${hash}.${binaryType}.meta.json`)}"`
+							)}" --metapath "${path.join(paths.dataRoot, "temp", `chunk${content.chunk}`, `${hash}.${binaryType}.meta.json`)}"`
 						)
 
-						fs.removeSync(path.join(process.cwd(), "virtual"))
+						fs.removeSync(path.join(paths.dataRoot, "virtual"))
 
-						await copyToCache(instruction.cacheFolder, path.join(process.cwd(), "temp", `chunk${content.chunk}`), path.join(`chunk${content.chunk}`, await xxhash3(contentIdentifier)))
+						await copyToCache(instruction.cacheFolder, path.join(paths.dataRoot, "temp", `chunk${content.chunk}`), path.join(`chunk${content.chunk}`, await xxhash3(contentIdentifier)))
 					}
 
-					fs.ensureDirSync(path.join(process.cwd(), "staging", `chunk${content.chunk}`))
+					fs.ensureDirSync(path.join(paths.dataRoot, "staging", `chunk${content.chunk}`))
 
 					// Copy converted files
-					fs.copyFileSync(path.join(process.cwd(), "temp", `chunk${content.chunk}`, `${hash}.${binaryType}`), path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${hash}.${binaryType}`))
+					fs.copyFileSync(path.join(paths.dataRoot, "temp", `chunk${content.chunk}`, `${hash}.${binaryType}`), path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${hash}.${binaryType}`))
 					fs.copyFileSync(
-						path.join(process.cwd(), "temp", `chunk${content.chunk}`, `${hash}.${binaryType}.meta.json`),
-						path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${hash}.${binaryType}.meta.json`)
+						path.join(paths.dataRoot, "temp", `chunk${content.chunk}`, `${hash}.${binaryType}.meta.json`),
+						path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${hash}.${binaryType}.meta.json`)
 					)
 					break
 				}
@@ -1441,8 +1441,8 @@ export default async function deploy(
 					) {
 						fs.writeFileSync(
 							content.source === "disk"
-								? path.join(process.cwd(), "staging", `chunk${content.chunk}`, path.basename(content.path))
-								: path.join(process.cwd(), "staging", `chunk${content.chunk}`, `${content.extraInformation.runtimeID!}.${content.extraInformation.fileType!}`),
+								? path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, path.basename(content.path))
+								: path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, `${content.extraInformation.runtimeID!}.${content.extraInformation.fileType!}`),
 							content.source === "disk" ? fs.readFileSync(content.path) : Buffer.from(await content.content.arrayBuffer())
 						)
 					}
@@ -1451,7 +1451,7 @@ export default async function deploy(
 
 			sentryContentFileTransaction.finish()
 
-			fs.emptyDirSync(path.join(process.cwd(), "temp"))
+			fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 		}
 
 		if (instruction.content.some((a) => a.type === "contract.json")) {
@@ -1460,32 +1460,32 @@ export default async function deploy(
 			if (contractsCacheInvalid) {
 				// we need to re-deploy the contracts ORES OR the contracts ORES couldn't be copied from cache
 
-				fs.writeFileSync(path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta.JSON"), JSON.stringify(contractsORESMetaContent))
-				fs.rmSync(path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta"))
-				await callRPKGFunction(`-json_to_hash_meta "${path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta.JSON")}"`) // Rebuild the ORES meta
+				fs.writeFileSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta.JSON"), JSON.stringify(contractsORESMetaContent))
+				fs.rmSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta"))
+				await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta.JSON")}"`) // Rebuild the ORES meta
 
-				fs.writeFileSync(path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.JSON"), JSON.stringify(contractsORESContent))
-				fs.rmSync(path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES"))
-				execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.json")}"`) // Rebuild the ORES
+				fs.writeFileSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.JSON"), JSON.stringify(contractsORESContent))
+				fs.rmSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES"))
+				execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.json")}"`) // Rebuild the ORES
 
-				await copyToCache(instruction.cacheFolder, path.join(process.cwd(), "temp2"), "contractsORES")
+				await copyToCache(instruction.cacheFolder, path.join(paths.dataRoot, "temp2"), "contractsORES")
 			}
 
-			fs.copyFileSync(path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES"), path.join(process.cwd(), "staging", "chunk0", "002B07020D21D727.ORES"))
-			fs.copyFileSync(path.join(process.cwd(), "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta"), path.join(process.cwd(), "staging", "chunk0", "002B07020D21D727.ORES.meta")) // Copy the ORES to the staging directory
+			fs.copyFileSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES"), path.join(paths.dataRoot, "staging", "chunk0", "002B07020D21D727.ORES"))
+			fs.copyFileSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta"), path.join(paths.dataRoot, "staging", "chunk0", "002B07020D21D727.ORES.meta")) // Copy the ORES to the staging directory
 
-			fs.removeSync(path.join(process.cwd(), "temp2"))
+			fs.removeSync(path.join(paths.dataRoot, "temp2"))
 		}
 
 		/* ------------------------------ Copy chunk meta to staging folder ----------------------------- */
 		for (const [rpkg, data] of Object.entries(instruction.rpkgTypes)) {
 			if (data.type === "base") {
-				fs.ensureDirSync(path.join(process.cwd(), "staging", rpkg))
+				fs.ensureDirSync(path.join(paths.dataRoot, "staging", rpkg))
 
 				if (typeof data.chunkMeta === "string") {
-					fs.copyFileSync(data.chunkMeta, path.join(process.cwd(), "staging", rpkg, `${rpkg}.meta`))
+					fs.copyFileSync(data.chunkMeta, path.join(paths.dataRoot, "staging", rpkg, `${rpkg}.meta`))
 				} else if (data.chunkMeta instanceof Blob) {
-					fs.writeFileSync(path.join(process.cwd(), "staging", rpkg, `${rpkg}.meta`), Buffer.from(await data.chunkMeta.arrayBuffer()))
+					fs.writeFileSync(path.join(paths.dataRoot, "staging", rpkg, `${rpkg}.meta`), Buffer.from(await data.chunkMeta.arrayBuffer()))
 				}
 			}
 
@@ -1532,9 +1532,12 @@ export default async function deploy(
 					// in-memory core - explicitly hand over the config/logging setup so the
 					// worker can bootstrap its own Core instead of (as before core.ts became a
 					// factory) implicitly re-deriving the same thing from process.argv/config.json
-					// on the assumption that they'd always match.
+					// on the assumption that they'd always match. paths has to be handed over
+					// the same way now that it's an injected value instead of process.cwd() (see
+					// LEI-130) - the worker's realm has no access to this thread's `paths` either.
 					config,
-					coreOptions: options
+					coreOptions: options,
+					paths
 				})
 			})
 		) // Run each patch in the worker queue and wait for all of them to finish
@@ -1556,19 +1559,19 @@ export default async function deploy(
 			})
 			configureSentryScope(sentryBlobsTransaction)
 
-			fs.emptyDirSync(path.join(process.cwd(), "temp"))
+			fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
-			fs.ensureDirSync(path.join(process.cwd(), "staging", "chunk0"))
+			fs.ensureDirSync(path.join(paths.dataRoot, "staging", "chunk0"))
 
 			const oresChunk = await getRPKGOfHash("00858D45F5F9E3CA")
 
 			await extractOrCopyToTemp(oresChunk, "00858D45F5F9E3CA", "ORES") // Extract the ORES to temp
 
-			execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES")}"`)
-			const oresContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.JSON"), "utf8"))
+			execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES")}"`)
+			const oresContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.JSON"), "utf8"))
 
-			await callRPKGFunction(`-hash_meta_to_json "${path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta")}"`)
-			const metaContent = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta.JSON"), "utf8"))
+			await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta")}"`)
+			const metaContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta.JSON"), "utf8"))
 
 			for (const blob of instruction.blobs) {
 				let blobHash: string
@@ -1605,7 +1608,7 @@ export default async function deploy(
 					fs.copyFileSync(
 						blob.filePath,
 						path.join(
-							process.cwd(),
+							paths.dataRoot,
 							"staging",
 							"chunk0",
 							`${blobHash}.${
@@ -1620,7 +1623,7 @@ export default async function deploy(
 				} else {
 					fs.writeFileSync(
 						path.join(
-							process.cwd(),
+							paths.dataRoot,
 							"staging",
 							"chunk0",
 							`${blobHash}.${blob.filetype === "json" ? "JSON" : blob.filetype.startsWith("jp") || blob.filetype === "png" ? "GFXI" : blob.filetype.toUpperCase()}`
@@ -1631,20 +1634,20 @@ export default async function deploy(
 			}
 
 			// Rebuild the meta
-			fs.writeFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta.JSON"), JSON.stringify(metaContent))
-			fs.rmSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta"))
-			await callRPKGFunction(`-json_to_hash_meta "${path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta.JSON")}"`)
+			fs.writeFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta.JSON"), JSON.stringify(metaContent))
+			fs.rmSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta"))
+			await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta.JSON")}"`)
 
 			// Rebuild the ORES
-			fs.writeFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.JSON"), JSON.stringify(oresContent))
-			fs.rmSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES"))
-			execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.json")}"`)
+			fs.writeFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.JSON"), JSON.stringify(oresContent))
+			fs.rmSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES"))
+			execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.json")}"`)
 
 			// Copy the ORES to the staging directory
-			fs.copyFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES"), path.join(process.cwd(), "staging", "chunk0", "00858D45F5F9E3CA.ORES"))
-			fs.copyFileSync(path.join(process.cwd(), "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta"), path.join(process.cwd(), "staging", "chunk0", "00858D45F5F9E3CA.ORES.meta"))
+			fs.copyFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES"), path.join(paths.dataRoot, "staging", "chunk0", "00858D45F5F9E3CA.ORES"))
+			fs.copyFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "00858D45F5F9E3CA.ORES.meta"), path.join(paths.dataRoot, "staging", "chunk0", "00858D45F5F9E3CA.ORES.meta"))
 
-			fs.emptyDirSync(path.join(process.cwd(), "temp"))
+			fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
 			sentryBlobsTransaction.finish()
 		}
@@ -1680,21 +1683,21 @@ export default async function deploy(
 					// If cache hit
 					if (
 						fs.existsSync(
-							path.join(process.cwd(), "cache", "global", path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`))
+							path.join(paths.dataRoot, "cache", "global", path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`))
 						)
 					) {
 						await logger.debug(`Copying dependency ${dependencyID} from cache`)
 
 						rust_utils.stageDependenciesFrom(
-							path.join(process.cwd(), "cache", "global", path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`)),
-							`chunk${dependencyChunk}`
+							path.join(paths.dataRoot, "cache", "global", path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`)),
+							path.join(paths.dataRoot, "staging", `chunk${dependencyChunk}`)
 						)
 					} else {
 						// no cache yet
 
 						await logger.debug(`Extracting dependency ${dependencyID}`)
 
-						fs.emptyDirSync(path.join(process.cwd(), "temp"))
+						fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
 						await callRPKGFunction(
 							`-${
@@ -1702,11 +1705,11 @@ export default async function deploy(
 							} "${path.join(config.runtimePath)}" -filter "${dependencyID}" -output_path temp`
 						)
 
-						await copyToCache("global", path.join(process.cwd(), "temp"), path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`))
+						await copyToCache("global", path.join(paths.dataRoot, "temp"), path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`))
 
-						rust_utils.stageDependenciesFrom("temp", `chunk${dependencyChunk}`)
+						rust_utils.stageDependenciesFrom(path.join(paths.dataRoot, "temp"), path.join(paths.dataRoot, "staging", `chunk${dependencyChunk}`))
 
-						fs.emptyDirSync(path.join(process.cwd(), "temp"))
+						fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 					}
 				}
 			}
@@ -1763,15 +1766,15 @@ export default async function deploy(
 			configureSentryScope(sentryLocalisedLinesTransaction)
 
 			for (const lineHash of Object.keys(instruction.manifestSources.localisedLines)) {
-				fs.emptyDirSync(path.join(process.cwd(), "temp", "chunk0"))
-				fs.ensureDirSync(path.join(process.cwd(), "staging", "chunk0"))
+				fs.emptyDirSync(path.join(paths.dataRoot, "temp", "chunk0"))
+				fs.ensureDirSync(path.join(paths.dataRoot, "staging", "chunk0"))
 
 				if (
 					invalidatedData.some((a) => a.data.affected.includes(lineHash)) ||
-					!(await copyFromCache(instruction.cacheFolder, path.join("localisedLines", lineHash), path.join(process.cwd(), "temp")))
+					!(await copyFromCache(instruction.cacheFolder, path.join("localisedLines", lineHash), path.join(paths.dataRoot, "temp")))
 				) {
 					fs.writeFileSync(
-						path.join(process.cwd(), "temp", "chunk0", `${lineHash}.LINE`),
+						path.join(paths.dataRoot, "temp", "chunk0", `${lineHash}.LINE`),
 						Buffer.from(
 							`${hexflip(
 								crc32(instruction.manifestSources.localisedLines[lineHash].toUpperCase())
@@ -1783,7 +1786,7 @@ export default async function deploy(
 					) // Create the LINE file
 
 					fs.writeFileSync(
-						path.join(process.cwd(), "temp", "chunk0", `${lineHash}.LINE.meta.JSON`),
+						path.join(paths.dataRoot, "temp", "chunk0", `${lineHash}.LINE.meta.JSON`),
 						JSON.stringify({
 							hash_value: lineHash,
 							hash_offset: 163430439,
@@ -1803,13 +1806,13 @@ export default async function deploy(
 						})
 					)
 
-					await callRPKGFunction(`-json_to_hash_meta "${path.join(process.cwd(), "temp", "chunk0", `${lineHash}.LINE.meta.JSON`)}"`) // Rebuild the meta
+					await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, "temp", "chunk0", `${lineHash}.LINE.meta.JSON`)}"`) // Rebuild the meta
 
-					await copyToCache(instruction.cacheFolder, path.join(process.cwd(), "temp"), path.join("localisedLines", lineHash))
+					await copyToCache(instruction.cacheFolder, path.join(paths.dataRoot, "temp"), path.join("localisedLines", lineHash))
 				}
 
-				fs.copySync(path.join(process.cwd(), "temp"), path.join(process.cwd(), "staging"))
-				fs.emptyDirSync(path.join(process.cwd(), "temp"))
+				fs.copySync(path.join(paths.dataRoot, "temp"), path.join(paths.dataRoot, "staging"))
+				fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 			}
 
 			sentryLocalisedLinesTransaction.finish()
@@ -1828,7 +1831,7 @@ export default async function deploy(
 				await logger.verbose(`Executing script: ${files[0]}`)
 
 				const compiledScriptPath = ts.compile(
-					files.map((a) => path.join(process.cwd(), "Mods", instruction.cacheFolder, a)),
+					files.map((a) => path.join(config.modsPath, instruction.cacheFolder, a)),
 					{
 						esModuleInterop: true,
 						allowJs: true,
@@ -1836,20 +1839,20 @@ export default async function deploy(
 						module: ModuleKind.CommonJS,
 						resolveJsonModule: true
 					},
-					path.join(process.cwd(), "Mods", instruction.cacheFolder)
+					path.join(config.modsPath, instruction.cacheFolder)
 				)
 
 				// eslint-disable-next-line @typescript-eslint/no-var-requires
 				const modScript = (await require(compiledScriptPath)) as ModScript
 
-				fs.ensureDirSync(path.join(process.cwd(), "scriptTempFolder"))
+				fs.ensureDirSync(path.join(paths.dataRoot, "scriptTempFolder"))
 
 				await modScript.afterDeploy(
 					{
 						config,
 						deployInstruction: instruction,
-						modRoot: path.join(process.cwd(), "Mods", instruction.cacheFolder),
-						tempFolder: path.join(process.cwd(), "scriptTempFolder")
+						modRoot: path.join(config.modsPath, instruction.cacheFolder),
+						tempFolder: path.join(paths.dataRoot, "scriptTempFolder")
 					},
 					{
 						rpkg: {
@@ -1857,7 +1860,7 @@ export default async function deploy(
 							getRPKGOfHash,
 							async extractFileFromRPKG(hash: string, rpkg: string) {
 								await logger.verbose(`Extracting ${hash} from ${rpkg}`)
-								await rpkgInstance.callFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${rpkg}.rpkg`)}" -filter "${hash}" -output_path ${path.join(process.cwd(), "scriptTempFolder")}`)
+								await rpkgInstance.callFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${rpkg}.rpkg`)}" -filter "${hash}" -output_path ${path.join(paths.dataRoot, "scriptTempFolder")}`)
 							}
 						},
 						utils: {
@@ -1877,7 +1880,7 @@ export default async function deploy(
 					}
 				)
 
-				fs.removeSync(path.join(process.cwd(), "scriptTempFolder"))
+				fs.removeSync(path.join(paths.dataRoot, "scriptTempFolder"))
 			}
 
 			sentryScriptsTransaction.finish()
@@ -1889,7 +1892,7 @@ export default async function deploy(
 	sentryModsTransaction.finish()
 
 	if (config.outputToSeparateDirectory) {
-		fs.emptyDirSync(path.join(process.cwd(), "Output"))
+		fs.emptyDirSync(path.join(paths.dataRoot, "Output"))
 	} // Make output folder
 
 	/* ---------------------------------------------------------------------------------------------- */
@@ -1902,13 +1905,13 @@ export default async function deploy(
 		})
 		configureSentryScope(sentryContractDestinations)
 
-		fs.emptyDirSync(path.join(process.cwd(), "temp"))
+		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
 		const rpkgOfDestinations = await getRPKGOfHash("004F4B738474CEAD")
 
 		await extractOrCopyToTemp(rpkgOfDestinations, "004F4B738474CEAD", "JSON")
 
-		const registry = fs.readJSONSync(path.join(process.cwd(), "temp", rpkgOfDestinations, "JSON", "004F4B738474CEAD.JSON"))
+		const registry = fs.readJSONSync(path.join(paths.dataRoot, "temp", rpkgOfDestinations, "JSON", "004F4B738474CEAD.JSON"))
 
 		for (const { id, before, after, context } of contractsToAddToDestinations) {
 			await logger.debug(`Adding contract ${id} to Destinations`)
@@ -1956,9 +1959,9 @@ export default async function deploy(
 			}
 		}
 
-		fs.ensureDirSync(path.join(process.cwd(), "staging", "chunk0"))
+		fs.ensureDirSync(path.join(paths.dataRoot, "staging", "chunk0"))
 
-		fs.writeJSONSync(path.join(process.cwd(), "staging", "chunk0", "004F4B738474CEAD.JSON"), registry)
+		fs.writeJSONSync(path.join(paths.dataRoot, "staging", "chunk0", "004F4B738474CEAD.JSON"), registry)
 
 		sentryContractDestinations.finish()
 	}
@@ -1975,18 +1978,18 @@ export default async function deploy(
 	for (const entry of Object.entries(WWEVpatches)) {
 		await logger.debug(`Patching WWEV ${entry[0]}`)
 
-		fs.emptyDirSync(path.join(process.cwd(), "temp"))
+		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
 		const WWEVhash = entry[0]
 
 		const rpkgOfWWEV = await getRPKGOfHash(WWEVhash)
 
-		if (invalidatedData.some((a) => a.data.affected.includes(WWEVhash)) || !(await copyFromCache("global", path.join("WWEV", WWEVhash), path.join(process.cwd(), "temp")))) {
+		if (invalidatedData.some((a) => a.data.affected.includes(WWEVhash)) || !(await copyFromCache("global", path.join("WWEV", WWEVhash), path.join(paths.dataRoot, "temp")))) {
 			// we need to re-deploy WWEV OR WWEV data couldn't be copied from cache
 
 			await callRPKGFunction(`-extract_wwev_to_ogg_from "${path.join(config.runtimePath)}" -filter "${WWEVhash}" -output_path temp`) // Extract the WWEV
 
-			const workingPath = path.join(process.cwd(), "temp", "WWEV", `${rpkgOfWWEV}.rpkg`, fs.readdirSync(path.join(process.cwd(), "temp", "WWEV", `${rpkgOfWWEV}.rpkg`))[0])
+			const workingPath = path.join(paths.dataRoot, "temp", "WWEV", `${rpkgOfWWEV}.rpkg`, fs.readdirSync(path.join(paths.dataRoot, "temp", "WWEV", `${rpkgOfWWEV}.rpkg`))[0])
 
 			for (const patch of entry[1]) {
 				if (typeof patch.content === "string") {
@@ -1998,15 +2001,15 @@ export default async function deploy(
 
 			await callRPKGFunction(`-rebuild_wwev_in "${path.resolve(path.join(workingPath, ".."))}"`) // Rebuild the WWEV
 
-			await copyToCache("global", path.join(process.cwd(), "temp"), path.join("WWEV", WWEVhash))
+			await copyToCache("global", path.join(paths.dataRoot, "temp"), path.join("WWEV", WWEVhash))
 		}
 
-		const workingPath = path.join(process.cwd(), "temp", "WWEV", `${rpkgOfWWEV}.rpkg`, fs.readdirSync(path.join(process.cwd(), "temp", "WWEV", `${rpkgOfWWEV}.rpkg`))[0])
+		const workingPath = path.join(paths.dataRoot, "temp", "WWEV", `${rpkgOfWWEV}.rpkg`, fs.readdirSync(path.join(paths.dataRoot, "temp", "WWEV", `${rpkgOfWWEV}.rpkg`))[0])
 
-		fs.ensureDirSync(path.join(process.cwd(), "staging", entry[1][0].chunk))
+		fs.ensureDirSync(path.join(paths.dataRoot, "staging", entry[1][0].chunk))
 
-		fs.copyFileSync(path.join(workingPath, `${WWEVhash}.WWEV`), path.join(process.cwd(), "staging", entry[1][0].chunk, `${WWEVhash}.WWEV`))
-		fs.copyFileSync(path.join(workingPath, `${WWEVhash}.WWEV.meta`), path.join(process.cwd(), "staging", entry[1][0].chunk, `${WWEVhash}.WWEV.meta`)) // Copy the WWEV and its meta
+		fs.copyFileSync(path.join(workingPath, `${WWEVhash}.WWEV`), path.join(paths.dataRoot, "staging", entry[1][0].chunk, `${WWEVhash}.WWEV`))
+		fs.copyFileSync(path.join(workingPath, `${WWEVhash}.WWEV.meta`), path.join(paths.dataRoot, "staging", entry[1][0].chunk, `${WWEVhash}.WWEV.meta`)) // Copy the WWEV and its meta
 	}
 
 	sentryWWEVTransaction.finish()
@@ -2019,9 +2022,9 @@ export default async function deploy(
 	// let runtimePatchNumber = 201
 	// for (const runtimeFile of runtimePackages) {
 	// 	fs.copyFileSync(
-	// 		path.join(process.cwd(), "Mods", runtimeFile.mod, runtimeFile.path),
+	// 		path.join(config.modsPath, runtimeFile.mod, runtimeFile.path),
 	// 		config.outputToSeparateDirectory
-	// 			? path.join(process.cwd(), "Output", "chunk" + runtimeFile.chunk + "patch" + runtimePatchNumber + ".rpkg")
+	// 			? path.join(paths.dataRoot, "Output", "chunk" + runtimeFile.chunk + "patch" + runtimePatchNumber + ".rpkg")
 	// 			: path.join(config.runtimePath, "chunk" + runtimeFile.chunk + "patch" + runtimePatchNumber + ".rpkg")
 	// 	)
 	// 	runtimePatchNumber++
@@ -2055,20 +2058,20 @@ export default async function deploy(
 			japanese: "jp"
 		}
 
-		fs.emptyDirSync(path.join(process.cwd(), "temp"))
+		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
 		const localisationFileRPKG = await getRPKGOfHash("00F5817876E691F1")
 
-		if (invalidatedData.some((a) => a.data.affected.includes("00F5817876E691F1")) || !(await copyFromCache("global", path.join("LOCR", "manifest"), path.join(process.cwd(), "temp")))) {
+		if (invalidatedData.some((a) => a.data.affected.includes("00F5817876E691F1")) || !(await copyFromCache("global", path.join("LOCR", "manifest"), path.join(paths.dataRoot, "temp")))) {
 			// we need to re-deploy the localisation files OR the localisation files couldn't be copied from cache
-			fs.ensureDirSync(path.join(process.cwd(), "temp", "LOCR", `${localisationFileRPKG}.rpkg`))
+			fs.ensureDirSync(path.join(paths.dataRoot, "temp", "LOCR", `${localisationFileRPKG}.rpkg`))
 
 			await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${localisationFileRPKG}.rpkg`)}" -filter "00F5817876E691F1" -output_path temp`)
-			await callRPKGFunction(`-hash_meta_to_json "${path.join(process.cwd(), "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR.meta")}"`)
+			await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR.meta")}"`)
 
 			execCommand(
-				`"${thirdParty("HMLanguageTools")}" convert H3 LOCR "${path.join(process.cwd(), "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR")}" "${path.join(
-					process.cwd(),
+				`"${thirdParty("HMLanguageTools")}" convert H3 LOCR "${path.join(paths.dataRoot, "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR")}" "${path.join(
+					paths.dataRoot,
 					"temp",
 					"LOCR",
 					`${localisationFileRPKG}.rpkg`,
@@ -2076,9 +2079,9 @@ export default async function deploy(
 				)}"`
 			)
 
-			fs.ensureDirSync(path.join(process.cwd(), "staging", "chunk0"))
+			fs.ensureDirSync(path.join(paths.dataRoot, "staging", "chunk0"))
 
-			const locrFileContent: HMLanguageToolsLOCR = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", "LOCR", `${localisationFileRPKG}.rpkg`, "00F5817876E691F1.LOCR.JSON"), "utf8"))
+			const locrFileContent: HMLanguageToolsLOCR = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", "LOCR", `${localisationFileRPKG}.rpkg`, "00F5817876E691F1.LOCR.JSON"), "utf8"))
 			const locrContent: Record<string, Record<string, string>> = locrFileContent["languages"]
 
 			for (const item of localisation) {
@@ -2102,25 +2105,25 @@ export default async function deploy(
 			}
 
 			// We empty the entire temp directory as (right now) we extract the raw files and convert the meta
-			fs.ensureDirSync(path.join(process.cwd(), "temp", "LOCR", `${localisationFileRPKG}.rpkg`))
-			fs.writeFileSync(path.join(process.cwd(), "temp", "LOCR", `${localisationFileRPKG}.rpkg`, "00F5817876E691F1.LOCR.JSON"), JSON.stringify(locrToWrite))
+			fs.ensureDirSync(path.join(paths.dataRoot, "temp", "LOCR", `${localisationFileRPKG}.rpkg`))
+			fs.writeFileSync(path.join(paths.dataRoot, "temp", "LOCR", `${localisationFileRPKG}.rpkg`, "00F5817876E691F1.LOCR.JSON"), JSON.stringify(locrToWrite))
 
-			await copyToCache("global", path.join(process.cwd(), "temp"), path.join("LOCR", "manifest"))
+			await copyToCache("global", path.join(paths.dataRoot, "temp"), path.join("LOCR", "manifest"))
 		}
 
 		// Rebuild the LOCR
 		execCommand(
-			`"${thirdParty("HMLanguageTools")}" rebuild H3 LOCR "${path.join(process.cwd(), "temp", "LOCR", `${localisationFileRPKG}.rpkg`, "00F5817876E691F1.LOCR.JSON")}" "${path.join(
-				process.cwd(),
+			`"${thirdParty("HMLanguageTools")}" rebuild H3 LOCR "${path.join(paths.dataRoot, "temp", "LOCR", `${localisationFileRPKG}.rpkg`, "00F5817876E691F1.LOCR.JSON")}" "${path.join(
+				paths.dataRoot,
 				"staging",
 				localisationFileRPKG.replace(/patch[0-9]*/gi, ""),
 				"00F5817876E691F1.LOCR"
-			)}" --metapath "${path.join(process.cwd(), "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR.meta.JSON")}"`
+			)}" --metapath "${path.join(paths.dataRoot, "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR.meta.JSON")}"`
 		)
 
-		fs.copyFileSync(path.join(process.cwd(), "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR.meta"), path.join(process.cwd(), "staging", "chunk0", "00F5817876E691F1.LOCR.meta"))
+		fs.copyFileSync(path.join(paths.dataRoot, "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR.meta"), path.join(paths.dataRoot, "staging", "chunk0", "00F5817876E691F1.LOCR.meta"))
 
-		fs.emptyDirSync(path.join(process.cwd(), "temp"))
+		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
 		sentryLocalisationTransaction.finish()
 	}
@@ -2144,21 +2147,21 @@ export default async function deploy(
 			japanese: "jp"
 		}
 
-		fs.emptyDirSync(path.join(process.cwd(), "temp"))
+		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
 		for (const locrHash of Object.keys(localisationOverrides)) {
 			const localisationFileRPKG = await getRPKGOfHash(locrHash)
 
-			fs.ensureDirSync(path.join(process.cwd(), "staging", localisationFileRPKG.replace(/patch[0-9]*/gi, "")))
+			fs.ensureDirSync(path.join(paths.dataRoot, "staging", localisationFileRPKG.replace(/patch[0-9]*/gi, "")))
 
-			if (invalidatedData.some((a) => a.data.affected.includes(locrHash)) || !(await copyFromCache("global", path.join("LOCR", locrHash), path.join(process.cwd(), "temp")))) {
+			if (invalidatedData.some((a) => a.data.affected.includes(locrHash)) || !(await copyFromCache("global", path.join("LOCR", locrHash), path.join(paths.dataRoot, "temp")))) {
 				// we need to re-deploy the localisation files OR the localisation files couldn't be copied from cache
 				await extractOrCopyToTemp(localisationFileRPKG, locrHash, "LOCR", localisationFileRPKG.replace(/patch[0-9]*/gi, ""))
-				await callRPKGFunction(`-hash_meta_to_json "${path.join(process.cwd(), "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.meta`)}"`)
+				await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.meta`)}"`)
 
 				execCommand(
-					`"${thirdParty("HMLanguageTools")}" convert H3 LOCR "${path.join(process.cwd(), "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR`)}" "${path.join(
-						process.cwd(),
+					`"${thirdParty("HMLanguageTools")}" convert H3 LOCR "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR`)}" "${path.join(
+						paths.dataRoot,
 						"temp",
 						localisationFileRPKG,
 						"LOCR",
@@ -2166,7 +2169,7 @@ export default async function deploy(
 					)}"`
 				)
 
-				const locrFileContent: HMLanguageToolsLOCR = JSON.parse(fs.readFileSync(path.join(process.cwd(), "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.JSON`), "utf8"))
+				const locrFileContent: HMLanguageToolsLOCR = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.JSON`), "utf8"))
 				const locrContent = locrFileContent["languages"]
 
 				for (const item of localisationOverrides[locrHash]) {
@@ -2191,24 +2194,24 @@ export default async function deploy(
 					locrToWrite.languages[language] = locrContent[language] ?? {}
 				}
 
-				fs.writeFileSync(path.join(process.cwd(), "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.JSON`), JSON.stringify(locrToWrite))
+				fs.writeFileSync(path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.JSON`), JSON.stringify(locrToWrite))
 
-				await copyToCache("global", path.join(process.cwd(), "temp"), path.join("LOCR", locrHash))
+				await copyToCache("global", path.join(paths.dataRoot, "temp"), path.join("LOCR", locrHash))
 			}
 
 			// Rebuild the LOCR
 			execCommand(
-				`"${thirdParty("HMLanguageTools")}" rebuild H3 LOCR "${path.join(process.cwd(), "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.JSON`)}" "${path.join(
-					process.cwd(),
+				`"${thirdParty("HMLanguageTools")}" rebuild H3 LOCR "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.JSON`)}" "${path.join(
+					paths.dataRoot,
 					"staging",
 					localisationFileRPKG.replace(/patch[0-9]*/gi, ""),
 					`${locrHash}.LOCR`
-				)}" --metapath "${path.join(process.cwd(), "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.meta.JSON`)}"`
+				)}" --metapath "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.meta.JSON`)}"`
 			)
 
-			fs.copyFileSync(path.join(process.cwd(), "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.meta`), path.join(process.cwd(), "staging", localisationFileRPKG.replace(/patch[0-9]*/gi, ""), `${locrHash}.LOCR.meta`))
+			fs.copyFileSync(path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.meta`), path.join(paths.dataRoot, "staging", localisationFileRPKG.replace(/patch[0-9]*/gi, ""), `${locrHash}.LOCR.meta`))
 
-			fs.emptyDirSync(path.join(process.cwd(), "temp"))
+			fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 		}
 
 		sentryLocalisationOverridesTransaction.finish()
@@ -2226,16 +2229,16 @@ export default async function deploy(
 		})
 		configureSentryScope(sentryThumbsPatchingTransaction)
 
-		fs.emptyDirSync(path.join(process.cwd(), "temp"))
+		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
-		if (!fs.existsSync(path.join(process.cwd(), "cleanThumbs.dat"))) {
+		if (!fs.existsSync(path.join(paths.dataRoot, "cleanThumbs.dat"))) {
 			// If there is no clean thumbs, copy the one from Retail
-			fs.copyFileSync(path.join(config.retailPath, "thumbs.dat"), path.join(process.cwd(), "cleanThumbs.dat"))
+			fs.copyFileSync(path.join(config.retailPath, "thumbs.dat"), path.join(paths.dataRoot, "cleanThumbs.dat"))
 		}
 
-		execCommand(`"${thirdParty("h6xtea.exe")}" -d --src "${path.join(process.cwd(), "cleanThumbs.dat")}" --dst "${path.join(process.cwd(), "temp", "thumbs.dat.decrypted")}"`) // Decrypt thumbs
+		execCommand(`"${thirdParty("h6xtea.exe")}" -d --src "${path.join(paths.dataRoot, "cleanThumbs.dat")}" --dst "${path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted")}"`) // Decrypt thumbs
 
-		let thumbsContent = fs.readFileSync(path.join(process.cwd(), "temp", "thumbs.dat.decrypted"), "utf8").split(/\r?\n/).join("\n")
+		let thumbsContent = fs.readFileSync(path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted"), "utf8").split(/\r?\n/).join("\n")
 
 		if (config.skipIntro) {
 			// Skip intro
@@ -2247,11 +2250,11 @@ export default async function deploy(
 			thumbsContent = thumbsContent.replace(/\[Hitman5\]\n/gi, "[Hitman5]\n" + patch + "\n")
 		}
 
-		fs.writeFileSync(path.join(process.cwd(), "temp", "thumbs.dat.decrypted"), thumbsContent)
-		execCommand(`"${thirdParty("h6xtea.exe")}" -e --src "${path.join(process.cwd(), "temp", "thumbs.dat.decrypted")}" --dst "${path.join(process.cwd(), "temp", "thumbs.dat.decrypted.encrypted")}"`) // Encrypt thumbs
+		fs.writeFileSync(path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted"), thumbsContent)
+		execCommand(`"${thirdParty("h6xtea.exe")}" -e --src "${path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted")}" --dst "${path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted.encrypted")}"`) // Encrypt thumbs
 		fs.copyFileSync(
-			path.join(process.cwd(), "temp", "thumbs.dat.decrypted.encrypted"),
-			config.outputToSeparateDirectory ? path.join(process.cwd(), "Output", "thumbs.dat") : path.join(config.retailPath, "thumbs.dat")
+			path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted.encrypted"),
+			config.outputToSeparateDirectory ? path.join(paths.dataRoot, "Output", "thumbs.dat") : path.join(config.retailPath, "thumbs.dat")
 		) // Output thumbs
 
 		sentryThumbsPatchingTransaction.finish()
@@ -2269,27 +2272,27 @@ export default async function deploy(
 	configureSentryScope(sentryPackagedefPatchingTransaction)
 
 	await logger.verbose("Emptying temp directory")
-	fs.emptyDirSync(path.join(process.cwd(), "temp"))
+	fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
-	if (!fs.existsSync(path.join(process.cwd(), "cleanPackageDefinition.txt"))) {
+	if (!fs.existsSync(path.join(paths.dataRoot, "cleanPackageDefinition.txt"))) {
 		// If there is no clean PD, copy the one from Runtime
 		await logger.verbose("Copying clean packagedefinition")
-		fs.copyFileSync(path.join(config.runtimePath, "packagedefinition.txt"), path.join(process.cwd(), "cleanPackageDefinition.txt"))
+		fs.copyFileSync(path.join(config.runtimePath, "packagedefinition.txt"), path.join(paths.dataRoot, "cleanPackageDefinition.txt"))
 	}
 
-	execCommand(`"${thirdParty("h6xtea.exe")}" -d --src "${path.join(config.runtimePath, "packagedefinition.txt")}" --dst "${path.join(process.cwd(), "temp", "packagedefinitionVersionCheck.txt")}"`)
-	if (!fs.readFileSync(path.join(process.cwd(), "temp", "packagedefinitionVersionCheck.txt")).includes("patchlevel=310")) {
+	execCommand(`"${thirdParty("h6xtea.exe")}" -d --src "${path.join(config.runtimePath, "packagedefinition.txt")}" --dst "${path.join(paths.dataRoot, "temp", "packagedefinitionVersionCheck.txt")}"`)
+	if (!fs.readFileSync(path.join(paths.dataRoot, "temp", "packagedefinitionVersionCheck.txt")).includes("patchlevel=310")) {
 		// Check if Runtime PD is unmodded and if so overwrite current "clean" version
 		await logger.verbose("Overwriting clean packagedefinition")
-		fs.copyFileSync(path.join(config.runtimePath, "packagedefinition.txt"), path.join(process.cwd(), "cleanPackageDefinition.txt"))
+		fs.copyFileSync(path.join(config.runtimePath, "packagedefinition.txt"), path.join(paths.dataRoot, "cleanPackageDefinition.txt"))
 	}
 
 	// Decrypt PD
-	execCommand(`"${thirdParty("h6xtea.exe")}" -d --src "${path.join(process.cwd(), "cleanPackageDefinition.txt")}" --dst "${path.join(process.cwd(), "temp", "packagedefinition.txt.decrypted")}"`)
+	execCommand(`"${thirdParty("h6xtea.exe")}" -d --src "${path.join(paths.dataRoot, "cleanPackageDefinition.txt")}" --dst "${path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted")}"`)
 
 	await logger.verbose("Reading packagedefinition")
 	let packagedefinitionContent = fs
-		.readFileSync(path.join(process.cwd(), "temp", "packagedefinition.txt.decrypted"), "utf8")
+		.readFileSync(path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted"), "utf8")
 		.split(/\r?\n/)
 		.join("\r\n")
 		.replace(/patchlevel=[0-9]*/g, "patchlevel=310") // Patch levels
@@ -2322,11 +2325,11 @@ export default async function deploy(
 	await logger.verbose("Writing new packagedefinition")
 
 	// Add blank lines to ensure correct encryption (XTEA uses blocks of 8 bytes)
-	fs.writeFileSync(path.join(process.cwd(), "temp", "packagedefinition.txt.decrypted"), `${packagedefinitionContent}\r\n\r\n\r\n\r\n`)
+	fs.writeFileSync(path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted"), `${packagedefinitionContent}\r\n\r\n\r\n\r\n`)
 
 	execCommand(
-		`"${thirdParty("h6xtea.exe")}" -e --src "${path.join(process.cwd(), "temp", "packagedefinition.txt.decrypted")}" --dst "${path.join(
-			process.cwd(),
+		`"${thirdParty("h6xtea.exe")}" -e --src "${path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted")}" --dst "${path.join(
+			paths.dataRoot,
 			"temp",
 			"packagedefinition.txt.decrypted.encrypted"
 		)}"`
@@ -2335,8 +2338,8 @@ export default async function deploy(
 	await logger.verbose("Copying new packagedefinition to output")
 
 	fs.copyFileSync(
-		path.join(process.cwd(), "temp", "packagedefinition.txt.decrypted.encrypted"),
-		config.outputToSeparateDirectory ? path.join(process.cwd(), "Output", "packagedefinition.txt") : path.join(config.runtimePath, "packagedefinition.txt")
+		path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted.encrypted"),
+		config.outputToSeparateDirectory ? path.join(paths.dataRoot, "Output", "packagedefinition.txt") : path.join(config.runtimePath, "packagedefinition.txt")
 	) // Output PD
 
 	sentryPackagedefPatchingTransaction.finish()
@@ -2352,14 +2355,14 @@ export default async function deploy(
 	})
 	configureSentryScope(sentryRPKGGenerationTransaction)
 
-	for (const stagingChunkFolder of fs.readdirSync(path.join(process.cwd(), "staging"))) {
-		await callRPKGFunction(`-generate_rpkg_quickly_from "${path.join(process.cwd(), "staging", stagingChunkFolder)}" -output_path "${path.join(process.cwd(), "staging")}"`)
+	for (const stagingChunkFolder of fs.readdirSync(path.join(paths.dataRoot, "staging"))) {
+		await callRPKGFunction(`-generate_rpkg_quickly_from "${path.join(paths.dataRoot, "staging", stagingChunkFolder)}" -output_path "${path.join(paths.dataRoot, "staging")}"`)
 
 		try {
 			fs.copyFileSync(
-				path.join(process.cwd(), "staging", `${stagingChunkFolder}.rpkg`),
+				path.join(paths.dataRoot, "staging", `${stagingChunkFolder}.rpkg`),
 				config.outputToSeparateDirectory
-					? path.join(process.cwd(), "Output", allRPKGTypes[stagingChunkFolder] === "base" ? `${stagingChunkFolder}.rpkg` : `${stagingChunkFolder}patch300.rpkg`)
+					? path.join(paths.dataRoot, "Output", allRPKGTypes[stagingChunkFolder] === "base" ? `${stagingChunkFolder}.rpkg` : `${stagingChunkFolder}patch300.rpkg`)
 					: path.join(config.runtimePath, allRPKGTypes[stagingChunkFolder] === "base" ? `${stagingChunkFolder}.rpkg` : `${stagingChunkFolder}patch300.rpkg`)
 			)
 		} catch {
@@ -2369,8 +2372,8 @@ export default async function deploy(
 
 	sentryRPKGGenerationTransaction.finish()
 
-	fs.removeSync(path.join(process.cwd(), "staging"))
-	fs.removeSync(path.join(process.cwd(), "temp"))
+	fs.removeSync(path.join(paths.dataRoot, "staging"))
+	fs.removeSync(path.join(paths.dataRoot, "temp"))
 
 	saveRPKGHashCache()
 

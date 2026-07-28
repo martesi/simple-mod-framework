@@ -3,7 +3,7 @@ import * as LosslessJSON from "lossless-json"
 import type { Config } from "./types"
 import type { ResolvedCoreOptions } from "./core"
 import { createCore } from "./core"
-import { config, logger, setCurrentCore } from "./core-singleton"
+import { config, logger, paths, setCurrentCore } from "./core-singleton"
 import { copyFromCache, copyToCache, getQuickEntityFromPatchVersion } from "./utils"
 
 import RPKGInstance from "./rpkg"
@@ -32,12 +32,12 @@ const execCommand = function (command: string) {
  */
 let workerCoreInitialised = false
 
-function ensureWorkerCore(workerConfig: Config, coreOptions: ResolvedCoreOptions) {
+function ensureWorkerCore(workerConfig: Config, coreOptions: ResolvedCoreOptions, workerPaths: { dataRoot: string; toolsRoot: string }) {
 	if (workerCoreInitialised) {
 		return
 	}
 
-	setCurrentCore(createCore(workerConfig, coreOptions))
+	setCurrentCore(createCore(workerConfig, { ...coreOptions, paths: workerPaths }))
 	workerCoreInitialised = true
 }
 
@@ -52,7 +52,8 @@ export default async ({
 	invalidatedData,
 	cacheFolder,
 	config: workerConfig,
-	coreOptions
+	coreOptions,
+	paths: workerPaths
 }: {
 	tempHash: string
 	tempRPKG: string
@@ -68,18 +69,19 @@ export default async ({
 	cacheFolder: string
 	config: Config
 	coreOptions: ResolvedCoreOptions
+	paths: { dataRoot: string; toolsRoot: string }
 }) => {
-	ensureWorkerCore(workerConfig, coreOptions)
+	ensureWorkerCore(workerConfig, coreOptions, workerPaths)
 
-	fs.ensureDirSync(path.join(process.cwd(), assignedTemporaryDirectory))
+	fs.ensureDirSync(path.join(paths.dataRoot, assignedTemporaryDirectory))
 
 	if (
 		!(
 			patches.every((patch) => !invalidatedData.some((a) => a.filePath === patch.path)) &&
-			(await copyFromCache(cacheFolder, path.join(chunkFolder, await xxhash3(patches[patches.length - 1].path)), path.join(process.cwd(), assignedTemporaryDirectory)))
+			(await copyFromCache(cacheFolder, path.join(chunkFolder, await xxhash3(patches[patches.length - 1].path)), path.join(paths.dataRoot, assignedTemporaryDirectory)))
 		)
 	) {
-		const rpkgInstance = new RPKGInstance()
+		const rpkgInstance = new RPKGInstance(path.join(paths.toolsRoot, "Third-Party", "rpkg-cli"))
 
 		await rpkgInstance.waitForInitialised()
 
@@ -89,36 +91,36 @@ export default async ({
 		}
 
 		/* ---------------------------------------- Extract TEMP ---------------------------------------- */
-		if (!fs.existsSync(path.join(process.cwd(), "staging", chunkFolder, `${tempHash}.TEMP`))) {
-			await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${tempRPKG}.rpkg`)}" -filter "${tempHash}" -output_path "${assignedTemporaryDirectory}"`)
+		if (!fs.existsSync(path.join(paths.dataRoot, "staging", chunkFolder, `${tempHash}.TEMP`))) {
+			await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${tempRPKG}.rpkg`)}" -filter "${tempHash}" -output_path "${path.join(paths.dataRoot, assignedTemporaryDirectory)}"`)
 		} else {
 			try {
-				fs.ensureDirSync(path.join(process.cwd(), assignedTemporaryDirectory, tempRPKG, "TEMP"))
+				fs.ensureDirSync(path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP"))
 			} catch {}
 			await Promise.all([
-				fs.copyFile(path.join(process.cwd(), "staging", chunkFolder, `${tempHash}.TEMP`), path.join(process.cwd(), assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP`)), // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
-				fs.copyFile(path.join(process.cwd(), "staging", chunkFolder, `${tempHash}.TEMP.meta`), path.join(process.cwd(), assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.meta`))
+				fs.copyFile(path.join(paths.dataRoot, "staging", chunkFolder, `${tempHash}.TEMP`), path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP`)), // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
+				fs.copyFile(path.join(paths.dataRoot, "staging", chunkFolder, `${tempHash}.TEMP.meta`), path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.meta`))
 			])
 		}
 
 		/* ---------------------------------------- Extract TBLU ---------------------------------------- */
-		if (!fs.existsSync(path.join(process.cwd(), "staging", chunkFolder, `${tbluHash}.TBLU`))) {
-			await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${tbluRPKG}.rpkg`)}" -filter "${tbluHash}" -output_path "${assignedTemporaryDirectory}"`)
+		if (!fs.existsSync(path.join(paths.dataRoot, "staging", chunkFolder, `${tbluHash}.TBLU`))) {
+			await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${tbluRPKG}.rpkg`)}" -filter "${tbluHash}" -output_path "${path.join(paths.dataRoot, assignedTemporaryDirectory)}"`)
 		} else {
 			try {
-				fs.ensureDirSync(path.join(process.cwd(), assignedTemporaryDirectory, tbluRPKG, "TBLU"))
+				fs.ensureDirSync(path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU"))
 			} catch {}
 			await Promise.all([
-				fs.copyFile(path.join(process.cwd(), "staging", chunkFolder, `${tbluHash}.TBLU`), path.join(process.cwd(), assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU`)), // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
-				fs.copyFile(path.join(process.cwd(), "staging", chunkFolder, `${tbluHash}.TBLU.meta`), path.join(process.cwd(), assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.meta`))
+				fs.copyFile(path.join(paths.dataRoot, "staging", chunkFolder, `${tbluHash}.TBLU`), path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU`)), // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
+				fs.copyFile(path.join(paths.dataRoot, "staging", chunkFolder, `${tbluHash}.TBLU.meta`), path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.meta`))
 			])
 		}
 
 		/* ------------------------------------ Convert to RT Source ------------------------------------ */
 		await Promise.all([
 			execCommand(
-				`"${path.join(process.cwd(), "Third-Party", "ResourceTool.exe")}" HM3 convert TEMP "${path.join(process.cwd(), assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP`)}" "${path.join(
-					process.cwd(),
+				`"${path.join(paths.toolsRoot, "Third-Party", "ResourceTool.exe")}" HM3 convert TEMP "${path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP`)}" "${path.join(
+					paths.dataRoot,
 					assignedTemporaryDirectory,
 					tempRPKG,
 					"TEMP",
@@ -126,8 +128,8 @@ export default async ({
 				)}.json" --simple`
 			),
 			execCommand(
-				`"${path.join(process.cwd(), "Third-Party", "ResourceTool.exe")}" HM3 convert TBLU "${path.join(process.cwd(), assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU`)}" "${path.join(
-					process.cwd(),
+				`"${path.join(paths.toolsRoot, "Third-Party", "ResourceTool.exe")}" HM3 convert TBLU "${path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU`)}" "${path.join(
+					paths.dataRoot,
 					assignedTemporaryDirectory,
 					tbluRPKG,
 					"TBLU",
@@ -135,29 +137,29 @@ export default async ({
 				)}.json" --simple`
 			)
 		])
-		await callRPKGFunction(`-hash_meta_to_json "${path.join(process.cwd(), assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.meta`)}"`)
-		await callRPKGFunction(`-hash_meta_to_json "${path.join(process.cwd(), assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.meta`)}"`) // Generate the RT files from the binary files
+		await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.meta`)}"`)
+		await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.meta`)}"`) // Generate the RT files from the binary files
 
 		/* ---------------------------------------- Convert to QN --------------------------------------- */
 		if (Number(patches[0].patchVersion.value) < 3) {
 			await getQuickEntityFromPatchVersion(patches[0].patchVersion.value).convert(
 				"HM3",
 				"ids",
-				path.join(process.cwd(), assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.json`),
-				path.join(process.cwd(), assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.meta.JSON`),
-				path.join(process.cwd(), assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.json`),
-				path.join(process.cwd(), assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.meta.JSON`),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.json`),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.meta.JSON`),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.json`),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.meta.JSON`),
 				// @ts-expect-error Two different versions of the same function; TypeScript doesn't have a way of overloading a "type-only" function
-				path.join(process.cwd(), assignedTemporaryDirectory, "QuickEntityJSON.json")
+				path.join(paths.dataRoot, assignedTemporaryDirectory, "QuickEntityJSON.json")
 			) // Generate the QN json from the RT files
 		} else {
 			await getQuickEntityFromPatchVersion(patches[0].patchVersion.value).convert(
 				"HM3",
-				path.join(process.cwd(), assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.json`),
-				path.join(process.cwd(), assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.meta.JSON`),
-				path.join(process.cwd(), assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.json`),
-				path.join(process.cwd(), assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.meta.JSON`),
-				path.join(process.cwd(), assignedTemporaryDirectory, "QuickEntityJSON.json")
+				path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.json`),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.meta.JSON`),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.json`),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.meta.JSON`),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, "QuickEntityJSON.json")
 			) // Generate the QN json from the RT files
 		}
 
@@ -166,76 +168,76 @@ export default async ({
 
 			if (!getQuickEntityFromPatchVersion(patch.patchVersion.value)) {
 				rpkgInstance.exit()
-				fs.removeSync(path.join(process.cwd(), assignedTemporaryDirectory))
+				fs.removeSync(path.join(paths.dataRoot, assignedTemporaryDirectory))
 
 				await logger.error(`Could not find matching QuickEntity version for patch version ${Number(patch.patchVersion.value)}!`)
 			}
 
-			fs.writeFileSync(path.join(process.cwd(), assignedTemporaryDirectory, "patch.json"), LosslessJSON.stringify(patch))
+			fs.writeFileSync(path.join(paths.dataRoot, assignedTemporaryDirectory, "patch.json"), LosslessJSON.stringify(patch))
 
 			/* ----------------------------------------- Apply patch ---------------------------------------- */
 			await getQuickEntityFromPatchVersion(patch.patchVersion.value).applyPatchJSON(
-				path.join(process.cwd(), assignedTemporaryDirectory, "QuickEntityJSON.json"),
-				path.join(process.cwd(), assignedTemporaryDirectory, "patch.json"),
-				path.join(process.cwd(), assignedTemporaryDirectory, "PatchedQuickEntityJSON.json")
+				path.join(paths.dataRoot, assignedTemporaryDirectory, "QuickEntityJSON.json"),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, "patch.json"),
+				path.join(paths.dataRoot, assignedTemporaryDirectory, "PatchedQuickEntityJSON.json")
 			) // Patch the QN json
-			fs.copySync(path.join(process.cwd(), assignedTemporaryDirectory, "PatchedQuickEntityJSON.json"), path.join(process.cwd(), assignedTemporaryDirectory, "QuickEntityJSON.json"))
+			fs.copySync(path.join(paths.dataRoot, assignedTemporaryDirectory, "PatchedQuickEntityJSON.json"), path.join(paths.dataRoot, assignedTemporaryDirectory, "QuickEntityJSON.json"))
 		}
 
 		/* ------------------------------------ Convert to RT Source ------------------------------------ */
 		await getQuickEntityFromPatchVersion(patches[0].patchVersion.value).generate(
 			"HM3",
-			path.join(process.cwd(), assignedTemporaryDirectory, "QuickEntityJSON.json"),
-			path.join(process.cwd(), assignedTemporaryDirectory, "temp.TEMP.json"),
-			path.join(process.cwd(), assignedTemporaryDirectory, `${tempHash}.TEMP.meta.JSON`),
-			path.join(process.cwd(), assignedTemporaryDirectory, "temp.TBLU.json"),
-			path.join(process.cwd(), assignedTemporaryDirectory, `${tbluHash}.TBLU.meta.JSON`)
+			path.join(paths.dataRoot, assignedTemporaryDirectory, "QuickEntityJSON.json"),
+			path.join(paths.dataRoot, assignedTemporaryDirectory, "temp.TEMP.json"),
+			path.join(paths.dataRoot, assignedTemporaryDirectory, `${tempHash}.TEMP.meta.JSON`),
+			path.join(paths.dataRoot, assignedTemporaryDirectory, "temp.TBLU.json"),
+			path.join(paths.dataRoot, assignedTemporaryDirectory, `${tbluHash}.TBLU.meta.JSON`)
 		) // Generate the RT files from the QN json
 
 		/* -------------------------------------- Convert to binary ------------------------------------- */
 		await Promise.all([
 			execCommand(
-				`"${path.join(process.cwd(), "Third-Party", "ResourceTool.exe")}" HM3 generate TEMP "${path.join(process.cwd(), assignedTemporaryDirectory, "temp.TEMP.json")}" "${path.join(
-					process.cwd(),
+				`"${path.join(paths.toolsRoot, "Third-Party", "ResourceTool.exe")}" HM3 generate TEMP "${path.join(paths.dataRoot, assignedTemporaryDirectory, "temp.TEMP.json")}" "${path.join(
+					paths.dataRoot,
 					assignedTemporaryDirectory,
 					`${tempHash}.TEMP`
 				)}" --simple`
 			),
 			execCommand(
-				`"${path.join(process.cwd(), "Third-Party", "ResourceTool.exe")}" HM3 generate TBLU "${path.join(process.cwd(), assignedTemporaryDirectory, "temp.TBLU.json")}" "${path.join(
-					process.cwd(),
+				`"${path.join(paths.toolsRoot, "Third-Party", "ResourceTool.exe")}" HM3 generate TBLU "${path.join(paths.dataRoot, assignedTemporaryDirectory, "temp.TBLU.json")}" "${path.join(
+					paths.dataRoot,
 					assignedTemporaryDirectory,
 					`${tbluHash}.TBLU`
 				)}" --simple`
 			)
 		])
-		await callRPKGFunction(`-json_to_hash_meta "${path.join(process.cwd(), assignedTemporaryDirectory, `${tempHash}.TEMP.meta.JSON`)}"`)
-		await callRPKGFunction(`-json_to_hash_meta "${path.join(process.cwd(), assignedTemporaryDirectory, `${tbluHash}.TBLU.meta.JSON`)}"`) // Generate the binary files from the RT json
+		await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, assignedTemporaryDirectory, `${tempHash}.TEMP.meta.JSON`)}"`)
+		await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, assignedTemporaryDirectory, `${tbluHash}.TBLU.meta.JSON`)}"`) // Generate the binary files from the RT json
 
 		await Promise.all([
-			fs.rm(path.join(process.cwd(), assignedTemporaryDirectory, "QuickEntityJSON.json")),
-			fs.rm(path.join(process.cwd(), assignedTemporaryDirectory, "temp.TEMP.json")),
-			fs.rm(path.join(process.cwd(), assignedTemporaryDirectory, `${tempHash}.TEMP.meta.JSON`)),
-			fs.rm(path.join(process.cwd(), assignedTemporaryDirectory, "temp.TBLU.json")),
-			fs.rm(path.join(process.cwd(), assignedTemporaryDirectory, `${tbluHash}.TBLU.meta.JSON`))
+			fs.rm(path.join(paths.dataRoot, assignedTemporaryDirectory, "QuickEntityJSON.json")),
+			fs.rm(path.join(paths.dataRoot, assignedTemporaryDirectory, "temp.TEMP.json")),
+			fs.rm(path.join(paths.dataRoot, assignedTemporaryDirectory, `${tempHash}.TEMP.meta.JSON`)),
+			fs.rm(path.join(paths.dataRoot, assignedTemporaryDirectory, "temp.TBLU.json")),
+			fs.rm(path.join(paths.dataRoot, assignedTemporaryDirectory, `${tbluHash}.TBLU.meta.JSON`))
 		])
 
 		rpkgInstance.exit()
 
-		await copyToCache(cacheFolder, path.join(process.cwd(), assignedTemporaryDirectory), path.join(chunkFolder, await xxhash3(patches[patches.length - 1].path)))
+		await copyToCache(cacheFolder, path.join(paths.dataRoot, assignedTemporaryDirectory), path.join(chunkFolder, await xxhash3(patches[patches.length - 1].path)))
 	} else {
 		await logger.debug(`Restored patch chain ending in ${patches[patches.length - 1].path} from cache`)
 	}
 
 	/* ------------------------------------- Stage binary files ------------------------------------- */
 	await Promise.all([
-		fs.copyFile(path.join(process.cwd(), assignedTemporaryDirectory, `${tempHash}.TEMP`), path.join(process.cwd(), "staging", chunkFolder, `${tempHash}.TEMP`)),
-		fs.copyFile(path.join(process.cwd(), assignedTemporaryDirectory, `${tempHash}.TEMP.meta`), path.join(process.cwd(), "staging", chunkFolder, `${tempHash}.TEMP.meta`)),
-		fs.copyFile(path.join(process.cwd(), assignedTemporaryDirectory, `${tbluHash}.TBLU`), path.join(process.cwd(), "staging", chunkFolder, `${tbluHash}.TBLU`)),
-		fs.copyFile(path.join(process.cwd(), assignedTemporaryDirectory, `${tbluHash}.TBLU.meta`), path.join(process.cwd(), "staging", chunkFolder, `${tbluHash}.TBLU.meta`)) // Copy the binary files to the staging directory
+		fs.copyFile(path.join(paths.dataRoot, assignedTemporaryDirectory, `${tempHash}.TEMP`), path.join(paths.dataRoot, "staging", chunkFolder, `${tempHash}.TEMP`)),
+		fs.copyFile(path.join(paths.dataRoot, assignedTemporaryDirectory, `${tempHash}.TEMP.meta`), path.join(paths.dataRoot, "staging", chunkFolder, `${tempHash}.TEMP.meta`)),
+		fs.copyFile(path.join(paths.dataRoot, assignedTemporaryDirectory, `${tbluHash}.TBLU`), path.join(paths.dataRoot, "staging", chunkFolder, `${tbluHash}.TBLU`)),
+		fs.copyFile(path.join(paths.dataRoot, assignedTemporaryDirectory, `${tbluHash}.TBLU.meta`), path.join(paths.dataRoot, "staging", chunkFolder, `${tbluHash}.TBLU.meta`)) // Copy the binary files to the staging directory
 	])
 
-	fs.removeSync(path.join(process.cwd(), assignedTemporaryDirectory))
+	fs.removeSync(path.join(paths.dataRoot, assignedTemporaryDirectory))
 
 	return
 }

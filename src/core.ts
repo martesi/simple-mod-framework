@@ -32,6 +32,22 @@ export interface CoreOptions {
 	 * a real CLI entry point opts back into the interactive pause explicitly.
 	 */
 	doNotPause?: boolean
+
+	/**
+	 * Injected filesystem roots - replaces the old assumption that "the framework's own folder"
+	 * and `process.cwd()` are the same thing (see LEI-130). Both default to `process.cwd()` when
+	 * omitted, matching the CLI's historical portable-folder layout (exe, config.json, Third-Party/,
+	 * Mods/ and a symlinked Runtime/ all sitting side by side) - a real embedder (e.g. the Electron
+	 * mod manager's main process) should always pass these explicitly instead of relying on that
+	 * default.
+	 */
+	paths?: {
+		/** Writable: staging/, temp/, cache/, Deploy.log, cleanThumbs.dat, cleanPackageDefinition.txt, config.json (when passed a path). Should be app.getPath('userData') for Electron. */
+		dataRoot?: string
+
+		/** Read-only: bundled Third-Party/ tools and hash data. Should be process.resourcesPath for a packaged Electron app. */
+		toolsRoot?: string
+	}
 }
 
 export interface Logger {
@@ -83,6 +99,17 @@ export interface Core {
 	logger: Logger
 
 	/**
+	 * The resolved filesystem roots this Core was created with (see {@link CoreOptions.paths}).
+	 * Threaded through instead of `process.cwd()` everywhere - a worker thread bootstrapping its
+	 * own Core (see patchWorker.ts) needs these handed over explicitly the same way `config` and
+	 * `options` are, since it's a separate module realm with no access to this one's values.
+	 */
+	paths: {
+		dataRoot: string
+		toolsRoot: string
+	}
+
+	/**
 	 * The options this Core was created with, normalised to concrete values. Lets a caller that
 	 * only has access to a Core (not the original CoreOptions it was constructed with) spin up an
 	 * equivalent one elsewhere - e.g. a Piscina worker thread bootstrapping its own Core so its
@@ -123,12 +150,17 @@ export function createCore(configOrPath: Config | string, options: CoreOptions =
 
 	const config: Config = typeof configOrPath === "string" ? json5.parse(fs.readFileSync(configOrPath, "utf8")) : configOrPath
 
+	// Both default to process.cwd() - the CLI's historical "everything sits next to the exe" layout
+	// (see CoreOptions.paths). A real embedder always passes these explicitly.
+	const dataRoot = options.paths?.dataRoot ?? process.cwd()
+	const toolsRoot = options.paths?.toolsRoot ?? process.cwd()
+
 	if (config.runtimePath === "..\\Runtime" && fs.existsSync(path.join(config.retailPath, "Runtime", "chunk0.rpkg"))) {
 		config.runtimePath = "..\\Retail\\Runtime"
 
 		if (typeof configOrPath === "string") {
 			fs.writeFileSync(configOrPath, json5.stringify(config))
-			fs.copyFileSync(path.join(process.cwd(), "cleanMicrosoftThumbs.dat"), path.join(process.cwd(), "cleanThumbs.dat"))
+			fs.copyFileSync(path.join(toolsRoot, "cleanMicrosoftThumbs.dat"), path.join(dataRoot, "cleanThumbs.dat"))
 		}
 	} // Automatically set runtime path and fix clean thumbs if using microsoft platform
 
@@ -141,12 +173,17 @@ export function createCore(configOrPath: Config | string, options: CoreOptions =
 		config.developerMode = false
 	} // Assume user is not a developer if no preference is set
 
-	config.runtimePath = path.resolve(process.cwd(), config.runtimePath)
-	config.retailPath = path.resolve(process.cwd(), config.retailPath)
+	if (!config.modsPath) {
+		config.modsPath = path.join(dataRoot, "Mods")
+	} // Default the mod storage location to Mods/ under dataRoot if unset - matches the historical hardcoded location
 
-	const rpkgInstance = new RPKGInstance(path.join(process.cwd(), "Third-Party", "rpkg-cli"))
+	config.runtimePath = path.resolve(dataRoot, config.runtimePath)
+	config.retailPath = path.resolve(dataRoot, config.retailPath)
+	config.modsPath = path.resolve(dataRoot, config.modsPath)
 
-	const logFilePath = path.join(process.cwd(), "Deploy.log")
+	const rpkgInstance = new RPKGInstance(path.join(toolsRoot, "Third-Party", "rpkg-cli"))
+
+	const logFilePath = path.join(dataRoot, "Deploy.log")
 
 	/**
 	 * Append-only write instead of the old "keep the whole log in a string and rewrite the entire
@@ -319,6 +356,10 @@ export function createCore(configOrPath: Config | string, options: CoreOptions =
 		rpkgInstance,
 		config,
 		logger,
+		paths: {
+			dataRoot,
+			toolsRoot
+		},
 		options: {
 			useConsoleLogging: !!options.useConsoleLogging,
 			logLevel,

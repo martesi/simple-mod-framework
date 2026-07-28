@@ -33,7 +33,20 @@
 		bg: "#262626"
 	})
 
-	import { getAllMods, getConfig, mergeConfig, getManifestFromModID, modIsFramework, getModFolder, sortMods, validateModFolder, addModsToIndex, removeModFromIndex, rebuildModIndex } from "$lib/utils"
+	import {
+		getAllMods,
+		getConfig,
+		mergeConfig,
+		getManifestFromModID,
+		modIsFramework,
+		getModFolder,
+		getModsDir,
+		sortMods,
+		validateModFolder,
+		addModsToIndex,
+		removeModFromIndex,
+		rebuildModIndex
+	} from "$lib/utils"
 	import Mod from "$lib/Mod.svelte"
 	import TextInputModal from "$lib/TextInputModal.svelte"
 
@@ -222,13 +235,13 @@
 
 						frameworkModPeacockPluginsWarningOpen = true
 					} else {
-						window.fs.copySync("./staging", "../Mods")
+						window.fs.copySync("./staging", getModsDir())
 						addModsToIndex(window.fs.readdirSync("./staging"))
 
 						mergeConfig({
 							knownMods: [
 								...getConfig().knownMods,
-								json5.parse(window.fs.readFileSync(window.path.join("..", "Mods", window.fs.readdirSync("./staging")[0], "manifest.json"), "utf8")).id
+								json5.parse(window.fs.readFileSync(window.path.join(getModsDir(), window.fs.readdirSync("./staging")[0], "manifest.json"), "utf8")).id
 							]
 						})
 
@@ -281,8 +294,8 @@
 		rpkgModExtractionInProgress = true
 
 		for (const file of rpkgsToInstall) {
-			window.fs.ensureDirSync(window.path.join("..", "Mods", rpkgModName, file.chunk))
-			window.fs.copyFileSync(file.path, window.path.join("..", "Mods", rpkgModName, file.chunk, window.path.basename(file.path)))
+			window.fs.ensureDirSync(window.path.join(getModsDir(), rpkgModName, file.chunk))
+			window.fs.copyFileSync(file.path, window.path.join(getModsDir(), rpkgModName, file.chunk, window.path.basename(file.path)))
 		}
 
 		addModsToIndex([rpkgModName])
@@ -697,11 +710,11 @@
 
 			frameworkModPeacockPluginsWarningOpen = true
 		} else {
-			window.fs.copySync("./staging", "../Mods")
+			window.fs.copySync("./staging", getModsDir())
 			addModsToIndex(window.fs.readdirSync("./staging"))
 
 			mergeConfig({
-				knownMods: [...getConfig().knownMods, json5.parse(window.fs.readFileSync(window.path.join("..", "Mods", window.fs.readdirSync("./staging")[0], "manifest.json"), "utf8")).id]
+				knownMods: [...getConfig().knownMods, json5.parse(window.fs.readFileSync(window.path.join(getModsDir(), window.fs.readdirSync("./staging")[0], "manifest.json"), "utf8")).id]
 			})
 
 			window.fs.removeSync("./staging")
@@ -726,10 +739,10 @@
 	shouldSubmitOnEnter={false}
 	on:click:button--secondary={() => (frameworkModPeacockPluginsWarningOpen = false)}
 	on:click:button--primary={() => {
-		window.fs.copySync("./staging", "../Mods")
+		window.fs.copySync("./staging", getModsDir())
 		addModsToIndex(window.fs.readdirSync("./staging"))
 
-		mergeConfig({ knownMods: [...getConfig().knownMods, json5.parse(window.fs.readFileSync(window.path.join("..", "Mods", window.fs.readdirSync("./staging")[0], "manifest.json"), "utf8")).id] })
+		mergeConfig({ knownMods: [...getConfig().knownMods, json5.parse(window.fs.readFileSync(window.path.join(getModsDir(), window.fs.readdirSync("./staging")[0], "manifest.json"), "utf8")).id] })
 
 		window.fs.removeSync("./staging")
 

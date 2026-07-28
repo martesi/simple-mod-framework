@@ -68,7 +68,16 @@ dev-deploy: install-root
 # Mod Manager GUI - separate npm project, builds independently of the CLI
 # ---------------------------------------------------------------------------
 
-build-mm: install-mm
+# Also depends on install-root (not just install-mm): since LEI-131,
+# electron-builder pulls build/Third-Party in via extraResources (see
+# "Mod Manager/electron-builder.yml"), and that folder is only populated by
+# install-root's postinstall (fetch-third-party.js, link-third-party.js,
+# fetch-hashes.js) - without this, `just build` (which runs `cli` and
+# `build-mm` in [parallel]) could race electron-builder against that
+# postinstall step and package an empty/stale Third-Party. just dedupes
+# shared dependencies within a single invocation, so this doesn't run
+# install-root's `bun install` twice alongside `cli`'s own dependency on it.
+build-mm: install-mm install-root
     cd "Mod Manager" && npm run build:win
 
 # ---------------------------------------------------------------------------

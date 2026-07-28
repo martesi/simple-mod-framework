@@ -1,4 +1,4 @@
-import { config, logger, rpkgInstance } from "./core-singleton"
+import { config, logger, paths, rpkgInstance } from "./core-singleton"
 
 import { freeDiskSpace } from "./smf-rust"
 import fs from "fs-extra"
@@ -73,24 +73,26 @@ export function hexflip(input: string) {
 export async function extractOrCopyToTemp(rpkgOfFile: string, file: string, type: string, stagingChunk = "chunk0") {
 	await logger.verbose(`Extract or copy to temp: ${rpkgOfFile} ${file} ${type} ${stagingChunk}`)
 
-	if (!fs.existsSync(path.join(process.cwd(), "staging", stagingChunk, `${file}.${type}`))) {
-		await rpkgInstance.callFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${rpkgOfFile}.rpkg`)}" -filter "${file}" -output_path temp`) // Extract the file
+	if (!fs.existsSync(path.join(paths.dataRoot, "staging", stagingChunk, `${file}.${type}`))) {
+		await rpkgInstance.callFunction(
+			`-extract_from_rpkg "${path.join(config.runtimePath, `${rpkgOfFile}.rpkg`)}" -filter "${file}" -output_path "${path.join(paths.dataRoot, "temp")}"`
+		) // Extract the file
 	} else {
-		fs.ensureDirSync(path.join(process.cwd(), "temp", rpkgOfFile, type))
-		fs.copyFileSync(path.join(process.cwd(), "staging", stagingChunk, `${file}.${type}`), path.join(process.cwd(), "temp", rpkgOfFile, type, `${file}.${type}`)) // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
+		fs.ensureDirSync(path.join(paths.dataRoot, "temp", rpkgOfFile, type))
+		fs.copyFileSync(path.join(paths.dataRoot, "staging", stagingChunk, `${file}.${type}`), path.join(paths.dataRoot, "temp", rpkgOfFile, type, `${file}.${type}`)) // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
 
-		if (fs.existsSync(path.join(process.cwd(), "staging", stagingChunk, `${file}.${type}.meta`))) {
-			fs.copyFileSync(path.join(process.cwd(), "staging", stagingChunk, `${file}.${type}.meta`), path.join(process.cwd(), "temp", rpkgOfFile, type, `${file}.${type}.meta`))
+		if (fs.existsSync(path.join(paths.dataRoot, "staging", stagingChunk, `${file}.${type}.meta`))) {
+			fs.copyFileSync(path.join(paths.dataRoot, "staging", stagingChunk, `${file}.${type}.meta`), path.join(paths.dataRoot, "temp", rpkgOfFile, type, `${file}.${type}.meta`))
 		}
 	}
 }
 
 export async function copyFromCache(mod: string, cachePath: string, outputPath: string) {
-	if (fs.existsSync(path.join(process.cwd(), "cache", winPathEscape(mod), cachePath))) {
+	if (fs.existsSync(path.join(paths.dataRoot, "cache", winPathEscape(mod), cachePath))) {
 		await logger.verbose(`Cache hit: ${mod} ${cachePath} ${outputPath}`)
 
 		fs.ensureDirSync(outputPath)
-		fs.copySync(path.join(process.cwd(), "cache", winPathEscape(mod), cachePath), outputPath)
+		fs.copySync(path.join(paths.dataRoot, "cache", winPathEscape(mod), cachePath), outputPath)
 		return true
 	}
 
@@ -101,11 +103,11 @@ export async function copyFromCache(mod: string, cachePath: string, outputPath: 
 
 export async function copyToCache(mod: string, originalPath: string, cachePath: string) {
 	// do not cache if less than 5 GB remaining on disk
-	if (fs.existsSync(originalPath) && (await freeDiskSpace()) / 1024 / 1024 / 1024 > 5) {
+	if (fs.existsSync(originalPath) && (await freeDiskSpace(paths.dataRoot)) / 1024 / 1024 / 1024 > 5) {
 		await logger.verbose(`Copy to cache: ${mod} ${originalPath} ${cachePath}`)
 
-		fs.emptyDirSync(path.join(process.cwd(), "cache", winPathEscape(mod), cachePath))
-		fs.copySync(originalPath, path.join(process.cwd(), "cache", winPathEscape(mod), cachePath))
+		fs.emptyDirSync(path.join(paths.dataRoot, "cache", winPathEscape(mod), cachePath))
+		fs.copySync(originalPath, path.join(paths.dataRoot, "cache", winPathEscape(mod), cachePath))
 		return true
 	}
 

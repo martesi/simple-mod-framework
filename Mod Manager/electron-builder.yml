@@ -6,6 +6,17 @@ directories:
 files:
   - '!**/*'
   - 'out/**/*'
+# The rpkg-cli/ResourceTool.exe/etc. binaries plus the hitman-hashes data
+# fetch-hashes.js downloads (see scripts/fetch-third-party.js,
+# scripts/fetch-hashes.js, scripts/link-third-party.js) - build/Third-Party
+# already looks exactly like this by the time electron-builder runs (npm
+# run setup / just build-mm both ensure that), so this just carries it into
+# the packaged app instead of relying on it being copied/symlinked next to
+# Deploy.exe afterwards (see LEI-131). extraResources always lands outside
+# app.asar, at process.resourcesPath - no asarUnpack needed.
+extraResources:
+  - from: ../build/Third-Party
+    to: Third-Party
 protocols:
   - name: Simple Mod Framework
     schemes:

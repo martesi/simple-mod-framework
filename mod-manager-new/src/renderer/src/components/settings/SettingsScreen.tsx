@@ -1,8 +1,12 @@
 import { ExternalLink } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
+import { Button } from "@/components/ui/button"
 import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
 import { ACCENTS, ACCENT_LABELS, resolveDark, type Accent, type ThemeMode } from "@/lib/theme"
+import { LANGUAGES } from "@/lib/languages"
+import { PathInputRow } from "./PathInputRow"
+import { SetupWizard } from "./SetupWizard"
 
 const THEME_MODES: { key: ThemeMode; label: string }[] = [
   { key: "light", label: "Light" },
@@ -22,6 +26,11 @@ export function SettingsScreen() {
   const setThemeMode = useAppStore((s) => s.setThemeMode)
   const setAccent = useAppStore((s) => s.setAccent)
   const toggleDevMode = useAppStore((s) => s.toggleDevMode)
+  const setGamePath = useAppStore((s) => s.setGamePath)
+  const setCachePath = useAppStore((s) => s.setCachePath)
+  const setModPath = useAppStore((s) => s.setModPath)
+  const setLanguage = useAppStore((s) => s.setLanguage)
+  const openWizard = useAppStore((s) => s.openWizard)
 
   if (!config) return null
 
@@ -29,8 +38,43 @@ export function SettingsScreen() {
 
   return (
     <div className="max-w-[520px]">
-      <h1 className="mb-1 text-2xl font-bold">Settings</h1>
+      <div className="mb-1 flex items-start justify-between gap-4">
+        <h1 className="text-2xl font-bold">Settings</h1>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={openWizard}>
+          Run setup wizard
+        </Button>
+      </div>
       <div className="mb-6 text-[13px] text-text-2">Simple Mod Framework · Mod Manager v3.0.0-preview</div>
+
+      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">Paths</div>
+      <div className="mb-6 flex flex-col gap-4 rounded-lg border border-border bg-surface p-[18px] shadow-sm">
+        <div>
+          <div className="mb-2 text-[12px] font-semibold text-text-2">Game path</div>
+          <PathInputRow value={config.gamePath} placeholder="C:\Program Files\HITMAN3\Retail" onChange={setGamePath} />
+        </div>
+        <div>
+          <div className="mb-2 text-[12px] font-semibold text-text-2">Cache path</div>
+          <PathInputRow value={config.cachePath} placeholder="C:\Users\you\AppData\Local\Simple Mod Framework\cache" onChange={setCachePath} />
+        </div>
+        <div>
+          <div className="mb-2 text-[12px] font-semibold text-text-2">Mod path</div>
+          <PathInputRow value={config.modPath} placeholder="C:\Users\you\Documents\SMF Mods" onChange={setModPath} />
+        </div>
+        <div>
+          <div className="mb-2 text-[12px] font-semibold text-text-2">Language</div>
+          <select
+            value={config.language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className="w-full rounded-md border border-border bg-surface-2 px-3 py-[9px] text-[13px] text-text outline-none"
+          >
+            {LANGUAGES.map((lo) => (
+              <option key={lo.code} value={lo.code}>
+                {lo.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">Appearance</div>
       <div className="mb-6 rounded-lg border border-border bg-surface p-[18px] shadow-sm">
@@ -90,6 +134,8 @@ export function SettingsScreen() {
           </a>
         ))}
       </div>
+
+      <SetupWizard />
     </div>
   )
 }

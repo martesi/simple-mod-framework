@@ -1,10 +1,12 @@
 import child_process from "child_process"
 import path from "path"
-import { logger } from "./core-singleton"
+import { logger, paths } from "./core-singleton"
 
 // Shim for QuickEntity 3.0 executable
 
-const qnExe = path.join(process.cwd(), "Third-Party", "quickentity-3.exe")
+// Computed lazily (not at module scope) - paths.toolsRoot isn't set until createCore() runs (see
+// LEI-130), which may well be after this module is first imported.
+const qnExe = () => path.join(paths.toolsRoot, "Third-Party", "quickentity-3.exe")
 
 const execCommand = function (command: string) {
 	void logger.verbose(`Executing QN 3.0 command ${command}`)
@@ -13,16 +15,16 @@ const execCommand = function (command: string) {
 
 export async function convert(game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) {
 	execCommand(
-		`"${qnExe}" entity convert --input-factory "${TEMP}" --input-factory-meta "${TEMPmeta}" --input-blueprint "${TBLU}" --input-blueprint-meta "${TBLUmeta}" --output "${output}" --lossless`
+		`"${qnExe()}" entity convert --input-factory "${TEMP}" --input-factory-meta "${TEMPmeta}" --input-blueprint "${TBLU}" --input-blueprint-meta "${TBLUmeta}" --output "${output}" --lossless`
 	)
 }
 
 export async function generate(game: string, input: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string) {
 	execCommand(
-		`"${qnExe}" entity generate --input "${input}" --output-factory "${TEMP}" --output-factory-meta "${TEMPmeta}" --output-blueprint "${TBLU}" --output-blueprint-meta "${TBLUmeta}"`
+		`"${qnExe()}" entity generate --input "${input}" --output-factory "${TEMP}" --output-factory-meta "${TEMPmeta}" --output-blueprint "${TBLU}" --output-blueprint-meta "${TBLUmeta}"`
 	)
 }
 
 export async function applyPatchJSON(original: string, patch: string, output: string) {
-	execCommand(`"${qnExe}" patch apply --input "${original}" --patch "${patch}" --output "${output}"`)
+	execCommand(`"${qnExe()}" patch apply --input "${original}" --patch "${patch}" --output "${output}"`)
 }

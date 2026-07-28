@@ -15,6 +15,44 @@ import semver from "semver"
 
 export const FrameworkVersion = "2.33.40"
 
+// ─── mod storage location ──────────────────────────────────────────────────
+//
+// Historically every "Mods" lookup in this file just hardcoded
+// window.path.join("..", "Mods") - the same process.cwd()-style bug the
+// framework core had (see LEI-130), just one layer up (relative to whatever
+// main/index.ts pinned this Electron process's cwd to). Config now carries an
+// explicit modsPath (src/types.ts), so mod storage can be moved independent
+// of where Mod Manager itself is installed.
+//
+// getModsDir() can't just call getConfig() - getConfig() itself resolves
+// getModFolder()/buildModIndex() while validating loadOrder, which need to
+// know the mods directory *before* getConfig() has finished running. So this
+// does its own minimal, unvalidated read of config.json for modsPath alone,
+// and caches the result (invalidated whenever setConfig() writes a new one)
+// instead of hitting disk on every mod lookup.
+const DEFAULT_MODS_PATH = window.path.join("..", "Mods")
+
+let _modsDirCache: string | undefined
+
+function resolveModsDir(modsPath: string | undefined): string {
+	return modsPath ? window.path.resolve(modsPath) : DEFAULT_MODS_PATH
+}
+
+export function getModsDir(): string {
+	if (_modsDirCache) return _modsDirCache
+
+	let modsPath: string | undefined
+	try {
+		modsPath = json5.parse(String(window.fs.readFileSync("../config.json", "utf8")))?.modsPath
+	} catch {
+		// missing/corrupt config.json - fall back to the historical default; getConfig() is what
+		// surfaces a real error for this elsewhere
+	}
+
+	_modsDirCache = resolveModsDir(modsPath)
+	return _modsDirCache
+}
+
 const validateManifest = new Ajv({ strict: false }).compile(manifestSchema)
 
 const validateEntity = new Ajv({ strict: false }).compile(entitySchema)
@@ -134,6 +172,7 @@ export function getConfig() {
 
 export function setConfig(config: Config) {
 	window.fs.writeFileSync("../config.json", json5.stringify(config))
+	_modsDirCache = resolveModsDir(config.modsPath)
 }
 
 export function mergeConfig(configToMerge: Partial<Config>) {
@@ -453,7 +492,7 @@ function persistModIndex(): void {
 
 function buildModIndex(forceFull = false): void {
 	if (_isIndexed) return
-	const modsDir = window.path.join("..", "Mods")
+	const modsDir = getModsDir()
 	if (!window.fs.existsSync(modsDir)) {
 		_allModsCache = []
 		_isIndexed = true
@@ -528,7 +567,7 @@ export function rebuildModIndex(): void {
  */
 export function addModsToIndex(folderNames: string[]): void {
 	buildModIndex()
-	const modsDir = window.path.join("..", "Mods")
+	const modsDir = getModsDir()
 	const newEntries = readModEntries(folderNames, modsDir)
 	for (const entry of newEntries) {
 		_modFolderCache.set(entry.id, window.path.resolve(window.path.join(modsDir, entry.folder)))
@@ -565,7 +604,7 @@ export function getModFolder(id: string): string {
 	buildModIndex()
 	if (_modFolderCache.has(id)) return _modFolderCache.get(id)!
 	// id isn't indexed — fall back to a per-id scan (also covers the throw/alert case)
-	const modsDir = window.path.join("..", "Mods")
+	const modsDir = getModsDir()
 
 	let folder: string | undefined
 	if (modIsFramework(id)) {
@@ -610,7 +649,7 @@ export function modIsFramework(id: string): boolean {
 	buildModIndex()
 	if (_isFrameworkCache.has(id)) return _isFrameworkCache.get(id)!
 	// id isn't a folder in Mods/ — fall back to per-id detection
-	const modsDir = window.path.join("..", "Mods")
+	const modsDir = getModsDir()
 	const modDir = window.path.join(modsDir, id)
 	// An RPKG mod: the folder exists, has no manifest, and contains *.rpkg files
 	const isRpkg =

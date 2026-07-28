@@ -67,4 +67,12 @@ export interface Config {
   reportErrors?: boolean
   themeMode: "light" | "dark" | "system"
   accent: "neutral" | "blue" | "violet" | "green" | "red"
+  /** Folder containing the game's Retail executable. */
+  gamePath: string
+  /** Where extracted RPKG data and intermediate build files are stored. */
+  cachePath: string
+  /** The folder the manager scans for mods to load. */
+  modPath: string
+  /** In-game text language code (e.g. "en-US") mods should target. */
+  language: string
 }

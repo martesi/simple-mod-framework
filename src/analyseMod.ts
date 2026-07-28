@@ -3,7 +3,7 @@ import * as ts from "./typescript"
 import type { DeployInstruction, Manifest, ManifestOptionData, ModScript } from "./types"
 import { ModuleKind, ScriptTarget } from "typescript"
 import { compileExpression, useDotAccessOperatorAndOptionalChaining } from "filtrex"
-import { FrameworkVersion, config, logger, rpkgInstance } from "./core-singleton"
+import { FrameworkVersion, config, logger, paths, rpkgInstance } from "./core-singleton"
 import { extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, winPathEscape } from "./utils"
 
 import { OptionType } from "./types"
@@ -20,7 +20,7 @@ import path from "path"
 /*   in-memory RPKGHashCache stays one real singleton instead of two independent copies.           */
 /* ---------------------------------------------------------------------------------------------- */
 
-export const thirdParty = (exe: string) => path.join(process.cwd(), "Third-Party", exe)
+export const thirdParty = (exe: string) => path.join(paths.toolsRoot, "Third-Party", exe)
 
 export const execCommand = function (command: string) {
 	void logger.verbose(`Executing command ${command}`)
@@ -59,19 +59,19 @@ export const getRPKGOfHash = async function (hash: string): Promise<string> {
 
 /** Load the on-disk RPKG-of-hash cache into {@link RPKGHashCache}. Call once per process, before anything calls {@link getRPKGOfHash}. */
 export function loadRPKGHashCache() {
-	if (fs.existsSync(path.join(process.cwd(), "cache", "rpkgHashCache.json"))) {
+	if (fs.existsSync(path.join(paths.dataRoot, "cache", "rpkgHashCache.json"))) {
 		Object.assign(
 			RPKGHashCache,
-			Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(path.join(process.cwd(), "cache", "rpkgHashCache.json"), "utf8"))).map((a) => [a[0], [a[1], false]]))
+			Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "cache", "rpkgHashCache.json"), "utf8"))).map((a) => [a[0], [a[1], false]]))
 		)
 	}
 }
 
 /** Persist {@link RPKGHashCache} back to disk. Call once at the end of the process. */
 export function saveRPKGHashCache() {
-	fs.ensureDirSync(path.join(process.cwd(), "cache"))
+	fs.ensureDirSync(path.join(paths.dataRoot, "cache"))
 	fs.writeFileSync(
-		path.join(process.cwd(), "cache", "rpkgHashCache.json"),
+		path.join(paths.dataRoot, "cache", "rpkgHashCache.json"),
 		JSON.stringify(
 			Object.fromEntries(
 				Object.entries(RPKGHashCache)
@@ -103,7 +103,7 @@ export interface AnalysisCacheEntry {
 }
 
 export function analysisCacheDir(): string {
-	return path.join(process.cwd(), "cache", "analysis")
+	return path.join(paths.dataRoot, "cache", "analysis")
 }
 
 export function analysisCachePath(modId: string): string {
@@ -239,17 +239,17 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 	// folder name, so find the folder whose manifest.json has this ID.
 	if (
 		!(
-			fs.existsSync(path.join(process.cwd(), "Mods", mod)) &&
-			!fs.existsSync(path.join(process.cwd(), "Mods", mod, "manifest.json")) &&
-			klaw(path.join(process.cwd(), "Mods", mod))
+			fs.existsSync(path.join(config.modsPath, mod)) &&
+			!fs.existsSync(path.join(config.modsPath, mod, "manifest.json")) &&
+			klaw(path.join(config.modsPath, mod))
 				.filter((a) => a.stats.isFile())
 				.map((a) => a.path)
 				.some((a) => a.endsWith(".rpkg"))
 		)
 	) {
 		const foundMod = fs
-			.readdirSync(path.join(process.cwd(), "Mods"))
-			.find((a) => fs.existsSync(path.join(process.cwd(), "Mods", a, "manifest.json")) && json5.parse(fs.readFileSync(path.join(process.cwd(), "Mods", a, "manifest.json"), "utf8")).id === mod)
+			.readdirSync(config.modsPath)
+			.find((a) => fs.existsSync(path.join(config.modsPath, a, "manifest.json")) && json5.parse(fs.readFileSync(path.join(config.modsPath, a, "manifest.json"), "utf8")).id === mod)
 
 		if (!foundMod) {
 			await logger.error(`Could not resolve mod ${mod} to its folder in Mods!`)
@@ -259,7 +259,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 		mod = foundMod
 	}
 
-	const manifestPath = path.join(process.cwd(), "Mods", mod, "manifest.json")
+	const manifestPath = path.join(config.modsPath, mod, "manifest.json")
 
 	if (!fs.existsSync(manifestPath)) {
 		await logger.warn(`"${mod}" is an RPKG-only mod (no manifest.json) - these are staged directly during deploy and have no analysis to cache.`)
@@ -277,13 +277,13 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 	const scripts: string[][] = []
 
 	for (const contentFolder of manifest.contentFolders || []) {
-		if (contentFolder?.length && fs.readdirSync(path.join(process.cwd(), "Mods", mod, contentFolder)).length) {
+		if (contentFolder?.length && fs.readdirSync(path.join(config.modsPath, mod, contentFolder)).length) {
 			contentFolders.push(contentFolder)
 		}
 	}
 
 	for (const blobsFolder of manifest.blobsFolders || []) {
-		if (blobsFolder?.length && fs.readdirSync(path.join(process.cwd(), "Mods", mod, blobsFolder)).length) {
+		if (blobsFolder?.length && fs.readdirSync(path.join(config.modsPath, mod, blobsFolder)).length) {
 			blobsFolders.push(blobsFolder)
 		}
 	}
@@ -305,13 +305,13 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 					}))
 		)) {
 			for (const contentFolder of option.contentFolders || []) {
-				if (contentFolder?.length && fs.existsSync(path.join(process.cwd(), "Mods", mod, contentFolder)) && fs.readdirSync(path.join(process.cwd(), "Mods", mod, contentFolder)).length) {
+				if (contentFolder?.length && fs.existsSync(path.join(config.modsPath, mod, contentFolder)) && fs.readdirSync(path.join(config.modsPath, mod, contentFolder)).length) {
 					contentFolders.push(contentFolder)
 				}
 			}
 
 			for (const blobsFolder of option.blobsFolders || []) {
-				if (blobsFolder?.length && fs.existsSync(path.join(process.cwd(), "Mods", mod, blobsFolder)) && fs.readdirSync(path.join(process.cwd(), "Mods", mod, blobsFolder)).length) {
+				if (blobsFolder?.length && fs.existsSync(path.join(config.modsPath, mod, blobsFolder)) && fs.readdirSync(path.join(config.modsPath, mod, blobsFolder)).length) {
 					blobsFolders.push(blobsFolder)
 				}
 			}
@@ -361,14 +361,14 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 	const fingerprint: { path: string; size: number; mtimeMs: number }[] = [{ path: "manifest.json", size: manifestRaw.length, mtimeMs: fs.statSync(manifestPath).mtimeMs }]
 
 	for (const contentFolder of contentFolders) {
-		for (const chunkFolder of fs.readdirSync(path.join(process.cwd(), "Mods", mod, contentFolder))) {
-			for (const contentFile of klaw(path.join(process.cwd(), "Mods", mod, contentFolder, chunkFolder)).filter((a) => a.stats.isFile())) {
+		for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, mod, contentFolder))) {
+			for (const contentFile of klaw(path.join(config.modsPath, mod, contentFolder, chunkFolder)).filter((a) => a.stats.isFile())) {
 				const contentFilePath = contentFile.path
 				const contentType = path.basename(contentFilePath).split(".").slice(1).join(".")
 
 				await logger.verbose(`Registering ${contentType} file ${contentFilePath}`)
 
-				fingerprint.push({ path: path.relative(path.join(process.cwd(), "Mods", mod), contentFilePath), size: contentFile.stats.size, mtimeMs: contentFile.stats.mtimeMs })
+				fingerprint.push({ path: path.relative(path.join(config.modsPath, mod), contentFilePath), size: contentFile.stats.size, mtimeMs: contentFile.stats.mtimeMs })
 
 				content.push({
 					source: "disk",
@@ -379,10 +379,10 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 			}
 
 			/* ------------------------------ Copy chunk meta to staging folder ----------------------------- */
-			if (fs.existsSync(path.join(process.cwd(), "Mods", mod, contentFolder, chunkFolder, `${chunkFolder}.meta`))) {
+			if (fs.existsSync(path.join(config.modsPath, mod, contentFolder, chunkFolder, `${chunkFolder}.meta`))) {
 				rpkgTypes[chunkFolder] = {
 					type: "base",
-					chunkMeta: path.join(process.cwd(), "Mods", mod, contentFolder, chunkFolder, `${chunkFolder}.meta`)
+					chunkMeta: path.join(config.modsPath, mod, contentFolder, chunkFolder, `${chunkFolder}.meta`)
 				}
 			} else {
 				rpkgTypes[chunkFolder] = {
@@ -393,11 +393,11 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 	}
 
 	for (const blobsFolder of blobsFolders) {
-		for (const blobFile of klaw(path.join(process.cwd(), "Mods", mod, blobsFolder)).filter((a) => a.stats.isFile())) {
+		for (const blobFile of klaw(path.join(config.modsPath, mod, blobsFolder)).filter((a) => a.stats.isFile())) {
 			const blob = blobFile.path
-			const blobPath = blob.replace(path.join(process.cwd(), "Mods", mod, blobsFolder), "").slice(1).split(path.sep).join("/").toLowerCase()
+			const blobPath = blob.replace(path.join(config.modsPath, mod, blobsFolder), "").slice(1).split(path.sep).join("/").toLowerCase()
 
-			fingerprint.push({ path: path.relative(path.join(process.cwd(), "Mods", mod), blob), size: blobFile.stats.size, mtimeMs: blobFile.stats.mtimeMs })
+			fingerprint.push({ path: path.relative(path.join(config.modsPath, mod), blob), size: blobFile.stats.size, mtimeMs: blobFile.stats.mtimeMs })
 
 			let blobHash: string
 			if (path.extname(blob).startsWith(".jp") || path.extname(blob) === ".png") {
@@ -421,7 +421,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 
 	for (const files of scripts) {
 		for (const file of files) {
-			const scriptPath = path.join(process.cwd(), "Mods", mod, file)
+			const scriptPath = path.join(config.modsPath, mod, file)
 			if (fs.existsSync(scriptPath)) {
 				const stats = fs.statSync(scriptPath)
 				fingerprint.push({ path: file, size: stats.size, mtimeMs: stats.mtimeMs })
@@ -442,7 +442,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 			supportedPlatforms: manifest.supportedPlatforms,
 			packagedefinition: manifest.packagedefinition,
 			thumbs: manifest.thumbs,
-			peacockPlugins: (manifest.peacockPlugins || []).map((a) => path.join(process.cwd(), "Mods", mod, a)),
+			peacockPlugins: (manifest.peacockPlugins || []).map((a) => path.join(config.modsPath, mod, a)),
 			scripts
 		},
 		content,
@@ -463,7 +463,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 	if (deployInstruction.manifestSources.scripts.length) {
 		for (const files of deployInstruction.manifestSources.scripts) {
 			const compiledScriptPath = ts.compile(
-				files.map((a) => path.join(process.cwd(), "Mods", mod, a)),
+				files.map((a) => path.join(config.modsPath, mod, a)),
 				{
 					esModuleInterop: true,
 					allowJs: true,
@@ -471,20 +471,20 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 					module: ModuleKind.CommonJS,
 					resolveJsonModule: true
 				},
-				path.join(process.cwd(), "Mods", mod)
+				path.join(config.modsPath, mod)
 			)
 
 			// eslint-disable-next-line @typescript-eslint/no-var-requires
 			const modScript = (await require(compiledScriptPath)) as ModScript
 
-			fs.ensureDirSync(path.join(process.cwd(), "scriptTempFolder"))
+			fs.ensureDirSync(path.join(paths.dataRoot, "scriptTempFolder"))
 
 			await modScript.analysis(
 				{
 					config,
 					deployInstruction,
-					modRoot: path.join(process.cwd(), "Mods", mod),
-					tempFolder: path.join(process.cwd(), "scriptTempFolder")
+					modRoot: path.join(config.modsPath, mod),
+					tempFolder: path.join(paths.dataRoot, "scriptTempFolder")
 				},
 				{
 					rpkg: {
@@ -493,7 +493,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 						async extractFileFromRPKG(hash: string, rpkg: string) {
 							await logger.verbose(`Extracting ${hash} from ${rpkg}`)
 							await rpkgInstance.callFunction(
-								`-extract_from_rpkg "${path.join(config.runtimePath, `${rpkg}.rpkg`)}" -filter "${hash}" -output_path ${path.join(process.cwd(), "scriptTempFolder")}`
+								`-extract_from_rpkg "${path.join(config.runtimePath, `${rpkg}.rpkg`)}" -filter "${hash}" -output_path ${path.join(paths.dataRoot, "scriptTempFolder")}`
 							)
 						}
 					},
@@ -514,7 +514,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 				}
 			)
 
-			fs.removeSync(path.join(process.cwd(), "scriptTempFolder"))
+			fs.removeSync(path.join(paths.dataRoot, "scriptTempFolder"))
 		}
 	}
 

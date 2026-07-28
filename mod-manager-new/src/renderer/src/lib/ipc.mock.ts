@@ -37,10 +37,16 @@ const seedMods: ModEntry[] = [
       description: "Adds 12 additional suits themed around the Silent Assassin rating.",
       authors: ["atampy26"],
       options: [
-        { name: "Unlock suits immediately", type: OptionType.checkbox, enabledByDefault: false, tooltip: "Skip the in-game unlock requirements." },
-        { name: "Classic", type: OptionType.select, group: "Suit tint", enabledByDefault: true },
-        { name: "Midnight", type: OptionType.select, group: "Suit tint" },
-        { name: "Ash", type: OptionType.select, group: "Suit tint" },
+        {
+          name: "Unlock suits immediately",
+          type: OptionType.checkbox,
+          enabledByDefault: false,
+          tooltip: "Skip the in-game unlock requirements.",
+          image: "https://picsum.photos/seed/smf-unlock/300/200"
+        },
+        { name: "Classic", type: OptionType.select, group: "Suit tint", enabledByDefault: true, image: "https://picsum.photos/seed/smf-classic/300/200" },
+        { name: "Midnight", type: OptionType.select, group: "Suit tint", image: "https://picsum.photos/seed/smf-midnight/300/200" },
+        { name: "Ash", type: OptionType.select, group: "Suit tint", image: "https://picsum.photos/seed/smf-ash/300/200" },
         { name: "Charcoal", type: OptionType.select, group: "Suit tint" }
       ]
     })
@@ -147,7 +153,11 @@ function defaultConfig(mods: ModEntry[]): Config {
     developerMode: false,
     reportErrors: undefined,
     themeMode: "system",
-    accent: "neutral"
+    accent: "neutral",
+    gamePath: "",
+    cachePath: "",
+    modPath: "",
+    language: "en-US"
   }
 }
 

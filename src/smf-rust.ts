@@ -48,12 +48,16 @@ function naturalCompare(a: string, b: string): number {
  * Walks `fromFolder`, figures out which RPKG chunk/patch each file belongs to,
  * keeps only the highest-priority version of each filename (patches beat their
  * base chunk, sorted in descending order), drops chunk .meta files that already
- * have a .meta.json sibling, and copies the survivors into staging/<toFolder>.
+ * have a .meta.json sibling, and copies the survivors into `toStagingDir`.
  *
- * Synchronous by design - callers (deploy.ts) rely on staging/ being fully
+ * Synchronous by design - callers (deploy.ts) rely on the staging directory being fully
  * populated by the time this returns, just like the old native call was.
+ *
+ * `toStagingDir` must be a fully resolved absolute path (the caller's responsibility - see
+ * LEI-130) rather than a bare folder name joined against `"staging"` here, since this module no
+ * longer assumes `process.cwd()` is the framework's data root.
  */
-export function stageDependenciesFrom(fromFolder: string, toFolder: string): void {
+export function stageDependenciesFrom(fromFolder: string, toStagingDir: string): void {
 	const reRpkg = /00[0-9A-F]*\..*?\\(chunk[0-9]*(?:patch[0-9]*)?)\\/i
 	const reRpkgChunk = /00[0-9A-F]*\..*?\\(chunk[0-9]*)(?:patch[0-9]*)?\\/i
 	const reMeta = /chunk[0-9]*(?:patch[0-9]*)?\.meta/i
@@ -97,11 +101,10 @@ export function stageDependenciesFrom(fromFolder: string, toFolder: string): voi
 	// Remove all chunk metas.
 	const filesToStage = supersededFiles.filter((filePath) => !reMeta.test(path.basename(filePath)))
 
-	const stagingDir = path.join("staging", toFolder)
-	fs.ensureDirSync(stagingDir)
+	fs.ensureDirSync(toStagingDir)
 
 	for (const filePath of filesToStage) {
-		const dest = path.join(stagingDir, path.basename(filePath))
+		const dest = path.join(toStagingDir, path.basename(filePath))
 
 		if (!fs.existsSync(dest)) {
 			if (path.extname(dest) === ".meta" && fs.existsSync(`${dest}.json`)) {
@@ -114,10 +117,10 @@ export function stageDependenciesFrom(fromFolder: string, toFolder: string): voi
 }
 
 /**
- * Available disk space (in bytes) on the drive containing the current working
- * directory.
+ * Available disk space (in bytes) on the drive containing `dataRoot` - the injected writable
+ * data root (see LEI-130), not necessarily `process.cwd()` anymore.
  */
-export async function freeDiskSpace(): Promise<number> {
-	const diskSpace = await checkDiskSpace(process.cwd())
+export async function freeDiskSpace(dataRoot: string): Promise<number> {
+	const diskSpace = await checkDiskSpace(dataRoot)
 	return diskSpace.free
 }

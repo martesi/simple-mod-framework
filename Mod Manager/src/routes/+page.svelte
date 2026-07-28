@@ -4,7 +4,7 @@
 
 	import { Button, InlineLoading, Modal, ProgressBar } from "carbon-components-svelte"
 
-	import { getAllMods, getConfig, getManifestFromModID, modIsFramework, getModFolder, mergeConfig, FrameworkVersion, addModsToIndex, removeModFromIndex } from "$lib/utils"
+	import { getAllMods, getConfig, getManifestFromModID, modIsFramework, getModFolder, getModsDir, mergeConfig, FrameworkVersion, addModsToIndex, removeModFromIndex } from "$lib/utils"
 
 	import { v4 } from "uuid"
 	import { marked } from "marked"
@@ -94,9 +94,9 @@
 
 	if (
 		window.fs
-			.readdirSync(window.path.join("..", "Mods"))
+			.readdirSync(getModsDir())
 			.filter((a) => a != "Managed by SMF, do not touch")
-			.map((a) => window.path.resolve(window.path.join("..", "Mods", a)))
+			.map((a) => window.path.resolve(window.path.join(getModsDir(), a)))
 			.some((a) => window.isFile(a))
 	) {
 		fileInModFolder = true
@@ -108,9 +108,9 @@
 		} catch {
 			invalidModText =
 				window.fs
-					.readdirSync(window.path.join("..", "Mods"))
+					.readdirSync(getModsDir())
 					.filter((a) => a != "Managed by SMF, do not touch")
-					.map((a) => window.path.resolve(window.path.join("..", "Mods", a)))
+					.map((a) => window.path.resolve(window.path.join(getModsDir(), a)))
 					.find((a) => window.fs.existsSync(window.path.join(a, "manifest.json")) && !json5.parse(window.fs.readFileSync(window.path.join(a, "manifest.json"), "utf8")).id)
 					?.split(window.path.sep)
 					?.pop() || "<can't find which one>"
@@ -410,7 +410,7 @@
 
 			window.fs.removeSync(getModFolder(updatingMod!.id))
 
-			window.fs.copySync("./staging", "../Mods")
+			window.fs.copySync("./staging", getModsDir())
 
 			// write-through: this is our own mutation (remove old id, add
 			// whatever folder(s) the update produced), so the persisted index

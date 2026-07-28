@@ -1,7 +1,7 @@
 import * as LosslessJSON from "lossless-json"
 import * as ts from "./typescript"
 
-import { FrameworkVersion, config, logger, rpkgInstance } from "./core-singleton"
+import { FrameworkVersion, config, logger, paths, rpkgInstance } from "./core-singleton"
 
 import { type Manifest, Language, OptionType, ModScript } from "./types"
 import mergeWith from "lodash.mergewith"
@@ -32,7 +32,7 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 	// All base game TEMP and TBLU hashes
 	const baseGameEntityHashes = new Set(
 		fs
-			.readFileSync(path.join(process.cwd(), "Third-Party", "baseGameEntities.txt"), "utf8")
+			.readFileSync(path.join(paths.toolsRoot, "Third-Party", "baseGameEntities.txt"), "utf8")
 			.split("\n")
 			.map((a) => a.trim())
 	)
@@ -40,7 +40,7 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 	// All base game WWEV hashes
 	const baseGameSoundbankHashes = new Set(
 		fs
-			.readFileSync(path.join(process.cwd(), "Third-Party", "baseGameSoundbanks.txt"), "utf8")
+			.readFileSync(path.join(paths.toolsRoot, "Third-Party", "baseGameSoundbanks.txt"), "utf8")
 			.split("\n")
 			.map((a) => a.trim())
 	)
@@ -53,9 +53,9 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 		// NOT Mod folder exists, mod has no manifest, mod has RPKGs (mod is an RPKG-only mod)
 		if (
 			!(
-				fs.existsSync(path.join(process.cwd(), "Mods", mod)) &&
-				!fs.existsSync(path.join(process.cwd(), "Mods", mod, "manifest.json")) &&
-				klaw(path.join(process.cwd(), "Mods", mod))
+				fs.existsSync(path.join(config.modsPath, mod)) &&
+				!fs.existsSync(path.join(config.modsPath, mod, "manifest.json")) &&
+				klaw(path.join(config.modsPath, mod))
 					.filter((a) => a.stats.isFile())
 					.map((a) => a.path)
 					.some((a) => a.endsWith(".rpkg"))
@@ -63,8 +63,8 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 		) {
 			// Find mod with ID in Mods folder, set the current mod to that folder
 			const foundMod = fs
-				.readdirSync(path.join(process.cwd(), "Mods"))
-				.find((a) => fs.existsSync(path.join(process.cwd(), "Mods", a, "manifest.json")) && json5.parse(fs.readFileSync(path.join(process.cwd(), "Mods", a, "manifest.json"), "utf8")).id === mod)
+				.readdirSync(config.modsPath)
+				.find((a) => fs.existsSync(path.join(config.modsPath, a, "manifest.json")) && json5.parse(fs.readFileSync(path.join(config.modsPath, a, "manifest.json"), "utf8")).id === mod)
 
 			if (!foundMod) {
 				await logger.error(`Could not resolve mod ${mod} to its folder in Mods!`)
@@ -75,31 +75,31 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 		} // Essentially, if the mod isn't an RPKG mod, it is referenced by its ID, so this finds the mod folder with the right ID
 
 		await logger.verbose(`Beginning mod discovery of ${mod}`)
-		if (!fs.existsSync(path.join(process.cwd(), "Mods", mod, "manifest.json"))) {
+		if (!fs.existsSync(path.join(config.modsPath, mod, "manifest.json"))) {
 			await logger.info(`Discovering RPKG mod: ${mod}`)
 
-			for (const chunkFolder of fs.readdirSync(path.join(process.cwd(), "Mods", mod))) {
-				for (const contentFile of fs.readdirSync(path.join(process.cwd(), "Mods", mod, chunkFolder))) {
-					fs.emptyDirSync(path.join(process.cwd(), "temp"))
+			for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, mod))) {
+				for (const contentFile of fs.readdirSync(path.join(config.modsPath, mod, chunkFolder))) {
+					fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
-					await logger.verbose(`-extract_from_rpkg "${path.join(process.cwd(), "Mods", mod, chunkFolder, contentFile)}" -output_path "${path.join(process.cwd(), "temp")}"`)
-					await rpkgInstance.callFunction(`-extract_from_rpkg "${path.join(process.cwd(), "Mods", mod, chunkFolder, contentFile)}" -output_path "${path.join(process.cwd(), "temp")}"`)
+					await logger.verbose(`-extract_from_rpkg "${path.join(config.modsPath, mod, chunkFolder, contentFile)}" -output_path "${path.join(paths.dataRoot, "temp")}"`)
+					await rpkgInstance.callFunction(`-extract_from_rpkg "${path.join(config.modsPath, mod, chunkFolder, contentFile)}" -output_path "${path.join(paths.dataRoot, "temp")}"`)
 
-					await logger.verbose(`Adding ${path.join(process.cwd(), "Mods", mod, chunkFolder, contentFile)} to fileMap`)
-					fileMap[path.join(process.cwd(), "Mods", mod, chunkFolder, contentFile)] = {
-						hash: await xxhash3(fs.readFileSync(path.join(process.cwd(), "Mods", mod, chunkFolder, contentFile))),
+					await logger.verbose(`Adding ${path.join(config.modsPath, mod, chunkFolder, contentFile)} to fileMap`)
+					fileMap[path.join(config.modsPath, mod, chunkFolder, contentFile)] = {
+						hash: await xxhash3(fs.readFileSync(path.join(config.modsPath, mod, chunkFolder, contentFile))),
 						dependencies: [], // Raw files: depend on nothing, overwrite contained files
-						affected: klaw(path.join(process.cwd(), "temp"))
+						affected: klaw(path.join(paths.dataRoot, "temp"))
 							.filter((a) => a.stats.isFile())
 							.filter((a) => !a.path.endsWith(".meta"))
 							.map((a) => path.basename(a.path).split(".")[0])
 					}
 
-					fs.removeSync(path.join(process.cwd(), "temp"))
+					fs.removeSync(path.join(paths.dataRoot, "temp"))
 				}
 			}
 		} else {
-			const manifest: Manifest = json5.parse(fs.readFileSync(path.join(process.cwd(), "Mods", mod, "manifest.json"), "utf8"))
+			const manifest: Manifest = json5.parse(fs.readFileSync(path.join(config.modsPath, mod, "manifest.json"), "utf8"))
 
 			await logger.info(`Discovering mod: ${manifest.name}`)
 
@@ -129,13 +129,13 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 			const scripts: string[][] = []
 
 			for (const contentFolder of manifest.contentFolders || []) {
-				if (contentFolder?.length && fs.existsSync(path.join(process.cwd(), "Mods", mod, contentFolder)) && fs.readdirSync(path.join(process.cwd(), "Mods", mod, contentFolder)).length) {
+				if (contentFolder?.length && fs.existsSync(path.join(config.modsPath, mod, contentFolder)) && fs.readdirSync(path.join(config.modsPath, mod, contentFolder)).length) {
 					contentFolders.push(contentFolder)
 				}
 			}
 
 			for (const blobsFolder of manifest.blobsFolders || []) {
-				if (blobsFolder?.length && fs.existsSync(path.join(process.cwd(), "Mods", mod, blobsFolder)) && fs.readdirSync(path.join(process.cwd(), "Mods", mod, blobsFolder)).length) {
+				if (blobsFolder?.length && fs.existsSync(path.join(config.modsPath, mod, blobsFolder)) && fs.readdirSync(path.join(config.modsPath, mod, blobsFolder)).length) {
 					blobsFolders.push(blobsFolder)
 				}
 			}
@@ -155,13 +155,13 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 							}))
 				)) {
 					for (const contentFolder of option.contentFolders || []) {
-						if (contentFolder?.length && fs.existsSync(path.join(process.cwd(), "Mods", mod, contentFolder)) && fs.readdirSync(path.join(process.cwd(), "Mods", mod, contentFolder)).length) {
+						if (contentFolder?.length && fs.existsSync(path.join(config.modsPath, mod, contentFolder)) && fs.readdirSync(path.join(config.modsPath, mod, contentFolder)).length) {
 							contentFolders.push(contentFolder)
 						}
 					}
 
 					for (const blobsFolder of option.blobsFolders || []) {
-						if (blobsFolder?.length && fs.existsSync(path.join(process.cwd(), "Mods", mod, blobsFolder)) && fs.readdirSync(path.join(process.cwd(), "Mods", mod, blobsFolder)).length) {
+						if (blobsFolder?.length && fs.existsSync(path.join(config.modsPath, mod, blobsFolder)) && fs.readdirSync(path.join(config.modsPath, mod, blobsFolder)).length) {
 							blobsFolders.push(blobsFolder)
 						}
 					}
@@ -219,7 +219,7 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 			await logger.verbose("Discovering scripts")
 			for (const files of scripts) {
 				const compiledScriptPath = ts.compile(
-					files.map((a) => path.join(process.cwd(), "Mods", mod, a)),
+					files.map((a) => path.join(config.modsPath, mod, a)),
 					{
 						esModuleInterop: true,
 						allowJs: true,
@@ -227,7 +227,7 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 						module: ModuleKind.CommonJS,
 						resolveJsonModule: true
 					},
-					path.join(process.cwd(), "Mods", mod)
+					path.join(config.modsPath, mod)
 				)
 
 				// eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -235,7 +235,7 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 
 				for (const file of files) {
 					fileMap[file] = {
-						hash: await xxhash3(fs.readFileSync(path.join(process.cwd(), "Mods", mod, file))),
+						hash: await xxhash3(fs.readFileSync(path.join(config.modsPath, mod, file))),
 						dependencies: [],
 						affected: modScript.cachingPolicy.affected
 					}
@@ -248,8 +248,8 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 			/*                                             Content                                            */
 			/* ---------------------------------------------------------------------------------------------- */
 			for (const contentFolder of contentFolders) {
-				for (const chunkFolder of fs.readdirSync(path.join(process.cwd(), "Mods", mod, contentFolder))) {
-					for (const contentFilePath of klaw(path.join(process.cwd(), "Mods", mod, contentFolder, chunkFolder))
+				for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, mod, contentFolder))) {
+					for (const contentFilePath of klaw(path.join(config.modsPath, mod, contentFolder, chunkFolder))
 						.filter((a) => a.stats.isFile())
 						.map((a) => a.path)) {
 						const dependencies = []
@@ -406,10 +406,10 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 			/* ---------------------------------------------------------------------------------------------- */
 			if (blobsFolders.length) {
 				for (const blobsFolder of blobsFolders) {
-					for (const blob of klaw(path.join(process.cwd(), "Mods", mod, blobsFolder))
+					for (const blob of klaw(path.join(config.modsPath, mod, blobsFolder))
 						.filter((a) => a.stats.isFile())
 						.map((a) => a.path)) {
-						const blobPath = blob.replace(path.join(process.cwd(), "Mods", mod, blobsFolder), "").slice(1).split(path.sep).join("/").toLowerCase()
+						const blobPath = blob.replace(path.join(config.modsPath, mod, blobsFolder), "").slice(1).split(path.sep).join("/").toLowerCase()
 
 						let blobHash
 						if (path.extname(blob).startsWith(".jp") || path.extname(blob) === ".png") {
@@ -457,9 +457,9 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 				}
 			}
 
-			fileMap[path.join(process.cwd(), "Mods", mod, "manifest.json")] = {
+			fileMap[path.join(config.modsPath, mod, "manifest.json")] = {
 				hash: await xxhash3(
-					fs.readFileSync(path.join(process.cwd(), "Mods", mod, "manifest.json")) +
+					fs.readFileSync(path.join(config.modsPath, mod, "manifest.json")) +
 						(manifest.options
 							? JSON.stringify(
 									manifest.options.filter(

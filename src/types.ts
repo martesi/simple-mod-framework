@@ -367,6 +367,9 @@ export interface Config {
 	runtimePath: string
 	retailPath: string
 
+	/** Where mods are stored (the Mods/ folder). Defaults to a "Mods" folder under the injected data root if unset - see LEI-130. Lets a user relocate mod storage independent of where the framework itself is installed. */
+	modsPath: string
+
 	skipIntro: boolean
 
 	outputToSeparateDirectory: boolean
@@ -415,7 +418,7 @@ export interface ModContext {
 	 * If you plan to add content or blobs, it's recommended to use the virtual source and pass JS Blobs to the framework. */
 	deployInstruction: DeployInstruction
 
-	/** The root folder of the mod. You *must* use this if you want to modify files in the mod folder - process.cwd() or "." will resolve to the framework's folder, not the mod folder! */
+	/** The root folder of the mod. You *must* use this if you want to modify files in the mod folder - process.cwd() or "." will not reliably resolve to the mod folder! */
 	modRoot: string
 
 	/** The assigned temporary folder for this script. Do anything requiring filesystem working here - the folder will be cleared after the script is done executing. */
