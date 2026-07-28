@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { access } from "node:fs/promises"
 import { extname, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 import { net, protocol } from "electron"
@@ -53,7 +53,15 @@ export function registerModImageProtocolHandler(): void {
       return new Response(null, { status: 403 })
     }
 
-    if (!existsSync(resolvedFile)) {
+    // Async on purpose, not `existsSync` - this handler already runs once per <img>, and a settings
+    // drawer with a few dozen option thumbnails fires that many requests back-to-back. A sync stat
+    // here would block the main process (the same thread that pumps Electron's window/input
+    // messages) once per thumbnail; `await`ing the async check instead lets everything else -
+    // other image requests, other IPC, the window itself - interleave in the gaps rather than
+    // queuing up behind it.
+    try {
+      await access(resolvedFile)
+    } catch {
       return new Response(null, { status: 404 })
     }
 

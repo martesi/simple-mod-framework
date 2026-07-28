@@ -78,25 +78,52 @@ function defaultSettings(): AppSettings {
 }
 
 /**
+ * In-memory copy of settings.json, populated by the first `loadSettings()` call and kept in sync
+ * by `saveSettings()` from then on. Safe to cache indefinitely (no TTL, no re-read-just-in-case)
+ * because this module is the *only* writer of settings.json in the whole app - `saveSettings()`/
+ * `mergeSettings()` here are the one place a write happens (see this file's top doc comment: "never
+ * hand-edited"). Nothing else in this process, and no other process, can change the file out from
+ * under this cache.
+ *
+ * Before this, `loadSettings()` did a fresh `existsSync` + `readFileSync` + `JSON5.parse` on every
+ * single call - and it's called *a lot* more often than "the user changed a setting": every
+ * `config:get`, every `mods:list`'s `getModsDir()`, and worst of all every single `smf-mod://`
+ * image request (`modImages.ts`'s `currentModsRoot()`), since that closure is exactly
+ * `resolveModsDir(paths, loadSettings(paths))`. Opening the settings drawer fires one of those per
+ * visible thumbnail; switching a radio option fires another for the new preview image. All of it
+ * synchronous, all of it on the one thread that also pumps Electron's window/input messages - a
+ * burst of a few dozen blocking disk reads in a row is exactly what made the drawer, option
+ * switching, and even an unrelated dialog's close button all feel laggy at the same time. Caching
+ * removes the repeated I/O entirely instead of just making it non-blocking.
+ */
+let cachedSettings: AppSettings | null = null
+
+/**
  * Read settings.json, creating a default one (empty `gamePath` - the setup wizard's "game" step
  * is what first populates it) if it's missing entirely - a fresh install has no settings yet, and
  * the UI needs *something* to render before the wizard has run, not a thrown error.
  */
 export function loadSettings(paths: AppPaths): AppSettings {
+	if (cachedSettings) return cachedSettings
+
 	const file = settingsPath(paths)
 
 	if (!existsSync(file)) {
 		const fresh = defaultSettings()
 		writeFileSync(file, JSON5.stringify(fresh, undefined, "\t"))
+		cachedSettings = fresh
 		return fresh
 	}
 
 	const parsed = JSON5.parse(readFileSync(file, "utf8"))
-	return { ...defaultSettings(), ...parsed }
+	const settings: AppSettings = { ...defaultSettings(), ...parsed }
+	cachedSettings = settings
+	return settings
 }
 
 export function saveSettings(paths: AppPaths, settings: AppSettings): void {
 	writeFileSync(settingsPath(paths), JSON5.stringify(settings, undefined, "\t"))
+	cachedSettings = settings
 }
 
 /** Shallow-merge a patch into settings.json and return the resulting full settings - mirrors the old `mergeDiskConfig()`. */

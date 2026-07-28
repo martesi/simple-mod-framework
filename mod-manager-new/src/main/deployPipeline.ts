@@ -5,12 +5,19 @@ import path from "node:path"
 // process.exit(), no process.cwd()). This is the one place in this app that imports it: everyone
 // else (deployManager.ts, ipcHandlers.ts) goes through the functions below instead of touching
 // createCore()/core-singleton directly.
-import { createCore, CoreFatalError, type Core, type Logger } from "../../../src/core"
-import { setCurrentCore } from "../../../src/core-singleton"
-import discover from "../../../src/discover"
-import difference from "../../../src/difference"
-import deploy from "../../../src/deploy"
-import analyseMod, { loadRPKGHashCache, saveRPKGHashCache } from "../../../src/analyseMod"
+//
+// Every *runtime* import of it below is a dynamic `await import(...)` inside the functions that
+// actually run a deploy/analyse, not a static top-of-file import - `discover.ts`/`deploy.ts`/
+// `analyseMod.ts` all pull in the full `typescript` compiler package to compile mod scripts, which
+// bundles to several MB (see electron.vite.config.ts's doc comment on why main's build forces CJS
+// output). A static import here meant Node had to fully parse and evaluate that entire module
+// graph - typescript compiler included - as part of loading main/index.cjs, before
+// `app.whenReady()` even fired, i.e. before the window could be created at all. That's several
+// extra seconds on *every* launch, even the many sessions where the user never actually runs a
+// deploy. Dynamic imports mean that cost is only ever paid the first time a deploy or analyseMod
+// actually runs. `import type` for the type-only names below is unaffected either way - those are
+// erased at compile time and never bundled regardless of how the value is imported.
+import type { Core, Logger } from "../../../src/core"
 import type { Config } from "../../../src/types"
 
 import type { AppPaths } from "./paths"
@@ -84,7 +91,9 @@ function withProgress(core: Core, onLog: (line: DeployPipelineLogLine) => void):
 	}
 }
 
-function createEmbeddedCore(paths: AppPaths, config: Config, onLog: (line: DeployPipelineLogLine) => void): Core {
+async function createEmbeddedCore(paths: AppPaths, config: Config, onLog: (line: DeployPipelineLogLine) => void): Promise<Core> {
+	const [{ createCore }, { setCurrentCore }] = await Promise.all([import("../../../src/core"), import("../../../src/core-singleton")])
+
 	const core = createCore(config, {
 		doNotPause: true, // no console to pause in - see CoreOptions.doNotPause's doc comment
 		paths: { dataRoot: paths.dataRoot, toolsRoot: paths.toolsRoot }
@@ -118,8 +127,9 @@ function noopSentryTransaction(): any {
  * printed to a console that doesn't exist here.
  */
 export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game: GamePathInfo, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+	const { CoreFatalError } = await import("../../../src/core")
 	const config = buildFrameworkConfig(paths, settings, game)
-	const core = createEmbeddedCore(paths, config, onLog)
+	const core = await createEmbeddedCore(paths, config, onLog)
 
 	try {
 		await core.logger.verbose("Initialising RPKG instance")
@@ -156,6 +166,7 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
 		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
 		await core.logger.verbose("Beginning discovery")
+		const { default: discover } = await import("../../../src/discover")
 		const fileMap = await discover()
 		fs.ensureDirSync(path.join(paths.dataRoot, "cache"))
 
@@ -171,6 +182,7 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
 		}
 
 		await core.logger.verbose("Beginning difference")
+		const { default: difference } = await import("../../../src/difference")
 		const { invalidData } = await difference(fs.existsSync(mapPath) ? fs.readJSONSync(mapPath).files : {}, fileMap)
 
 		await core.logger.verbose("Writing cache")
@@ -181,6 +193,7 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
 		})
 
 		await core.logger.verbose("Beginning deploy")
+		const { default: deploy } = await import("../../../src/deploy")
 		await deploy(noopSentryTransaction(), () => {}, invalidData)
 
 		await core.logger.verbose("Finishing")
@@ -205,14 +218,16 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
  * change - LEI-133's job is just to make sure the handler exists and runs in-process.
  */
 export async function runAnalyseMod(paths: AppPaths, settings: AppSettings, game: GamePathInfo, modId: string, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+	const { CoreFatalError } = await import("../../../src/core")
 	const config = buildFrameworkConfig(paths, settings, game)
-	const core = createEmbeddedCore(paths, config, onLog)
+	const core = await createEmbeddedCore(paths, config, onLog)
 
 	try {
 		await core.logger.verbose("Initialising RPKG instance")
 		await core.rpkgInstance.waitForInitialised()
 
 		fs.ensureDirSync(path.join(paths.dataRoot, "cache"))
+		const { default: analyseMod, loadRPKGHashCache, saveRPKGHashCache } = await import("../../../src/analyseMod")
 		loadRPKGHashCache()
 
 		await core.logger.info(`Analysing ${modId}`)
