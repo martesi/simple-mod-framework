@@ -224,6 +224,14 @@ class MockSmfApi implements SmfApi {
   mods = {
     list: async (): Promise<ModEntry[]> => structuredClone(this.modsData),
 
+    // No real disk to re-walk outside a real Electron shell - just simulate the "please wait,
+    // re-scanning" beat the real handler's synchronous fs walk (modIndex.ts's rebuild()) incurs,
+    // then hand back whatever's already in memory.
+    rebuildIndex: async (): Promise<ModEntry[]> => {
+      await delay(400)
+      return structuredClone(this.modsData)
+    },
+
     beginAdd: (file: { name: string; size: number; path: string }): string => {
       const taskId = uuid()
       const label = file.name.replace(/\.(zip|7z|rar|rpkg)$/i, "")

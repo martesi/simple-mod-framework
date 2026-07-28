@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
-import { Plus, Rocket, Search } from "lucide-react"
+import { Loader2, Plus, RefreshCw, Rocket, Search } from "lucide-react"
 import { toast } from "sonner"
 
 import { Input } from "@/components/ui/input"
@@ -27,6 +27,8 @@ export function ModsScreen() {
   const reorderMods = useAppStore((s) => s.reorderMods)
   const removeMod = useAppStore((s) => s.removeMod)
   const updateOutdated = useAppStore((s) => s.updateOutdated)
+  const rebuildIndex = useAppStore((s) => s.rebuildIndex)
+  const rebuildingIndex = useAppStore((s) => s.rebuildingIndex)
   const startDeploy = useAppStore((s) => s.startDeploy)
   const deploy = useAppStore((s) => s.deploy)
   // Lifted to the store (see app-store.ts's addDialogOpen/openAddDialog/closeAddDialog) so the
@@ -90,6 +92,12 @@ export function ModsScreen() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter mods…" className="w-60 pl-8" />
         </div>
+        {config?.developerMode && (
+          <Button variant="outline" title="Re-scan the Mods folder and re-read every manifest from disk" disabled={rebuildingIndex} onClick={() => rebuildIndex()}>
+            {rebuildingIndex ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Rebuild cache
+          </Button>
+        )}
         <Button variant="outline" onClick={openAddDialog}>
           <Plus className="h-4 w-4" /> Add a mod
         </Button>

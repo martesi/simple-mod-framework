@@ -41,7 +41,22 @@ export function registerIpcHandlers(paths: AppPaths): void {
     // No retailPath/runtimePath/platform to re-derive and store here anymore - only gamePath
     // itself is persisted (see settings.ts's doc comment), so a typed-in path just gets validated
     // fresh, from scratch, the next time it's actually needed (deploy start/analyseMod below).
+    const modsDirBefore = patch.modPath !== undefined ? getModsDir() : undefined
+
     const settings = mergeSettings(paths, fromUiPatch(patch))
+
+    // modPath just changed and actually points somewhere new: the in-memory ModIndex was built
+    // (lazily, once) against whatever directory was Mods/ *before* this merge, and has no way to
+    // notice out from under it that "Mods/" now resolves somewhere else entirely - see
+    // modIndex.ts's ensureBuilt(), which only ever rebuilds once. Left alone, the very next
+    // mods:list() would keep serving mods from the old folder. Force the same rebuild
+    // mods:rebuildIndex does, right here, so switching mod folders always shows what's actually in
+    // the new one instead of stale leftovers from the old one.
+    if (modsDirBefore !== undefined && getModsDir() !== modsDirBefore) {
+      index.rebuild()
+      addKnownMods(paths, index.list().map((m) => m.id))
+    }
+
     return toUiConfig(settings, paths)
   })
 

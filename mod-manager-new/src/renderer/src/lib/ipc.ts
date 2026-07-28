@@ -114,6 +114,16 @@ export interface SmfApi {
   mods: {
     list(): Promise<ModEntry[]>
     /**
+     * Forces a full re-derive of the mod list straight from disk, bypassing whatever's already
+     * sitting in the main process's in-memory index (see modIndex.ts's ModIndex - built lazily
+     * once per app launch, then only ever kept current by narrow write-throughs). The one case
+     * those write-throughs can't cover on their own: someone hand-edited files *inside* an
+     * existing mod folder without adding/removing/renaming it, so there's no folder-name change
+     * for anything to notice. Mirrors the old Mod Manager's "Rebuild cache" button
+     * (`Mod Manager/src/lib/utils.ts`'s `rebuildModIndex()`).
+     */
+    rebuildIndex(): Promise<ModEntry[]>
+    /**
      * Kicks off installing a mod from a dropped/picked file. Returns
      * immediately with a task id; does not await completion, and never blocks
      * a subsequent call for a different file. Only a same-destination-folder

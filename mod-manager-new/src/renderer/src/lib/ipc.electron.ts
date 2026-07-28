@@ -26,6 +26,8 @@ export function createElectronSmfApi(): SmfApi {
     mods: {
       list: () => bridge.mods.list() as Promise<ModEntry[]>,
 
+      rebuildIndex: () => bridge.mods.rebuildIndex() as Promise<ModEntry[]>,
+
       beginAdd: (file) => bridge.mods.beginAdd(file),
 
       onTaskUpdate: (cb: (update: ModTaskUpdate) => void): Unsubscribe => bridge.mods.onTaskUpdate((update) => cb(update as ModTaskUpdate)),

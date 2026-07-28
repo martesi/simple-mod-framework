@@ -54,6 +54,9 @@ interface AppState {
   closeAddDialog(): void
   removeMod(modId: string): Promise<{ ok: boolean; reason?: string }>
   updateOutdated(modId: string): Promise<void>
+  /** Whether a rebuildIndex() call is in flight - lets the "Rebuild cache" button show a spinner and disable itself, mirroring the old Mod Manager's "please wait" modal for the same (synchronous, on the main-process side) full-disk-walk operation. */
+  rebuildingIndex: boolean
+  rebuildIndex(): Promise<void>
 
   startDeploy(): Promise<void>
   closeDeploy(): void
@@ -67,7 +70,7 @@ interface AppState {
 
   setGamePath(path: string): void
   setCachePath(path: string): void
-  setModPath(path: string): void
+  setModPath(path: string): Promise<void>
   setLanguage(language: string): void
 
   browseGamePath(): Promise<void>
@@ -86,6 +89,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   config: null,
   defaultPaths: null,
   mods: [],
+  rebuildingIndex: false,
   addTasks: {},
   addDialogOpen: false,
   search: "",
@@ -260,6 +264,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  async rebuildIndex() {
+    set({ rebuildingIndex: true })
+    try {
+      const mods = await getSmfApi().mods.rebuildIndex()
+      set({ mods })
+      toast.success("Mod cache rebuilt.")
+    } finally {
+      set({ rebuildingIndex: false })
+    }
+  },
+
   async startDeploy() {
     const snapshot = await getSmfApi().deploy.start()
     set({ deploy: { open: true, expanded: false, snapshot, progress: null, log: [], logExpanded: false } })
@@ -320,11 +335,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     getSmfApi().config.merge({ cachePath })
   },
 
-  setModPath(modPath) {
+  async setModPath(modPath) {
     const { config } = get()
     if (!config) return
     set({ config: { ...config, modPath } })
-    getSmfApi().config.merge({ modPath })
+    await getSmfApi().config.merge({ modPath })
+    // Pointing at a different folder means a genuinely different set of mods live there - the main
+    // process just force-rebuilt its index against it (see ipcHandlers.ts's config:merge), so
+    // re-fetch here too instead of leaving the mod list showing whatever was in the old folder.
+    const mods = await getSmfApi().mods.list()
+    set({ mods })
   },
 
   setLanguage(language) {
@@ -351,7 +371,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async browseModPath() {
     const picked = await getSmfApi().system.pickDirectory({ title: "Select a mod folder" })
-    if (picked) get().setModPath(picked)
+    if (picked) await get().setModPath(picked)
   },
 
   openWizard() {
