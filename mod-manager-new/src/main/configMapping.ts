@@ -1,5 +1,7 @@
 import type { Config } from "../renderer/src/lib/manifest-types"
 import type { AppSettings } from "./settings"
+import { resolveModsDir } from "./settings"
+import type { AppPaths } from "./paths"
 
 /**
  * Translates between `settings.ts`'s on-disk `AppSettings` shape (compatible with the framework
@@ -12,7 +14,7 @@ import type { AppSettings } from "./settings"
  * `gameDetect.ts`'s `deriveGamePathInfo()`), so the UI never needs to know that name at all.
  * `runtimePath`/`platform` are derived the same way and are UI-invisible (deploy-only concerns).
  */
-export function toUiConfig(settings: AppSettings): Config {
+export function toUiConfig(settings: AppSettings, paths: AppPaths): Config {
 	return {
 		loadOrder: settings.loadOrder,
 		modOrder: settings.modOrder?.length ? settings.modOrder : settings.knownMods,
@@ -24,7 +26,15 @@ export function toUiConfig(settings: AppSettings): Config {
 		accent: settings.accent ?? "neutral",
 		gamePath: settings.gamePath,
 		cachePath: settings.cachePath ?? "",
-		modPath: settings.modsPath,
+		// Resolved through resolveModsDir() rather than a straight passthrough of settings.modsPath -
+		// the on-disk default is the bare relative string "Mods" (see settings.ts's
+		// defaultSettings()), and PathInputRow always renders whatever `value` it's given verbatim
+		// (its placeholder only shows for an *empty* string), so a raw passthrough put the literal
+		// text "Mods" in the Settings field instead of an actual location on disk - unlike
+		// gamePath/cachePath, which always start as either a real path or blank. Resolving here
+		// means the field always shows a real absolute folder, the same one getModsDir() actually
+		// uses, and never needs the user to guess where "Mods" is relative *to*.
+		modPath: resolveModsDir(paths, settings),
 		language: settings.language ?? "en-US"
 	}
 }

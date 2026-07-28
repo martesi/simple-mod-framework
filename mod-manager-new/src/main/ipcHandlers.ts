@@ -33,7 +33,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
   const deployManager = new DeployManager(paths, (progress) => broadcast("deploy:progress", progress))
 
-  ipcMain.handle("config:get", (): Config => toUiConfig(loadSettings(paths)))
+  ipcMain.handle("config:get", (): Config => toUiConfig(loadSettings(paths), paths))
 
   ipcMain.handle("config:getDefaultPaths", (): DefaultPaths => resolveDefaultUiPaths(paths))
 
@@ -42,7 +42,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
     // itself is persisted (see settings.ts's doc comment), so a typed-in path just gets validated
     // fresh, from scratch, the next time it's actually needed (deploy start/analyseMod below).
     const settings = mergeSettings(paths, fromUiPatch(patch))
-    return toUiConfig(settings)
+    return toUiConfig(settings, paths)
   })
 
   // The one real directory-picker dialog (LEI-133) - validates the pick the same way
@@ -68,7 +68,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
     const settings = mergeSettings(paths, { gamePath: result.filePaths[0] })
 
-    return { ok: true, config: toUiConfig(settings) }
+    return { ok: true, config: toUiConfig(settings, paths) }
   })
 
   // A plain, unvalidated directory picker for the cache/mod path fields - unlike the game
