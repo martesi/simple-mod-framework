@@ -168,17 +168,18 @@ export function registerIpcHandlers(paths: AppPaths): void {
   // reflects the manager's own current CURRENT_FRAMEWORK_VERSION check
   // after the user re-installs the mod themselves via Add a Mod.
   //
-  // Before this rebuild()'d the index and returned index.list()'s existing entry (whose manifest
-  // was already read at that first list() call) unchanged - so if the user replaced the mod's
-  // files on disk with a newer version *without* going through Add a Mod (e.g. hand-copying an
-  // updated folder over the old one), the "outdated" badge and its "click to update" button just
-  // silently did nothing, over and over, because ModIndex only re-reads manifest.json when
-  // something calls rebuild(). Forcing that rebuild here at least means clicking Update reflects
-  // whatever's actually on disk right now, not a stale in-memory read from whenever the app
-  // started.
-  ipcMain.handle("mods:updateOutdated", async (_event, modId: string) => {
-    await index.rebuildChunked()
-    const entry = index.list().find((m) => m.id === modId)
+  // Before this returned index.list()'s existing entry (whose manifest was already read at that
+  // first list() call) unchanged - so if the user replaced the mod's files on disk with a newer
+  // version *without* going through Add a Mod (e.g. hand-copying an updated folder over the old
+  // one), the "outdated" badge and its "click to update" button just silently did nothing, over
+  // and over, because ModIndex only re-reads manifest.json when something calls indexFolder().
+  // `reindexOne()` re-reads just this mod's own folder (see its doc comment in modIndex.ts) rather
+  // than a full `rebuildChunked()` of the whole Mods/ directory - a single mod's own manifest
+  // changing can't affect any *other* mod's outdated/validation status, so re-scanning everything
+  // else on every click was pure waste, and with a large mod collection installed it's exactly what
+  // made clicking this badge feel like it froze the app.
+  ipcMain.handle("mods:updateOutdated", (_event, modId: string) => {
+    const entry = index.reindexOne(modId)
     if (!entry) throw new Error(`"${modId}" isn't installed.`)
     return entry
   })

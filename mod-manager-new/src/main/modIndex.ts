@@ -188,6 +188,25 @@ export class ModIndex {
     }
   }
 
+  /**
+   * Re-reads one already-known mod's manifest.json fresh from disk and updates just that entry -
+   * `mods:updateOutdated`'s narrow case (LEI-98 stopgap: no real auto-updater yet, this just
+   * reflects whatever's on disk right now). A mod's outdated/validation status can only ever change
+   * by editing *that mod's own* manifest.json, so there's no reason clicking "Update" on one mod
+   * should pay for a full `rebuildChunked()` walk of every other mod too - with a large collection,
+   * that full rebuild is exactly what made clicking the outdated badge feel like it froze the app,
+   * for a re-check that only ever needed one folder's worth of disk I/O. Returns `undefined` if the
+   * id isn't (or is no longer) in the index at all.
+   */
+  reindexOne(id: string): ModEntry | undefined {
+    this.ensureBuilt()
+    const entry = this.byId.get(id)
+    if (!entry) return undefined
+
+    this.indexFolder(this.getModsDir(), entry.folder)
+    return this.list().find((m) => m.id === id)
+  }
+
   remove(id: string): void {
     this.ensureBuilt()
     this.byId.delete(id)
