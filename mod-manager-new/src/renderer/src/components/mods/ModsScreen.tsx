@@ -29,8 +29,13 @@ export function ModsScreen() {
   const updateOutdated = useAppStore((s) => s.updateOutdated)
   const startDeploy = useAppStore((s) => s.startDeploy)
   const deploy = useAppStore((s) => s.deploy)
+  // Lifted to the store (see app-store.ts's addDialogOpen/openAddDialog/closeAddDialog) so the
+  // whole-window drop handler in App.tsx can pop this dialog open too, not just this screen's own
+  // "Add a mod" button - a drop landing anywhere in the app needs somewhere to show its progress.
+  const addOpen = useAppStore((s) => s.addDialogOpen)
+  const openAddDialog = useAppStore((s) => s.openAddDialog)
+  const closeAddDialog = useAppStore((s) => s.closeAddDialog)
 
-  const [addOpen, setAddOpen] = useState(false)
   const [settingsModId, setSettingsModId] = useState<string | null>(null)
   const [removeCandidate, setRemoveCandidate] = useState<ModEntry | null>(null)
 
@@ -85,7 +90,7 @@ export function ModsScreen() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter mods…" className="w-60 pl-8" />
         </div>
-        <Button variant="outline" onClick={() => setAddOpen(true)}>
+        <Button variant="outline" onClick={openAddDialog}>
           <Plus className="h-4 w-4" /> Add a mod
         </Button>
         <Button onClick={startDeploy} disabled={deployActive}>
@@ -125,7 +130,7 @@ export function ModsScreen() {
         </DndContext>
       </div>
 
-      <AddModDialog open={addOpen} onOpenChange={setAddOpen} />
+      <AddModDialog open={addOpen} onOpenChange={(open) => (open ? openAddDialog() : closeAddDialog())} />
       <ModSettingsDrawer mod={settingsMod} onClose={() => setSettingsModId(null)} />
 
       <Dialog open={!!removeCandidate} onOpenChange={(open) => !open && setRemoveCandidate(null)}>

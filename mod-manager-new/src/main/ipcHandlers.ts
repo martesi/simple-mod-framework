@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from "electron"
 import type { AppPaths } from "./paths"
-import { loadSettings, mergeSettings, resolveDefaultUiPaths, resolveModsDir } from "./settings"
+import { addKnownMods, loadSettings, mergeSettings, resolveDefaultUiPaths, resolveModsDir } from "./settings"
 import { fromUiPatch, toUiConfig } from "./configMapping"
 import { deriveGamePathInfo } from "./gameDetect"
 import { runAnalyseMod, type DeployPipelineLogLine } from "./deployPipeline"
@@ -84,11 +84,26 @@ export function registerIpcHandlers(paths: AppPaths): void {
     return result.canceled || !result.filePaths[0] ? null : result.filePaths[0]
   })
 
-  ipcMain.handle("mods:list", () => index.list())
+  ipcMain.handle("mods:list", () => {
+    const list = index.list()
+    // Covers the case mods:rebuildIndex's own comment doesn't: mods that were already sitting in
+    // the Mods folder the very first time this app ever launches (e.g. migrated from the old Mod
+    // Manager) go through ModIndex's lazy rebuild-on-first-list (see modIndex.ts's ensureBuilt()),
+    // never modOps.ts's install path - so without this same write-through here, "enable" would be
+    // broken for every pre-existing mod on a fresh install, not just newly-added ones.
+    addKnownMods(paths, list.map((m) => m.id))
+    return list
+  })
 
   ipcMain.handle("mods:rebuildIndex", () => {
     index.rebuild()
-    return index.list()
+    const list = index.list()
+    // Same write-through mods:beginAdd's install paths do (see modOps.ts's addKnownMods() calls) -
+    // a rebuild can surface mods that were dropped into the Mods folder outside this app entirely,
+    // and those need registering in knownMods/modOrder too or they'll hit the exact same
+    // can't-enable-it bug a normally-installed mod would without it.
+    addKnownMods(paths, list.map((m) => m.id))
+    return list
   })
 
   ipcMain.handle("mods:beginAdd", (event, { taskId, file }: { taskId: string; file: { name: string; size: number; path: string } }) => {
@@ -126,7 +141,17 @@ export function registerIpcHandlers(paths: AppPaths): void {
   // re-validates the mod in place so the UI's "outdated" badge at least
   // reflects the manager's own current CURRENT_FRAMEWORK_VERSION check
   // after the user re-installs the mod themselves via Add a Mod.
+  //
+  // Before this rebuild()'d the index and returned index.list()'s existing entry (whose manifest
+  // was already read at that first list() call) unchanged - so if the user replaced the mod's
+  // files on disk with a newer version *without* going through Add a Mod (e.g. hand-copying an
+  // updated folder over the old one), the "outdated" badge and its "click to update" button just
+  // silently did nothing, over and over, because ModIndex only re-reads manifest.json when
+  // something calls rebuild(). Forcing that rebuild here at least means clicking Update reflects
+  // whatever's actually on disk right now, not a stale in-memory read from whenever the app
+  // started.
   ipcMain.handle("mods:updateOutdated", (_event, modId: string) => {
+    index.rebuild()
     const entry = index.list().find((m) => m.id === modId)
     if (!entry) throw new Error(`"${modId}" isn't installed.`)
     return entry

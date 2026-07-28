@@ -31,6 +31,7 @@ interface AppState {
   defaultPaths: DefaultPaths | null
   mods: ModEntry[]
   addTasks: Record<string, AddTask>
+  addDialogOpen: boolean
   deploy: DeployState
   systemDark: boolean
 
@@ -45,6 +46,10 @@ interface AppState {
   setSelectOption(modId: string, group: string, optionName: string): void
 
   addModFile(file: { name: string; size: number; path: string }): void
+  /** Resolves each dropped/picked `File` to a real on-disk path and kicks off its add task - shared by AddModDialog's own dropzone and the whole-window drop handler in App.tsx. Opens the Add Mod dialog so progress is visible regardless of which one triggered it. */
+  addFiles(files: FileList | File[]): void
+  openAddDialog(): void
+  closeAddDialog(): void
   removeMod(modId: string): Promise<{ ok: boolean; reason?: string }>
   updateOutdated(modId: string): Promise<void>
 
@@ -80,6 +85,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   defaultPaths: null,
   mods: [],
   addTasks: {},
+  addDialogOpen: false,
   search: "",
   systemDark: typeof window !== "undefined" ? (window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false) : false,
   deploy: { open: false, expanded: false, snapshot: null, progress: null, log: [], logExpanded: false },
@@ -189,6 +195,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     getSmfApi().mods.beginAdd(file)
   },
 
+  addFiles(files) {
+    // `File.path` was removed from Electron's renderer-exposed File object for security reasons -
+    // `getPathForFile` (exposed via preload's `webUtils.getPathForFile`, see LEI-134) is the
+    // supported replacement, and the only way the main process can be told which real on-disk file
+    // to extract without granting the renderer raw fs access itself. Ported from
+    // AddModDialog.tsx's own addFiles() - now shared so a whole-window drop (App.tsx) and the
+    // dialog's own dropzone both feed the same pipeline instead of drifting apart.
+    for (const file of Array.from(files)) {
+      const path = window.smf?.getPathForFile(file) ?? ""
+      get().addModFile({ name: file.name, size: file.size, path })
+    }
+    // A drop anywhere in the app should surface the same progress UI a click on "Add a mod" would -
+    // otherwise a whole-window drop silently starts installing with no visible feedback at all,
+    // which is worse than not supporting whole-window drop in the first place.
+    set({ addDialogOpen: true })
+  },
+
+  openAddDialog() {
+    set({ addDialogOpen: true })
+  },
+
+  closeAddDialog() {
+    set({ addDialogOpen: false })
+  },
+
   async removeMod(modId) {
     const result = await getSmfApi().mods.remove(modId)
     if (result.ok) {
@@ -202,6 +233,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   async updateOutdated(modId) {
     const updated = await getSmfApi().mods.updateOutdated(modId)
     set((s) => ({ mods: s.mods.map((m) => (m.id === modId ? updated : m)) }))
+    // There's no real auto-updater yet (LEI-98) - this call only re-reads whatever's on disk right
+    // now. If it's still flagged outdated, clicking the badge genuinely did nothing visible, which
+    // reads as broken rather than as "there's nothing to fetch here yet" - say so explicitly instead
+    // of leaving the badge sitting there unchanged with no explanation.
+    if (updated.outdated) {
+      toast.info("Still on an older framework version - install the updated mod files yourself (Add a mod), then this badge will clear.")
+    }
   },
 
   async startDeploy() {

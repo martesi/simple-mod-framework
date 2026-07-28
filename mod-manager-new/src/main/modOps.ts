@@ -6,6 +6,7 @@ import type { AppPaths } from "./paths"
 import { extractArchive } from "./archive"
 import { ModIndex, ensureModsDir } from "./modIndex"
 import { validateModFolder } from "./validateMod"
+import { addKnownMods } from "./settings"
 import type { DiskManifest } from "./diskManifest"
 import type { ModTaskStatus } from "../renderer/src/lib/ipc"
 
@@ -61,7 +62,7 @@ export async function runAddModTask(paths: AppPaths, modsDir: string, index: Mod
     const ext = extname(sourceFileName).toLowerCase()
 
     if (ext === ".rpkg") {
-      await installRpkgMod(modsDir, index, sourceFilePath, sourceFileName, emit)
+      await installRpkgMod(paths, modsDir, index, sourceFilePath, sourceFileName, emit)
       return
     }
 
@@ -76,13 +77,13 @@ export async function runAddModTask(paths: AppPaths, modsDir: string, index: Mod
     const topLevel = readdirSync(staging).filter((f) => statSync(join(staging, f)).isDirectory())
 
     if (topLevel.length > 0 && topLevel.every((f) => existsSync(join(staging, f, "manifest.json")))) {
-      await installFrameworkMods(modsDir, index, staging, topLevel, emit)
+      await installFrameworkMods(paths, modsDir, index, staging, topLevel, emit)
       return
     }
 
     const rpkgFiles = findRpkgFiles(staging)
     if (rpkgFiles.length > 0) {
-      await installExtractedRpkgFiles(modsDir, index, sourceFileName, rpkgFiles, emit)
+      await installExtractedRpkgFiles(paths, modsDir, index, sourceFileName, rpkgFiles, emit)
       return
     }
 
@@ -94,7 +95,7 @@ export async function runAddModTask(paths: AppPaths, modsDir: string, index: Mod
   }
 }
 
-async function installFrameworkMods(modsDir: string, index: ModIndex, staging: string, folders: string[], emit: TaskEmit): Promise<void> {
+async function installFrameworkMods(paths: AppPaths, modsDir: string, index: ModIndex, staging: string, folders: string[], emit: TaskEmit): Promise<void> {
   emit({ status: "validating" })
 
   const manifests: DiskManifest[] = []
@@ -128,11 +129,15 @@ async function installFrameworkMods(modsDir: string, index: ModIndex, staging: s
   }
 
   index.addFolders(folders)
+  // Register every installed ID (not just the single-mod case the "done" emit's modId covers) -
+  // see settings.ts's addKnownMods() doc comment for why this has to happen here and not be left
+  // implicit in the index write-through above.
+  addKnownMods(paths, manifests.map((m) => m.id))
 
   emit({ status: "done", modId: manifests.length === 1 ? manifests[0].id : undefined })
 }
 
-async function installExtractedRpkgFiles(modsDir: string, index: ModIndex, sourceFileName: string, rpkgFiles: string[], emit: TaskEmit): Promise<void> {
+async function installExtractedRpkgFiles(paths: AppPaths, modsDir: string, index: ModIndex, sourceFileName: string, rpkgFiles: string[], emit: TaskEmit): Promise<void> {
   emit({ status: "validating" })
 
   const rpkgModName = sanitizeFolderName(basename(sourceFileName, extname(sourceFileName)))
@@ -153,10 +158,11 @@ async function installExtractedRpkgFiles(modsDir: string, index: ModIndex, sourc
   }
 
   index.addFolders([rpkgModName])
+  addKnownMods(paths, [rpkgModName])
   emit({ status: "done", modId: rpkgModName })
 }
 
-async function installRpkgMod(modsDir: string, index: ModIndex, sourceFilePath: string, sourceFileName: string, emit: TaskEmit): Promise<void> {
+async function installRpkgMod(paths: AppPaths, modsDir: string, index: ModIndex, sourceFilePath: string, sourceFileName: string, emit: TaskEmit): Promise<void> {
   const rpkgModName = sanitizeFolderName(basename(sourceFileName, extname(sourceFileName)))
   const destFolder = join(modsDir, rpkgModName)
 
@@ -174,6 +180,7 @@ async function installRpkgMod(modsDir: string, index: ModIndex, sourceFilePath: 
   cpSync(sourceFilePath, join(destDir, basename(sourceFilePath)))
 
   index.addFolders([rpkgModName])
+  addKnownMods(paths, [rpkgModName])
   emit({ status: "done", modId: rpkgModName })
 }
 

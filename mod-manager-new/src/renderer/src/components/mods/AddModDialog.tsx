@@ -16,28 +16,16 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 export function AddModDialog({ open, onOpenChange }: { open: boolean; onOpenChange(open: boolean): void }) {
-  const addModFile = useAppStore((s) => s.addModFile)
+  // Each file gets its own independent add task - looping and firing them all off here (rather
+  // than awaiting one before starting the next) is exactly the "non-blocking add" behavior
+  // LEI-137 calls for. Lifted to app-store.ts's addFiles() so App.tsx's whole-window drop handler
+  // can feed the same pipeline this dialog's own dropzone does, instead of the two drifting apart.
+  const addFiles = useAppStore((s) => s.addFiles)
   const addTasks = useAppStore((s) => s.addTasks)
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
 
   const tasks = Object.values(addTasks).sort((a, b) => a.startedAt - b.startedAt)
-
-  function addFiles(files: FileList | null) {
-    if (!files) return
-    // Each file gets its own independent add task - looping and firing them
-    // all off here (rather than awaiting one before starting the next) is
-    // exactly the "non-blocking add" behavior LEI-137 calls for.
-    for (const file of Array.from(files)) {
-      // `File.path` was removed from Electron's renderer-exposed File object
-      // for security reasons - `getPathForFile` (exposed via preload's
-      // `webUtils.getPathForFile`, see LEI-134) is the supported replacement,
-      // and the only way the main process can be told which real on-disk
-      // file to extract without granting the renderer raw fs access itself.
-      const path = window.smf?.getPathForFile(file) ?? ""
-      addModFile({ name: file.name, size: file.size, path })
-    }
-  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,7 +63,7 @@ export function AddModDialog({ open, onOpenChange }: { open: boolean; onOpenChan
               accept=".zip,.7z,.rar,.rpkg"
               className="hidden"
               onChange={(e) => {
-                addFiles(e.target.files)
+                if (e.target.files) addFiles(e.target.files)
                 e.target.value = ""
               }}
             />

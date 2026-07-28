@@ -107,6 +107,37 @@ export function mergeSettings(paths: AppPaths, patch: Partial<AppSettings>): App
 	return next
 }
 
+/**
+ * Write-through for mod IDs the `ModIndex` just learned about (a fresh install via `mods:beginAdd`,
+ * or ones turned up by `mods:rebuildIndex`) - registers them in `knownMods` and, critically, in
+ * `modOrder` too, not just the former.
+ *
+ * Without this, a newly-installed mod's ID exists only in the in-memory `ModIndex` (see
+ * `modIndex.ts`'s `addFolders()`) and never reaches `settings.json` at all. `configMapping.ts`'s
+ * `toUiConfig()` only falls back to `knownMods` for `modOrder` while `modOrder` is still empty; the
+ * first drag-reorder (`app-store.ts`'s `reorderMods()`) persists a *complete* `modOrder` snapshot of
+ * every mod loaded at that moment, and from then on new mods are permanently absent from it. Since
+ * `toggleMod()`'s enable branch (`app-store.ts`) builds the new `loadOrder` by filtering
+ * `config.modOrder` down to "this mod or already-enabled ones", a mod missing from `modOrder` can
+ * never be filtered *in* - flipping its switch silently produces the same `loadOrder` it started
+ * with. Keeping `modOrder` populated incrementally, right alongside `knownMods`, closes that gap
+ * instead of only patching the fallback case.
+ */
+export function addKnownMods(paths: AppPaths, ids: string[]): AppSettings {
+	const current = loadSettings(paths)
+	const newIds = ids.filter((id) => !current.knownMods.includes(id))
+	if (newIds.length === 0) return current
+
+	const knownMods = [...current.knownMods, ...newIds]
+	const existingOrder = current.modOrder ?? []
+	// Only append IDs actually missing from modOrder - existingOrder may already contain some of
+	// `newIds` to knownMods if a previous rebuild partially caught up (rebuildIndex passes every
+	// currently-indexed ID, not just newly-added ones).
+	const modOrder = [...existingOrder, ...newIds.filter((id) => !existingOrder.includes(id))]
+
+	return mergeSettings(paths, { knownMods, modOrder })
+}
+
 /** Where Mods/ actually is, resolved against dataRoot if `modsPath` isn't already absolute - mirrors `src/core.ts`'s `createCore()`. */
 export function resolveModsDir(paths: AppPaths, settings: AppSettings): string {
 	return isAbsolute(settings.modsPath) ? settings.modsPath : resolve(paths.dataRoot, settings.modsPath)
