@@ -476,11 +476,12 @@ export default async function deploy(
 								content.path,
 								LosslessJSON.stringify(
 									Object.assign(LosslessJSON.parse(fs.readFileSync(content.path, "utf8")), {
-										comments: comments.map((a: [string, { parent: string; name: string; text: string }]) => {
+										comments: comments.map((a) => {
+											const data = a[1] as { parent: string; name: string; text: string }
 											return {
-												parent: a[1].parent,
-												name: a[1].name,
-												text: a[1].text
+												parent: data.parent,
+												name: data.name,
+												text: data.text
 											}
 										})
 									})
@@ -2309,7 +2310,7 @@ export default async function deploy(
 				if (!packagedefinitionContent.includes(brick.path)) {
 					const newPD = packagedefinitionContent.replace(
 						new RegExp(`@partition name=${brick.partition} parent=(.*?) type=(.*?) patchlevel=310\r\n`),
-						(a, parent, type) => `@partition name=${brick.partition} parent=${parent} type=${type} patchlevel=310\r\n${brick.path}\r\n`
+						(_a, parent, type) => `@partition name=${brick.partition} parent=${parent} type=${type} patchlevel=310\r\n${brick.path}\r\n`
 					)
 
 					if (packagedefinitionContent === newPD) {

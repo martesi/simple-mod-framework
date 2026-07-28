@@ -10,6 +10,10 @@ export interface SmfBridge {
   config: {
     get(): Promise<unknown>
     merge(patch: unknown): Promise<unknown>
+    pickGameDirectory(): Promise<unknown>
+  }
+  system: {
+    pickDirectory(options?: { title?: string }): Promise<string | null>
   }
   mods: {
     list(): Promise<unknown>
@@ -23,6 +27,7 @@ export interface SmfBridge {
     start(): Promise<unknown>
     onProgress(callback: (progress: unknown) => void): () => void
     getActiveSnapshot(): Promise<unknown>
+    analyseMod(modId: string): Promise<unknown>
   }
   getPathForFile(file: File): string
 }

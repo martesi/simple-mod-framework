@@ -1,19 +1,18 @@
 import { logger } from "./core-singleton"
 
-export default async function difference(
-	oldMap: { [x: string]: { hash: string; dependencies: Array<string>; affected: Array<string> } },
-	newMap: { [x: string]: { hash: string; dependencies: Array<string>; affected: Array<string> } }
-) {
+type FileData = { hash: string; dependencies: Array<string>; affected: Array<string> }
+
+export default async function difference(oldMap: { [x: string]: FileData }, newMap: { [x: string]: FileData }) {
 	await logger.info("Invalidating cache")
 
-	const invalidFiles = []
+	const invalidFiles: string[] = []
 
-	const invalidData = []
-	const validData = []
+	const invalidData: { filePath: string; data: FileData }[] = []
+	const validData: { filePath: string; data: FileData }[] = []
 
 	await logger.verbose("Calculating changed files")
 
-	const changedFiles = []
+	const changedFiles: string[] = []
 	for (const [filePath, newData] of Object.entries(newMap)) {
 		const oldData = oldMap[filePath]
 
@@ -22,7 +21,7 @@ export default async function difference(
 		}
 	}
 
-	for (const [filePath, oldData] of Object.entries(oldMap)) {
+	for (const [filePath] of Object.entries(oldMap)) {
 		const newData = newMap[filePath]
 
 		if (!newData) {

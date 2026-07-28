@@ -14,7 +14,12 @@ export function createElectronSmfApi(): SmfApi {
   return {
     config: {
       get: () => bridge.config.get() as Promise<Config>,
-      merge: (patch) => bridge.config.merge(patch) as Promise<Config>
+      merge: (patch) => bridge.config.merge(patch) as Promise<Config>,
+      pickGameDirectory: () => bridge.config.pickGameDirectory() as Promise<{ ok: true; config: Config } | { ok: false; error: string }>
+    },
+
+    system: {
+      pickDirectory: (options) => bridge.system.pickDirectory(options)
     },
 
     mods: {
@@ -41,7 +46,9 @@ export function createElectronSmfApi(): SmfApi {
         // keeps it current via `onProgress()`), so "no known active deploy"
         // is a safe default rather than a throw - see the doc comment above.
         return null
-      }
+      },
+
+      analyseMod: (modId) => bridge.deploy.analyseMod(modId) as Promise<{ ok: boolean; error?: string }>
     }
   }
 }

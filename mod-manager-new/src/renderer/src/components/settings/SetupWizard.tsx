@@ -14,19 +14,21 @@ function WizardPathStep({
   description,
   value,
   placeholder,
-  onChange
+  onChange,
+  onBrowse
 }: {
   title: string
   description: string
   value: string
   placeholder: string
   onChange(value: string): void
+  onBrowse?: () => void
 }) {
   return (
     <>
       <div className="mb-1 text-[14px] font-bold text-text">{title}</div>
       <div className="mb-3.5 text-[13px] leading-relaxed text-text-2">{description}</div>
-      <PathInputRow value={value} placeholder={placeholder} onChange={onChange} size="lg" />
+      <PathInputRow value={value} placeholder={placeholder} onChange={onChange} onBrowse={onBrowse} size="lg" />
     </>
   )
 }
@@ -45,6 +47,9 @@ export function SetupWizard() {
   const setCachePath = useAppStore((s) => s.setCachePath)
   const setModPath = useAppStore((s) => s.setModPath)
   const setLanguage = useAppStore((s) => s.setLanguage)
+  const browseGamePath = useAppStore((s) => s.browseGamePath)
+  const browseCachePath = useAppStore((s) => s.browseCachePath)
+  const browseModPath = useAppStore((s) => s.browseModPath)
 
   if (!config) return null
 
@@ -73,6 +78,7 @@ export function SetupWizard() {
           value={config.gamePath}
           placeholder="C:\Program Files\HITMAN3\Retail"
           onChange={setGamePath}
+          onBrowse={browseGamePath}
         />
       )
       break
@@ -84,6 +90,7 @@ export function SetupWizard() {
           value={config.cachePath}
           placeholder="C:\Users\you\AppData\Local\Simple Mod Framework\cache"
           onChange={setCachePath}
+          onBrowse={browseCachePath}
         />
       )
       break
@@ -95,6 +102,7 @@ export function SetupWizard() {
           value={config.modPath}
           placeholder="C:\Users\you\Documents\SMF Mods"
           onChange={setModPath}
+          onBrowse={browseModPath}
         />
       )
       break

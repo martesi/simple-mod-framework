@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { toast } from "sonner"
 import { getSmfApi } from "@/lib/ipc"
 import type { DeployProgress, DeploySnapshot, ModTaskUpdate } from "@/lib/ipc"
 import type { Config, ModEntry } from "@/lib/manifest-types"
@@ -59,6 +60,10 @@ interface AppState {
   setCachePath(path: string): void
   setModPath(path: string): void
   setLanguage(language: string): void
+
+  browseGamePath(): Promise<void>
+  browseCachePath(): Promise<void>
+  browseModPath(): Promise<void>
 
   wizard: WizardState
   openWizard(): void
@@ -263,6 +268,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!config) return
     set({ config: { ...config, language } })
     getSmfApi().config.merge({ language })
+  },
+
+  async browseGamePath() {
+    const result = await getSmfApi().config.pickGameDirectory()
+    if (result.ok) {
+      set({ config: result.config })
+    } else if (result.error) {
+      // An empty error means the user just canceled the dialog - nothing to say.
+      toast.error(result.error)
+    }
+  },
+
+  async browseCachePath() {
+    const picked = await getSmfApi().system.pickDirectory({ title: "Select a cache folder" })
+    if (picked) get().setCachePath(picked)
+  },
+
+  async browseModPath() {
+    const picked = await getSmfApi().system.pickDirectory({ title: "Select a mod folder" })
+    if (picked) get().setModPath(picked)
   },
 
   openWizard() {

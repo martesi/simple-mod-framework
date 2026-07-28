@@ -1,7 +1,9 @@
-import { BrowserWindow, ipcMain } from "electron"
+import { BrowserWindow, dialog, ipcMain } from "electron"
 import type { AppPaths } from "./paths"
-import { loadDiskConfig, mergeDiskConfig, resolveModsDir } from "./diskConfig"
+import { loadSettings, mergeSettings, resolveModsDir } from "./settings"
 import { fromUiPatch, toUiConfig } from "./configMapping"
+import { deriveGamePathInfo } from "./gameDetect"
+import { runAnalyseMod, type DeployPipelineLogLine } from "./deployPipeline"
 import { ModIndex } from "./modIndex"
 import { setModImageRoot } from "./modImages"
 import { removeModFolder, runAddModTask, type TaskEmit } from "./modOps"
@@ -15,11 +17,11 @@ import type { Config } from "../renderer/src/lib/manifest-types"
  *
  * This is the one place in the whole app that touches `fs`/`child_process`
  * for mod management - everything else (modIndex.ts, modOps.ts, archive.ts,
- * deployManager.ts, diskConfig.ts) is plain Node modules with no Electron
- * dependency of their own, called from here.
+ * deployManager.ts, deployPipeline.ts, settings.ts) is plain Node modules
+ * with no Electron dependency of their own, called from here.
  */
 export function registerIpcHandlers(paths: AppPaths): void {
-  const getModsDir = () => resolveModsDir(paths, loadDiskConfig(paths))
+  const getModsDir = () => resolveModsDir(paths, loadSettings(paths))
   const index = new ModIndex(getModsDir)
   setModImageRoot(getModsDir)
 
@@ -31,11 +33,71 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
   const deployManager = new DeployManager(paths, (progress) => broadcast("deploy:progress", progress))
 
-  ipcMain.handle("config:get", (): Config => toUiConfig(loadDiskConfig(paths)))
+  ipcMain.handle("config:get", (): Config => toUiConfig(loadSettings(paths)))
 
   ipcMain.handle("config:merge", (_event, patch: Partial<Config>): Config => {
-    const disk = mergeDiskConfig(paths, fromUiPatch(patch))
-    return toUiConfig(disk)
+    const settingsPatch = fromUiPatch(patch)
+
+    // Whenever gamePath changes (typed or otherwise), try to re-derive retailPath/runtimePath/
+    // platform right away rather than leaving that to deploy time - same principle as
+    // config:pickGameDirectory, just without the dialog and without blocking on a bad in-progress
+    // keystroke: an unresolvable gamePath just leaves the previously-derived paths alone (deploy
+    // start already refuses to run without valid ones - see deployManager.ts).
+    if (settingsPatch.gamePath) {
+      const detection = deriveGamePathInfo(settingsPatch.gamePath, paths)
+      if (detection.ok) {
+        settingsPatch.retailPath = detection.retailPath
+        settingsPatch.runtimePath = detection.runtimePath
+        settingsPatch.platform = detection.platform
+      }
+    }
+
+    const settings = mergeSettings(paths, settingsPatch)
+    return toUiConfig(settings)
+  })
+
+  // The one real directory-picker dialog (LEI-133) - validates the pick the same way
+  // src/main.ts:76-90 always has (see gameDetect.ts's deriveGamePathInfo), derives
+  // retailPath/runtimePath/platform from it once, and persists all four together so nothing about
+  // this game install needs re-detecting reactively at deploy time.
+  ipcMain.handle("config:pickGameDirectory", async (event): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(win ?? undefined!, {
+      title: "Select your game's Retail folder",
+      buttonLabel: "Select",
+      properties: ["openDirectory"]
+    })
+
+    if (result.canceled || !result.filePaths[0]) {
+      return { ok: false, error: "" }
+    }
+
+    const detection = deriveGamePathInfo(result.filePaths[0], paths)
+    if (!detection.ok) {
+      return { ok: false, error: detection.error }
+    }
+
+    const settings = mergeSettings(paths, {
+      gamePath: result.filePaths[0],
+      retailPath: detection.retailPath,
+      runtimePath: detection.runtimePath,
+      platform: detection.platform
+    })
+
+    return { ok: true, config: toUiConfig(settings) }
+  })
+
+  // A plain, unvalidated directory picker for the cache/mod path fields - unlike the game
+  // directory, these don't need anything derived from them, just a real folder on disk.
+  ipcMain.handle("system:pickDirectory", async (event, options?: { title?: string }): Promise<string | null> => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(win ?? undefined!, {
+      title: options?.title ?? "Select a folder",
+      buttonLabel: "Select",
+      properties: ["openDirectory", "createDirectory"]
+    })
+
+    return result.canceled || !result.filePaths[0] ? null : result.filePaths[0]
   })
 
   ipcMain.handle("mods:list", () => index.list())
@@ -65,8 +127,8 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
     removeModFolder(getModsDir(), index, modId)
 
-    const disk = loadDiskConfig(paths)
-    mergeDiskConfig(paths, {
+    const disk = loadSettings(paths)
+    mergeSettings(paths, {
       loadOrder: disk.loadOrder.filter((a) => a !== modId),
       modOrder: (disk.modOrder ?? []).filter((a) => a !== modId),
       knownMods: disk.knownMods.filter((a) => a !== modId)
@@ -87,9 +149,27 @@ export function registerIpcHandlers(paths: AppPaths): void {
   })
 
   ipcMain.handle("deploy:start", () => {
-    const disk = loadDiskConfig(paths)
-    return deployManager.start(disk.loadOrder)
+    const settings = loadSettings(paths)
+    return deployManager.start(settings.loadOrder)
   })
 
   ipcMain.handle("deploy:getActiveSnapshot", () => deployManager.getActiveSnapshot())
+
+  // LEI-108 already assumes this channel exists ("background analyseMod, off the deploy critical
+  // path") - LEI-133's job is just to wire it up to a real in-process analysis, not to decide when
+  // it gets called (that's LEI-108's - e.g. after mods:beginAdd finishes, or when a mod's selected
+  // options change).
+  ipcMain.handle("deploy:analyseMod", async (event, modId: string): Promise<{ ok: boolean; error?: string }> => {
+    if (deployManager.isActive()) {
+      return { ok: false, error: "A deploy is currently running." }
+    }
+
+    const settings = loadSettings(paths)
+    if (!settings.retailPath || !settings.runtimePath) {
+      return { ok: false, error: "No valid game folder is set - open Settings and pick your game's Retail folder first." }
+    }
+
+    const onLog = (line: DeployPipelineLogLine) => event.sender.send("deploy:analyseModLog", { modId, ...line })
+    return runAnalyseMod(paths, settings, modId, onLog)
+  })
 }

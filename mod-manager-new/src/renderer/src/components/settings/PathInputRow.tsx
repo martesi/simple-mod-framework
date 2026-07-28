@@ -4,19 +4,22 @@ import { cn } from "@/lib/utils"
 /**
  * A path text field + "Browse" button, shared by SettingsScreen's Paths card
  * and SetupWizard's per-path steps. The text field round-trips to the real
- * config.json now (LEI-134), but there's no native directory-picker dialog
- * wired up yet - Browse is intentionally still a no-op, same as `noop` in
- * new-ui/Mod Manager.dc.html, until LEI-133 wires up a real `dialog.showOpenDialog` channel.
+ * settings.json (LEI-134), and Browse now opens a real native
+ * `dialog.showOpenDialog` folder picker (LEI-133) via `onBrowse` - the game
+ * path uses `smf.config.pickGameDirectory()` (validated + derives
+ * runtimePath/platform), cache/mod paths use the plain `smf.system.pickDirectory()`.
  */
 export function PathInputRow({
   value,
   placeholder,
   onChange,
+  onBrowse,
   size = "default"
 }: {
   value: string
   placeholder: string
   onChange(value: string): void
+  onBrowse?: () => void
   size?: "default" | "lg"
 }) {
   return (
@@ -33,7 +36,7 @@ export function PathInputRow({
       <button
         type="button"
         title="Browse"
-        onClick={() => {}}
+        onClick={() => onBrowse?.()}
         className={cn(
           "flex shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-text-2 hover:bg-surface-hover",
           size === "lg" ? "h-[38px] w-[38px]" : "h-9 w-9"

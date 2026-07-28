@@ -18,7 +18,12 @@ import { electronAPI } from "@electron-toolkit/preload"
 const smf = {
   config: {
     get: () => ipcRenderer.invoke("config:get"),
-    merge: (patch: unknown) => ipcRenderer.invoke("config:merge", patch)
+    merge: (patch: unknown) => ipcRenderer.invoke("config:merge", patch),
+    pickGameDirectory: () => ipcRenderer.invoke("config:pickGameDirectory")
+  },
+
+  system: {
+    pickDirectory: (options?: { title?: string }) => ipcRenderer.invoke("system:pickDirectory", options)
   },
 
   mods: {
@@ -50,7 +55,9 @@ const smf = {
       return () => ipcRenderer.removeListener("deploy:progress", listener)
     },
 
-    getActiveSnapshot: () => ipcRenderer.invoke("deploy:getActiveSnapshot")
+    getActiveSnapshot: () => ipcRenderer.invoke("deploy:getActiveSnapshot"),
+
+    analyseMod: (modId: string) => ipcRenderer.invoke("deploy:analyseMod", modId)
   },
 
   /** Electron 32+'s replacement for the removed `File.path` - the only way for the renderer to learn a dropped/picked file's real on-disk path without raw Node access. */

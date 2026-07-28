@@ -252,8 +252,8 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 					for (const contentFilePath of klaw(path.join(config.modsPath, mod, contentFolder, chunkFolder))
 						.filter((a) => a.stats.isFile())
 						.map((a) => a.path)) {
-						const dependencies = []
-						const affected = []
+						const dependencies: string[] = []
+						const affected: string[] = []
 
 						let entityContent
 						let fileToReplace
@@ -429,15 +429,15 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 				}
 			}
 
-			const manifestDependencies = []
-			const manifestAffected = []
+			const manifestDependencies: string[] = []
+			const manifestAffected: string[] = []
 
 			await logger.verbose("Discovering manifest keys")
 
 			/* ---------------------------------------- Localisation ---------------------------------------- */
 			if (manifest.localisation) {
 				for (const language of Object.keys(manifest.localisation) as Language[]) {
-					for (const string of Object.entries(manifest.localisation[language] ?? {})) {
+					for (const _line of Object.entries(manifest.localisation[language] ?? {})) {
 						manifestDependencies.push("00F5817876E691F1")
 						manifestAffected.push("00F5817876E691F1")
 					}

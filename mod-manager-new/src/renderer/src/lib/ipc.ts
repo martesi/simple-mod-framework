@@ -93,6 +93,20 @@ export interface SmfApi {
     get(): Promise<Config>
     /** Shallow-merges into the live config. Never blocked by an in-flight deploy. */
     merge(patch: Partial<Config>): Promise<Config>
+    /**
+     * Opens a native `dialog.showOpenDialog` folder picker for the game's Retail folder, validates
+     * the pick the same way `src/main.ts` always has (chunk0.rpkg/HITMAN3.exe), derives
+     * runtimePath/platform from it, and persists all of it server-side in one step (LEI-133) -
+     * `config.get()`'s next call reflects the result. `error` is `""` (not surfaced) if the user
+     * just canceled the dialog.
+     */
+    pickGameDirectory(): Promise<{ ok: true; config: Config } | { ok: false; error: string }>
+  }
+
+  /** Plain OS-level helpers with no config/validation semantics of their own. */
+  system: {
+    /** A native folder picker with no validation - used by the cache/mod path Browse buttons. Resolves to `null` if the user cancels. */
+    pickDirectory(options?: { title?: string }): Promise<string | null>
   }
 
   mods: {
@@ -121,6 +135,8 @@ export interface SmfApi {
     start(): Promise<DeploySnapshot>
     onProgress(cb: (progress: DeployProgress) => void): Unsubscribe
     getActiveSnapshot(): DeploySnapshot | null
+    /** Analyses a single mod in-process without running a full deploy (LEI-133/LEI-108) - rejected while a deploy is active. */
+    analyseMod(modId: string): Promise<{ ok: boolean; error?: string }>
   }
 }
 

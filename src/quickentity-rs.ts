@@ -13,13 +13,13 @@ const execCommand = function (command: string) {
 	child_process.execSync(command, { stdio: [ "pipe", "inherit", "inherit" ] })
 }
 
-export async function convert(game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) {
+export async function convert(_game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) {
 	execCommand(
 		`"${qnExe()}" entity convert --input-factory "${TEMP}" --input-factory-meta "${TEMPmeta}" --input-blueprint "${TBLU}" --input-blueprint-meta "${TBLUmeta}" --output "${output}" --lossless`
 	)
 }
 
-export async function generate(game: string, input: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string) {
+export async function generate(_game: string, input: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string) {
 	execCommand(
 		`"${qnExe()}" entity generate --input "${input}" --output-factory "${TEMP}" --output-factory-meta "${TEMPmeta}" --output-blueprint "${TBLU}" --output-blueprint-meta "${TBLUmeta}"`
 	)

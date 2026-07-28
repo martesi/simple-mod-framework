@@ -189,6 +189,23 @@ class MockSmfApi implements SmfApi {
       this.cfg = { ...this.cfg, ...patch }
       saveConfig(this.cfg)
       return structuredClone(this.cfg)
+    },
+
+    // No real filesystem/dialog outside a real Electron shell - just simulate a successful pick
+    // after a beat, same "believable" spirit as the rest of this mock.
+    pickGameDirectory: async (): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
+      await delay(300)
+      const gamePath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN 3\\Retail"
+      this.cfg = { ...this.cfg, gamePath }
+      saveConfig(this.cfg)
+      return { ok: true, config: structuredClone(this.cfg) }
+    }
+  }
+
+  system = {
+    pickDirectory: async (): Promise<string | null> => {
+      await delay(300)
+      return "C:\\Users\\you\\Documents\\SMF"
     }
   }
 
@@ -344,7 +361,12 @@ class MockSmfApi implements SmfApi {
       return () => this.progressListeners.delete(cb)
     },
 
-    getActiveSnapshot: (): DeploySnapshot | null => (this.activeSnapshot ? structuredClone(this.activeSnapshot) : null)
+    getActiveSnapshot: (): DeploySnapshot | null => (this.activeSnapshot ? structuredClone(this.activeSnapshot) : null),
+
+    analyseMod: async (modId: string): Promise<{ ok: boolean; error?: string }> => {
+      await delay(200)
+      return this.modsData.some((m) => m.id === modId) ? { ok: true } : { ok: false, error: `"${modId}" isn't installed.` }
+    }
   }
 
   private emitProgress(p: DeployProgress) {
