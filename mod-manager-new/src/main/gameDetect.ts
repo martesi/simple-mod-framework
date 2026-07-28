@@ -38,8 +38,8 @@ export interface GamePathInfo {
 export type GamePathDetection = ({ ok: true } & GamePathInfo) | { ok: false; error: string }
 
 /**
- * Validate a user-picked "Retail" folder (the one directly containing the game's executable) and
- * derive `runtimePath`/`platform` from it.
+ * Validate a game path (normally the "Retail" folder itself, though a one-level-too-high pick
+ * self-heals - see below) and derive `runtimePath`/`platform` from it.
  *
  * This relocates two pieces of logic that used to run reactively, after the fact, once a deploy
  * was already underway:
@@ -48,12 +48,27 @@ export type GamePathDetection = ({ ok: true } & GamePathInfo) | { ok: false; err
  *   - `src/main.ts`'s MD5-hash platform detection (hashes `MicrosoftGame.Config`/`HITMAN3.exe`
  *     against a table of known Steam/Epic/Microsoft hashes)
  *
- * into a single "compute right, once" step run from the directory picker (`config:pickGameDirectory`
- * in ipcHandlers.ts) - see LEI-133's description. The embedded app's `Config` (deployPipeline.ts)
- * is then built directly from the result; nothing re-derives these at deploy time.
+ * into a single validate-and-derive step - see LEI-133's description. Unlike that first version,
+ * though, this is *not* a "compute once at pick-time" step: only `gamePath` itself is persisted
+ * (see settings.ts), so this runs fresh every time `retailPath`/`runtimePath`/`platform` are
+ * actually needed (the directory picker, for immediate feedback; `config:merge`, implicitly, by
+ * virtue of nothing being cached; deploy start and analyseMod, to build the embedded `Config` -
+ * see ipcHandlers.ts/deployManager.ts/deployPipeline.ts) rather than once, reused, and left to go
+ * stale if the game updates or moves.
  */
 export function deriveGamePathInfo(pickedPath: string, paths: AppPaths): GamePathDetection {
-	const retailPath = resolve(pickedPath)
+	let retailPath = resolve(pickedPath)
+
+	// Easy mistake: picking the game's root folder (e.g. ".../common/HITMAN3") instead of the
+	// "Retail" folder inside it. For Steam/Epic, that root folder also happens to have a sibling
+	// "Runtime/chunk0.rpkg" sitting right next to "Retail/" - which the Microsoft Store layout check
+	// below would otherwise misread as "Runtime nested inside the picked folder", sending it looking
+	// for a MicrosoftGame.Config that was never going to exist. Quietly step down into "Retail" first,
+	// same self-heal spirit as the old core.ts's post-hoc runtimePath fix.
+	if (!existsSync(join(retailPath, "HITMAN3.exe")) && existsSync(join(retailPath, "Retail", "HITMAN3.exe"))) {
+		retailPath = join(retailPath, "Retail")
+	}
+
 	const siblingRuntimePath = resolve(retailPath, "..", "Runtime")
 	const nestedRuntimePath = join(retailPath, "Runtime")
 

@@ -10,15 +10,19 @@ import react from "@vitejs/plugin-react"
 // Embedded-core/game-directory-picker wiring (replacing the Deploy.exe
 // subprocess spawn with the in-process framework core) is LEI-133.
 //
-// main/preload are fully bundled (no externalizeDepsPlugin, unlike this
-// file's pre-LEI-133 version) rather than left as bare `require()`s of
-// node_modules - matches what the old Mod Manager's own
-// electron.vite.config.ts already did (see `main: {}` there). This is fully
-// self-contained now that src/deploy.ts's worker pool is the hand-rolled
-// node:worker_threads WorkerPool (see src/workerPool.ts, LEI-132) instead of
-// Piscina - no package-specific node_modules layout to worry about at
-// runtime, see electron-builder.yml's doc comment.
-export default defineConfig({
+// preload is always fully bundled (externalizeDepsPlugin disabled
+// unconditionally, see its own comment below - the sandboxed preload loader
+// can never resolve a bare node_modules require, dev or build). main is
+// fully bundled too, but - unlike this file's pre-LEI-133 version, and
+// unlike preload - only when actually building/packaging; `electron-vite
+// dev` leaves it externalized (matches what the old Mod Manager's own
+// electron.vite.config.ts did unconditionally, see `main: {}` there). This
+// is fully self-contained at build time now that src/deploy.ts's worker
+// pool is the hand-rolled node:worker_threads WorkerPool (see
+// src/workerPool.ts, LEI-132) instead of Piscina - no package-specific
+// node_modules layout to worry about at runtime, see electron-builder.yml's
+// doc comment.
+export default defineConfig(({ command }) => ({
   main: {
     build: {
       // Same fix as preload below, applied preemptively here rather than
@@ -37,7 +41,14 @@ export default defineConfig({
       // bundles all of it into index.cjs, matching what electron-builder.yml's
       // own doc comment already assumes is true ("no node_modules carried
       // into app.asar because main/preload are fully bundled").
-      externalizeDeps: false,
+      //
+      // Only disabled for `command === 'build'` though - `electron-vite dev`
+      // also goes through this same config but runs main straight out of
+      // out/main next to a real node_modules folder (see above), so there's
+      // no packaging step to protect against and every dev restart isn't
+      // worth paying the "bundle all of typescript's ~50k lines into
+      // index.cjs again" cost for. Left at the default (true) there instead.
+      externalizeDeps: command !== "build",
       rollupOptions: {
         input: {
           // The default single "index" entry only emits out/main/index.cjs.
@@ -119,4 +130,4 @@ export default defineConfig({
     },
     plugins: [react()]
   }
-})
+}))

@@ -44,10 +44,14 @@ export function ModsScreen() {
     return map
   }, [config])
 
+  // An empty or whitespace-only query means "no filter" - trim before
+  // comparing so a stray space doesn't hide every mod (a blank string is a
+  // substring of everything, but "  " usually isn't).
+  const q = search.trim().toLowerCase()
+
   const filtered = useMemo(() => {
-    const q = search.toLowerCase()
-    return mods.filter((m) => modLabel(m).toLowerCase().includes(q)).sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0))
-  }, [mods, search, orderIndex])
+    return mods.filter((m) => !q || modLabel(m).toLowerCase().includes(q)).sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0))
+  }, [mods, q, orderIndex])
 
   const enabledIds = config?.loadOrder ?? []
   const settingsMod = mods.find((m) => m.id === settingsModId) ?? null
@@ -94,7 +98,7 @@ export function ModsScreen() {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
-        {filtered.length === 0 && <div className="px-[18px] py-10 text-center text-[13px] text-text-3">No mods match "{search}".</div>}
+        {filtered.length === 0 && q && <div className="px-[18px] py-10 text-center text-[13px] text-text-3">No mods match "{search.trim()}".</div>}
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={filtered.map((m) => m.id)} strategy={verticalListSortingStrategy}>
@@ -109,7 +113,7 @@ export function ModsScreen() {
                   enabled={enabled}
                   orderLabel={enabledIndex >= 0 ? String(enabledIndex + 1) : ""}
                   removeBlocked={deployActive}
-                  dragDisabled={!!search}
+                  dragDisabled={!!q}
                   onToggle={() => toggleMod(mod.id)}
                   onOpenSettings={() => setSettingsModId(mod.id)}
                   onRemove={() => setRemoveCandidate(mod)}

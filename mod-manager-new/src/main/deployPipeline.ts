@@ -16,7 +16,7 @@ import type { Config } from "../../../src/types"
 import type { AppPaths } from "./paths"
 import type { AppSettings } from "./settings"
 import { resolveModsDir } from "./settings"
-import { computeGameHash } from "./gameDetect"
+import { computeGameHash, type GamePathInfo } from "./gameDetect"
 
 export interface DeployPipelineLogLine {
 	level: "verbose" | "debug" | "info" | "warn" | "error"
@@ -28,16 +28,18 @@ export type DeployPipelineResult = { ok: true } | { ok: false; error: string }
 
 /**
  * Builds the framework core's real `Config` object in memory from this app's persisted
- * `AppSettings` - no `config.json` on disk involved (LEI-133's "no on-disk config.json required
- * for normal operation"). `retailPath`/`runtimePath`/`platform` are taken as-is: they were already
- * derived once, at pick-time, by `gameDetect.ts`'s `deriveGamePathInfo()` - `createCore()` still
+ * `AppSettings` plus a fresh `GamePathInfo` - no `config.json` on disk involved (LEI-133's "no
+ * on-disk config.json required for normal operation"). `retailPath`/`runtimePath`/`platform` come
+ * from `game` (the caller's own `gameDetect.ts`'s `deriveGamePathInfo()` call against the
+ * persisted `gamePath` - see deployManager.ts/ipcHandlers.ts) rather than from `settings` directly,
+ * since only `gamePath` itself is persisted (see settings.ts's doc comment) - `createCore()` still
  * runs them through `path.resolve(dataRoot, ...)` internally, but since they're already absolute
  * that's a no-op (see `src/core.ts`).
  */
-export function buildFrameworkConfig(paths: AppPaths, settings: AppSettings): Config {
+export function buildFrameworkConfig(paths: AppPaths, settings: AppSettings, game: GamePathInfo): Config {
 	return {
-		retailPath: settings.retailPath,
-		runtimePath: settings.runtimePath,
+		retailPath: game.retailPath,
+		runtimePath: game.runtimePath,
 		modsPath: resolveModsDir(paths, settings),
 		skipIntro: settings.skipIntro,
 		outputToSeparateDirectory: settings.outputToSeparateDirectory,
@@ -51,7 +53,7 @@ export function buildFrameworkConfig(paths: AppPaths, settings: AppSettings): Co
 		knownMods: settings.knownMods,
 		loadOrder: settings.loadOrder,
 		modOptions: settings.modOptions,
-		platform: (settings.platform ?? "steam") as Config["platform"]
+		platform: game.platform as Config["platform"]
 	}
 }
 
@@ -115,8 +117,8 @@ function noopSentryTransaction(): any {
  * entirely in this process; progress/log lines are streamed out via `onLog` instead of being
  * printed to a console that doesn't exist here.
  */
-export async function runFullDeploy(paths: AppPaths, settings: AppSettings, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
-	const config = buildFrameworkConfig(paths, settings)
+export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game: GamePathInfo, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+	const config = buildFrameworkConfig(paths, settings, game)
 	const core = createEmbeddedCore(paths, config, onLog)
 
 	try {
@@ -202,8 +204,8 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, onLo
  * deploy critical path" is meant to call whenever a mod is added/updated or its selected options
  * change - LEI-133's job is just to make sure the handler exists and runs in-process.
  */
-export async function runAnalyseMod(paths: AppPaths, settings: AppSettings, modId: string, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
-	const config = buildFrameworkConfig(paths, settings)
+export async function runAnalyseMod(paths: AppPaths, settings: AppSettings, game: GamePathInfo, modId: string, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+	const config = buildFrameworkConfig(paths, settings, game)
 	const core = createEmbeddedCore(paths, config, onLog)
 
 	try {

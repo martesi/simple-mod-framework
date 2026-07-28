@@ -18,19 +18,17 @@ import type { AppPaths } from "./paths"
  * This is a superset of the real framework `Config` (`src/types.ts` at the repo root, see
  * `deployPipeline.ts`'s `buildFrameworkConfig()`) plus this app's own UI-only preferences (window
  * theme, manual mod shelf order, etc.), kept in the same file rather than a second one to keep in
- * sync - `gamePath` is the one thing the user actually picks (via `config:pickGameDirectory`) or
- * types directly; `retailPath`/`runtimePath`/`platform` are derived from it once, at pick-time, by
- * `gameDetect.ts`'s `deriveGamePathInfo()` - never recomputed reactively at deploy time the way
- * the old CLI/`core.ts` self-heal did.
+ * sync - `gamePath` is the only thing about the game install persisted here (the one thing the
+ * user actually picks, via `config:pickGameDirectory`, or types directly). `retailPath`/
+ * `runtimePath`/`platform` are *not* stored - they're re-derived from `gamePath` on demand, every
+ * time they're needed (picker validation, deploy start, analyseMod), by `gameDetect.ts`'s
+ * `deriveGamePathInfo()`. This means a game update/reinstall that changes which of those a path
+ * resolves to never leaves a stale derived value sitting in settings.json - there's only ever one
+ * source of truth (`gamePath`) to keep in sync.
  */
 export interface AppSettings {
-	/** The folder containing the game's Retail executable - the one thing the user picks via `config:pickGameDirectory`, or types directly into Settings. */
+	/** The folder containing the game's Retail executable (or its parent - `deriveGamePathInfo()` self-heals that) - the one thing the user picks via `config:pickGameDirectory`, or types directly into Settings. */
 	gamePath: string
-
-	/** Derived from `gamePath` by `gameDetect.ts`'s `deriveGamePathInfo()` - absolute paths, never hand-edited. Empty until `gamePath` has been successfully validated at least once. */
-	retailPath: string
-	runtimePath: string
-	platform?: "steam" | "epic" | "microsoft"
 
 	/** Where mods are stored. Defaults to a "Mods" folder under `dataRoot` (userData) if unset - resolved via `resolveModsDir()`. */
 	modsPath: string
@@ -63,8 +61,6 @@ export function settingsPath(paths: AppPaths): string {
 function defaultSettings(): AppSettings {
 	return {
 		gamePath: "",
-		retailPath: "",
-		runtimePath: "",
 		modsPath: "Mods",
 		skipIntro: false,
 		outputToSeparateDirectory: false,

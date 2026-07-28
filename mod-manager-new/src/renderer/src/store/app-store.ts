@@ -85,7 +85,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   async init() {
     const smf = getSmfApi()
     const [config, mods] = await Promise.all([smf.config.get(), smf.mods.list()])
-    set({ config, mods, loaded: true })
+    // An empty gamePath is the sentinel loadSettings() writes for a brand-new
+    // settings.json (see settings.ts's defaultSettings()/loadSettings() doc
+    // comments) - i.e. "no config found yet". Open straight into the wizard
+    // in that case instead of the normal mods screen, matching new-ui/Mod
+    // Manager.dc.html's wizardOpen:true initial state.
+    set({ config, mods, loaded: true, wizard: { open: !config.gamePath, step: 0 } })
 
     smf.mods.onTaskUpdate((update) => {
       set((s) => ({ addTasks: { ...s.addTasks, [update.taskId]: { ...update, startedAt: s.addTasks[update.taskId]?.startedAt ?? Date.now() } } }))

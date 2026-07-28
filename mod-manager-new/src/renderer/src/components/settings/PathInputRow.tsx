@@ -29,8 +29,8 @@ export function PathInputRow({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className={cn(
-          "flex-1 rounded-md border border-border bg-surface-2 font-mono text-[13px] text-text outline-none placeholder:text-text-3",
-          size === "lg" ? "px-3 py-2.5" : "px-3 py-[9px]"
+          "flex-1 rounded-md border border-border bg-surface-2 font-mono text-text outline-none placeholder:text-text-3",
+          size === "lg" ? "px-3.5 py-3 text-[14px]" : "px-3 py-[9px] text-[13px]"
         )}
       />
       <button
@@ -39,7 +39,7 @@ export function PathInputRow({
         onClick={() => onBrowse?.()}
         className={cn(
           "flex shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-text-2 hover:bg-surface-hover",
-          size === "lg" ? "h-[38px] w-[38px]" : "h-9 w-9"
+          size === "lg" ? "h-[42px] w-[42px]" : "h-9 w-9"
         )}
       >
         <FolderOpen className="h-[14px] w-[14px]" />

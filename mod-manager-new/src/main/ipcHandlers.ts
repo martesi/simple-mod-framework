@@ -36,30 +36,17 @@ export function registerIpcHandlers(paths: AppPaths): void {
   ipcMain.handle("config:get", (): Config => toUiConfig(loadSettings(paths)))
 
   ipcMain.handle("config:merge", (_event, patch: Partial<Config>): Config => {
-    const settingsPatch = fromUiPatch(patch)
-
-    // Whenever gamePath changes (typed or otherwise), try to re-derive retailPath/runtimePath/
-    // platform right away rather than leaving that to deploy time - same principle as
-    // config:pickGameDirectory, just without the dialog and without blocking on a bad in-progress
-    // keystroke: an unresolvable gamePath just leaves the previously-derived paths alone (deploy
-    // start already refuses to run without valid ones - see deployManager.ts).
-    if (settingsPatch.gamePath) {
-      const detection = deriveGamePathInfo(settingsPatch.gamePath, paths)
-      if (detection.ok) {
-        settingsPatch.retailPath = detection.retailPath
-        settingsPatch.runtimePath = detection.runtimePath
-        settingsPatch.platform = detection.platform
-      }
-    }
-
-    const settings = mergeSettings(paths, settingsPatch)
+    // No retailPath/runtimePath/platform to re-derive and store here anymore - only gamePath
+    // itself is persisted (see settings.ts's doc comment), so a typed-in path just gets validated
+    // fresh, from scratch, the next time it's actually needed (deploy start/analyseMod below).
+    const settings = mergeSettings(paths, fromUiPatch(patch))
     return toUiConfig(settings)
   })
 
   // The one real directory-picker dialog (LEI-133) - validates the pick the same way
-  // src/main.ts:76-90 always has (see gameDetect.ts's deriveGamePathInfo), derives
-  // retailPath/runtimePath/platform from it once, and persists all four together so nothing about
-  // this game install needs re-detecting reactively at deploy time.
+  // src/main.ts:76-90 always has (see gameDetect.ts's deriveGamePathInfo) purely for immediate
+  // feedback in the picker; only `gamePath` itself gets persisted; retailPath/runtimePath/platform
+  // are re-derived from it on demand wherever they're actually needed instead.
   ipcMain.handle("config:pickGameDirectory", async (event): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const result = await dialog.showOpenDialog(win ?? undefined!, {
@@ -77,12 +64,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
       return { ok: false, error: detection.error }
     }
 
-    const settings = mergeSettings(paths, {
-      gamePath: result.filePaths[0],
-      retailPath: detection.retailPath,
-      runtimePath: detection.runtimePath,
-      platform: detection.platform
-    })
+    const settings = mergeSettings(paths, { gamePath: result.filePaths[0] })
 
     return { ok: true, config: toUiConfig(settings) }
   })
@@ -165,11 +147,12 @@ export function registerIpcHandlers(paths: AppPaths): void {
     }
 
     const settings = loadSettings(paths)
-    if (!settings.retailPath || !settings.runtimePath) {
-      return { ok: false, error: "No valid game folder is set - open Settings and pick your game's Retail folder first." }
+    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, paths) : ({ ok: false, error: "" } as const)
+    if (!detection.ok) {
+      return { ok: false, error: detection.error || "No valid game folder is set - open Settings and pick your game's Retail folder first." }
     }
 
     const onLog = (line: DeployPipelineLogLine) => event.sender.send("deploy:analyseModLog", { modId, ...line })
-    return runAnalyseMod(paths, settings, modId, onLog)
+    return runAnalyseMod(paths, settings, detection, modId, onLog)
   })
 }

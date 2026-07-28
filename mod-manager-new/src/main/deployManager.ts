@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import type { AppPaths } from "./paths"
 import type { AppSettings } from "./settings"
 import { loadSettings } from "./settings"
+import { deriveGamePathInfo } from "./gameDetect"
 import { runFullDeploy, type DeployPipelineLogLine } from "./deployPipeline"
 import type { DeployProgress, DeploySnapshot } from "../renderer/src/lib/ipc"
 
@@ -57,9 +58,21 @@ export class DeployManager {
     }
     this.active = snapshot
 
-    if (!settings.retailPath || !settings.runtimePath) {
+    // gamePath is the only thing about the game install this app persists (see settings.ts) -
+    // retailPath/runtimePath/platform are derived fresh right here, every deploy, rather than
+    // trusting a value stashed away at pick-time that could have gone stale since (game update,
+    // reinstall, moved drive, etc).
+    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths) : ({ ok: false, error: "" } as const)
+    if (!detection.ok) {
       queueMicrotask(() => {
-        this.emit({ stage: "finalizing", stageIndex: 3, stageTotal: 4, logLine: "No valid game folder is set - open Settings and pick your game's Retail folder first.", done: true, ok: false })
+        this.emit({
+          stage: "finalizing",
+          stageIndex: 3,
+          stageTotal: 4,
+          logLine: detection.error || "No valid game folder is set - open Settings and pick your game's Retail folder first.",
+          done: true,
+          ok: false
+        })
         this.active = null
       })
       return snapshot
@@ -69,7 +82,7 @@ export class DeployManager {
 
     let stage: DeployProgress["stage"] = "sorting"
 
-    void runFullDeploy(this.paths, { ...settings, loadOrder: snapshot.loadOrder }, (line) => {
+    void runFullDeploy(this.paths, { ...settings, loadOrder: snapshot.loadOrder }, detection, (line) => {
       stage = this.handleLine(snapshot, line, stage)
     }).then((result) => {
       this.emit({

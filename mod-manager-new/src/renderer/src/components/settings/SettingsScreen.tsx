@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils"
 import { ACCENTS, ACCENT_LABELS, resolveDark, type Accent, type ThemeMode } from "@/lib/theme"
 import { LANGUAGES } from "@/lib/languages"
 import { PathInputRow } from "./PathInputRow"
-import { SetupWizard } from "./SetupWizard"
 
 const THEME_MODES: { key: ThemeMode; label: string }[] = [
   { key: "light", label: "Light" },
@@ -137,8 +136,6 @@ export function SettingsScreen() {
           </a>
         ))}
       </div>
-
-      <SetupWizard />
     </div>
   )
 }
