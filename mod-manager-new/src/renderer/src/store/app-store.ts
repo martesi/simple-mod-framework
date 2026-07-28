@@ -30,6 +30,10 @@ interface AppState {
   /** Example paths for the Paths card/wizard placeholder text - see ipc.ts's `config.getDefaultPaths()` doc comment. Null until `init()` resolves, same as `config`. */
   defaultPaths: DefaultPaths | null
   mods: ModEntry[]
+  /** True from init() until the first mods.list() resolves - see init()'s doc comment for why this is split off from `loaded`. */
+  modsLoading: boolean
+  /** Progress of an in-flight main-process cache scan (cold start, "Rebuild cache", or a modPath switch) - null when nothing is scanning. */
+  cacheProgress: { scanned: number; total: number } | null
   addTasks: Record<string, AddTask>
   addDialogOpen: boolean
   deploy: DeployState
@@ -44,8 +48,8 @@ interface AppState {
 
   toggleMod(modId: string): void
   reorderMods(orderedIds: string[]): void
-  setCheckboxOption(modId: string, optionName: string, enabled: boolean): void
-  setSelectOption(modId: string, group: string, optionName: string): void
+  /** Persists a mod's full enabled-option list in one shot - see the implementation's doc comment for why this replaced per-click setCheckboxOption()/setSelectOption(). */
+  commitModOptions(modId: string, options: string[]): void
 
   addModFile(file: { name: string; size: number; path: string }): void
   /** Resolves each dropped/picked `File` to a real on-disk path and kicks off its add task - shared by AddModDialog's own dropzone and the whole-window drop handler in App.tsx. Opens the Add Mod dialog so progress is visible regardless of which one triggered it. */
@@ -89,6 +93,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   config: null,
   defaultPaths: null,
   mods: [],
+  modsLoading: true,
+  cacheProgress: null,
   rebuildingIndex: false,
   addTasks: {},
   addDialogOpen: false,
@@ -99,7 +105,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async init() {
     const smf = getSmfApi()
-    const [config, mods, defaultPaths] = await Promise.all([smf.config.get(), smf.mods.list(), smf.config.getDefaultPaths()])
+    // config.get()/config.getDefaultPaths() are cheap in-memory reads on the main side - only
+    // mods.list() can be slow (a full Mods/ folder walk the very first time this launch, or after a
+    // modPath switch - see ipcHandlers.ts's mods:list). It used to be lumped into this same
+    // Promise.all(), which meant `loaded` (and so the whole app, per App.tsx's `if (!loaded ...)`
+    // guard) stayed on a blank "Loading Mod Manager..." screen for as long as that scan took, with
+    // no feedback at all. Split it off: `loaded` flips as soon as config is in hand, so the real UI
+    // (nav, Settings, the Mods screen shell) is interactable immediately, and `mods`/`modsLoading`
+    // fill in a moment later - see ModsScreen.tsx's cache-building banner, driven by
+    // `modsLoading`/`cacheProgress`, and initListeners()'s onCacheProgress subscription below.
+    const [config, defaultPaths] = await Promise.all([smf.config.get(), smf.config.getDefaultPaths()])
     // An empty gamePath is the sentinel loadSettings() writes for a brand-new
     // settings.json (see settings.ts's defaultSettings()/loadSettings() doc
     // comments) - i.e. "no config found yet". Open straight into the wizard
@@ -108,7 +123,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Plain data fetch, no subscriptions - safe to call more than once (StrictMode's double
     // effect invoke included), since re-running it just re-fetches and re-sets the same kind of
     // data rather than accumulating anything. See initListeners() for the subscription half.
-    set({ config, mods, defaultPaths, loaded: true, wizard: { open: !config.gamePath, step: 0 } })
+    set({ config, defaultPaths, loaded: true, modsLoading: true, wizard: { open: !config.gamePath, step: 0 } })
+
+    const mods = await smf.mods.list()
+    set({ mods, modsLoading: false, cacheProgress: null })
   },
 
   initListeners() {
@@ -142,6 +160,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     })
 
+    const unsubscribeCacheProgress = smf.mods.onCacheProgress((progress) => {
+      set({ cacheProgress: progress })
+    })
+
     const unsubscribeProgress = smf.deploy.onProgress((progress) => {
       set((s) => ({
         deploy: {
@@ -162,6 +184,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     return () => {
       unsubscribeTaskUpdate()
+      unsubscribeCacheProgress()
       unsubscribeProgress()
       mq?.removeEventListener("change", onSystemDarkChange!)
     }
@@ -191,22 +214,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     getSmfApi().config.merge({ modOrder: orderedIds, loadOrder })
   },
 
-  setCheckboxOption(modId, optionName, enabled) {
+  /**
+   * The *only* place a mod's option selections reach `config`/disk. ModSettingsDrawer.tsx keeps its
+   * own local draft of the enabled-option list while it's open (instant, drawer-scoped re-renders
+   * only) and calls this once when it closes, instead of every single checkbox/radio click calling
+   * through to here directly (the old setCheckboxOption()/setSelectOption(), removed).
+   *
+   * That old per-click version updated the *global* `config` object on every click - and since
+   * ModsScreen.tsx subscribes to `config` (for loadOrder/modOrder), every click forced a full
+   * mods-list reconciliation pass along with it. With many mods installed that reconciliation is
+   * real, visible work, so a single checkbox click could feel like it took a long time - not because
+   * the click handler itself was slow, but because of everything it dragged along with it. Batching
+   * every change made during one drawer session into one commit (and one settings.json write) fixes
+   * both problems at once: instant local feedback while the drawer is open, and only one list
+   * re-render + one disk write per drawer visit instead of one per click.
+   */
+  commitModOptions(modId, options) {
     const { config } = get()
     if (!config) return
-    const current = config.modOptions[modId] ?? []
-    const next = enabled ? [...current.filter((o) => o !== optionName), optionName] : current.filter((o) => o !== optionName)
-    const modOptions = { ...config.modOptions, [modId]: next }
-    set({ config: { ...config, modOptions } })
-    getSmfApi().config.merge({ modOptions })
-  },
-
-  setSelectOption(modId, group, optionName) {
-    const { config } = get()
-    if (!config) return
-    const current = config.modOptions[modId] ?? []
-    const next = [...current.filter((o) => !o.startsWith(`${group}:`)), `${group}:${optionName}`]
-    const modOptions = { ...config.modOptions, [modId]: next }
+    const modOptions = { ...config.modOptions, [modId]: options }
     set({ config: { ...config, modOptions } })
     getSmfApi().config.merge({ modOptions })
   },
@@ -265,13 +291,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async rebuildIndex() {
-    set({ rebuildingIndex: true })
+    set({ rebuildingIndex: true, cacheProgress: null })
     try {
       const mods = await getSmfApi().mods.rebuildIndex()
       set({ mods })
       toast.success("Mod cache rebuilt.")
     } finally {
-      set({ rebuildingIndex: false })
+      set({ rebuildingIndex: false, cacheProgress: null })
     }
   },
 

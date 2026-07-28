@@ -25,6 +25,18 @@ interface IndexedMod {
   id: string
   isFrameworkMod: boolean
   manifest?: DiskManifest
+  /**
+   * Cached `validateModFolder()`/outdated results for framework mods - computed once when the
+   * folder is (re)indexed (`indexFolder()`, `writeManifest()`) rather than recomputed on every
+   * `list()` call. `validateModFolder()` walks the mod's content/blobs folders on disk
+   * (readdirSync per folder) - with "many mods" installed, redoing that on every single `list()`
+   * (which happens after every add/remove/toggle-driven refresh, not just at cold start) was real,
+   * repeated, avoidable disk I/O. None of it can change without the folder itself changing, which
+   * only happens through indexFolder()/writeManifest() - both recompute this eagerly.
+   */
+  valid?: boolean
+  validationError?: string
+  outdated?: boolean
 }
 
 function majorOf(version: string): number {
@@ -72,11 +84,23 @@ export class ModIndex {
 
   constructor(private getModsDir: () => string) {}
 
-  private ensureBuilt(): void {
-    if (!this.built) this.rebuild()
+  /** True once a scan (sync or chunked) has populated the index at least once this launch. */
+  get isBuilt(): boolean {
+    return this.built
   }
 
-  rebuild(): void {
+  private ensureBuilt(): void {
+    if (!this.built) this.scanSync()
+  }
+
+  /**
+   * Synchronous full disk walk - kept only as a defensive fallback for callers that need the index
+   * built *right now* and can't await anything (folderFor()/manifestFor()/has()/addFolders()/
+   * remove(), all via ensureBuilt() above). In normal operation this never actually runs a real scan:
+   * the app always calls mods:list on launch first, which awaits rebuildChunked() below before
+   * anything else touches the index, so `built` is already true by the time any of those run.
+   */
+  private scanSync(): void {
     this.byId.clear()
 
     const modsDir = this.getModsDir()
@@ -94,6 +118,43 @@ export class ModIndex {
     this.built = true
   }
 
+  /**
+   * Same full disk walk as scanSync(), but chunked with periodic event-loop yields and an optional
+   * progress callback. The main process is single-threaded - a synchronous walk of a Mods/ folder
+   * with hundreds of entries (each a readdirSync + statSync + a manifest.json read/JSON5.parse)
+   * would otherwise freeze every other IPC channel (config:get, system:pickDirectory, all of it) for
+   * as long as the scan takes, which is exactly what used to make the whole renderer look hung
+   * behind App.tsx's "Loading Mod Manager..." screen while a cache rebuild ran. Always does a fresh
+   * scan regardless of `built`, so it doubles as both the cold-start build (mods:list, first call)
+   * and the explicit "Rebuild cache" action (mods:rebuildIndex) - see ipcHandlers.ts.
+   */
+  async rebuildChunked(onProgress?: (scanned: number, total: number) => void): Promise<void> {
+    this.byId.clear()
+
+    const modsDir = this.getModsDir()
+    if (!existsSync(modsDir)) {
+      this.built = true
+      return
+    }
+
+    const folders = readdirSync(modsDir).filter((f) => f !== MANAGED_FOLDER && statSync(join(modsDir, f)).isDirectory())
+    const total = folders.length
+
+    for (let i = 0; i < folders.length; i++) {
+      this.indexFolder(modsDir, folders[i])
+      onProgress?.(i + 1, total)
+
+      // Yield to the event loop every 20 folders - frequent enough that other IPC handlers (and the
+      // progress broadcast itself) actually get a turn during a big scan, infrequent enough that it
+      // doesn't meaningfully slow the scan down with scheduling overhead.
+      if ((i + 1) % 20 === 0) {
+        await new Promise((resolve) => setImmediate(resolve))
+      }
+    }
+
+    this.built = true
+  }
+
   private indexFolder(modsDir: string, folder: string): void {
     const full = join(modsDir, folder)
     const manifestPath = join(full, "manifest.json")
@@ -101,7 +162,7 @@ export class ModIndex {
     if (existsSync(manifestPath)) {
       try {
         const manifest: DiskManifest = JSON5.parse(readFileSync(manifestPath, "utf8"))
-        this.byId.set(manifest.id, { folder, id: manifest.id, isFrameworkMod: true, manifest })
+        this.byId.set(manifest.id, { folder, id: manifest.id, isFrameworkMod: true, manifest, ...this.validate(full, manifest) })
         return
       } catch {
         // malformed manifest - fall through to treat it as a bare/broken folder below
@@ -109,6 +170,13 @@ export class ModIndex {
     }
 
     this.byId.set(folder, { folder, id: folder, isFrameworkMod: false })
+  }
+
+  /** Runs the disk-touching validity/outdated checks once - see IndexedMod's doc comment for why this is cached rather than called from list(). */
+  private validate(folder: string, manifest: DiskManifest): { valid: boolean; validationError?: string; outdated: boolean } {
+    const { valid, error } = validateModFolder(folder, manifest)
+    const outdated = majorOf(manifest.frameworkVersion) < majorOf(CURRENT_FRAMEWORK_VERSION)
+    return { valid, validationError: error, outdated }
   }
 
   /** Write-through for folders this manager just extracted into Mods/ itself - avoids re-walking the whole directory. */
@@ -143,7 +211,10 @@ export class ModIndex {
     if (!folder) throw new Error(`Couldn't find mod ${id}`)
     writeFileSync(join(folder, "manifest.json"), JSON.stringify(manifest, undefined, "\t"))
     const entry = this.byId.get(id)
-    if (entry) entry.manifest = manifest
+    if (entry) {
+      entry.manifest = manifest
+      Object.assign(entry, this.validate(folder, manifest))
+    }
   }
 
   list(): ModEntry[] {
@@ -157,16 +228,14 @@ export class ModIndex {
 
       const manifest = entry.manifest!
       const folder = resolve(modsDir, entry.folder)
-      const { valid, error } = validateModFolder(folder, manifest)
-      const outdated = majorOf(manifest.frameworkVersion) < majorOf(CURRENT_FRAMEWORK_VERSION)
 
       return {
         id: entry.id,
         isFrameworkMod: true,
         manifest: rewriteManifestImages(toUiManifest(manifest), entry.id, folder),
-        outdated,
-        valid,
-        validationError: error
+        outdated: entry.outdated,
+        valid: entry.valid,
+        validationError: entry.validationError
       }
     })
   }

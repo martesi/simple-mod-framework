@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
 import { Loader2, Plus, RefreshCw, Rocket, Search } from "lucide-react"
@@ -11,6 +11,7 @@ import { useAppStore } from "@/store/app-store"
 import type { ModEntry } from "@/lib/manifest-types"
 
 import { SortableModRow } from "./SortableModRow"
+import { MOD_ROW_HEIGHT } from "./ModRow"
 import { AddModDialog } from "./AddModDialog"
 import { ModSettingsDrawer } from "./ModSettingsDrawer"
 
@@ -18,8 +19,18 @@ function modLabel(mod: ModEntry) {
   return mod.isFrameworkMod ? `${mod.manifest!.name} ${mod.manifest!.description}` : mod.rpkgModName!
 }
 
+/**
+ * Rows rendered above/below the visible viewport, on top of whatever's actually in view. Generous
+ * on purpose: dnd-kit needs a row physically mounted in the DOM to compute drag collision against
+ * it, and a user can only ever hover the mouse over something on-screen, so this just needs to
+ * comfortably cover "on-screen plus a bit of headroom for a fast drag/scroll" - not the whole list.
+ */
+const OVERSCAN = 10
+
 export function ModsScreen() {
   const mods = useAppStore((s) => s.mods)
+  const modsLoading = useAppStore((s) => s.modsLoading)
+  const cacheProgress = useAppStore((s) => s.cacheProgress)
   const config = useAppStore((s) => s.config)
   const search = useAppStore((s) => s.search)
   const setSearch = useAppStore((s) => s.setSearch)
@@ -40,6 +51,34 @@ export function ModsScreen() {
 
   const [settingsModId, setSettingsModId] = useState<string | null>(null)
   const [removeCandidate, setRemoveCandidate] = useState<ModEntry | null>(null)
+
+  // Virtualization: this pane owns its own scroll (rather than relying on AppShell's page-level
+  // scroll) specifically so we know the exact scrollTop/viewport height needed to compute which
+  // rows are actually visible - see `windowed` below. Without this, every mod's row was mounted
+  // unconditionally regardless of scroll position, which is real, unavoidable React
+  // mount/reconciliation cost on every re-render (row memoization only helps re-renders, not the
+  // sheer number of components React has to walk) - the actual cause of "first screen slow to
+  // render with many mods" and "opening the drawer/switching an option takes a long time" (both
+  // just trigger a ModsScreen re-render, which used to mean walking every single row).
+  const listRef = useRef<HTMLDivElement>(null)
+  const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 })
+
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+
+    const update = () => setViewport({ scrollTop: el.scrollTop, height: el.clientHeight })
+    update()
+
+    el.addEventListener("scroll", update, { passive: true })
+    const resizeObserver = new ResizeObserver(update)
+    resizeObserver.observe(el)
+
+    return () => {
+      el.removeEventListener("scroll", update)
+      resizeObserver.disconnect()
+    }
+  }, [])
 
   const deployActive = !!deploy.snapshot && !(deploy.progress?.done ?? false)
 
@@ -63,6 +102,18 @@ export function ModsScreen() {
   const enabledIds = config?.loadOrder ?? []
   const settingsMod = mods.find((m) => m.id === settingsModId) ?? null
 
+  // The actual windowing math: which slice of `filtered` falls within (an overscanned margin
+  // around) the currently-visible scroll range. `SortableContext` below still gets the *full*
+  // ordered id list (dnd-kit needs that for correct index/collision math), but only this slice
+  // actually mounts a <SortableModRow>.
+  const total = filtered.length
+  const startIndex = Math.max(0, Math.floor(viewport.scrollTop / MOD_ROW_HEIGHT) - OVERSCAN)
+  const visibleCount = Math.ceil(viewport.height / MOD_ROW_HEIGHT) + OVERSCAN * 2
+  const endIndex = Math.min(total, startIndex + visibleCount)
+  const windowed = filtered.slice(startIndex, endIndex)
+  const topSpacer = startIndex * MOD_ROW_HEIGHT
+  const bottomSpacer = (total - endIndex) * MOD_ROW_HEIGHT
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (!over || active.id === over.id || !config) return
@@ -85,7 +136,7 @@ export function ModsScreen() {
   }
 
   return (
-    <div>
+    <div className="flex h-full flex-col">
       <div className="mb-1.5 flex items-center gap-4">
         <h1 className="flex-1 text-2xl font-bold">Mods</h1>
         <div className="relative">
@@ -106,36 +157,52 @@ export function ModsScreen() {
         </Button>
       </div>
 
+      {modsLoading && (
+        <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-text-2">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+          {cacheProgress
+            ? `Building mod cache — scanned ${cacheProgress.scanned} of ${cacheProgress.total} mods…`
+            : "Building mod cache — this can take a moment the first time, or after switching mod folders…"}
+        </div>
+      )}
+
       <div className="mb-5 text-[13px] text-text-2">
         {enabledIds.length} enabled · {mods.length} total
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
-        {filtered.length === 0 && q && <div className="px-[18px] py-10 text-center text-[13px] text-text-3">No mods match "{search.trim()}".</div>}
+      <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
+        {!modsLoading && filtered.length === 0 && q && <div className="px-[18px] py-10 text-center text-[13px] text-text-3">No mods match "{search.trim()}".</div>}
 
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={filtered.map((m) => m.id)} strategy={verticalListSortingStrategy}>
-            {filtered.map((mod) => {
-              const enabled = enabledIds.includes(mod.id)
-              const enabledIndex = enabledIds.indexOf(mod.id)
-              return (
-                <SortableModRow
-                  key={mod.id}
-                  id={mod.id}
-                  mod={mod}
-                  enabled={enabled}
-                  orderLabel={enabledIndex >= 0 ? String(enabledIndex + 1) : ""}
-                  removeBlocked={deployActive}
-                  dragDisabled={!!q}
-                  onToggle={() => toggleMod(mod.id)}
-                  onOpenSettings={() => setSettingsModId(mod.id)}
-                  onRemove={() => setRemoveCandidate(mod)}
-                  onUpdateOutdated={() => updateOutdated(mod.id)}
-                />
-              )
-            })}
-          </SortableContext>
-        </DndContext>
+        <div ref={listRef} className="h-full overflow-y-auto">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={filtered.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+              {topSpacer > 0 && <div style={{ height: topSpacer }} />}
+              {windowed.map((mod) => {
+                const enabled = enabledIds.includes(mod.id)
+                const enabledIndex = enabledIds.indexOf(mod.id)
+                return (
+                  <SortableModRow
+                    key={mod.id}
+                    id={mod.id}
+                    mod={mod}
+                    enabled={enabled}
+                    orderLabel={enabledIndex >= 0 ? String(enabledIndex + 1) : ""}
+                    removeBlocked={deployActive}
+                    dragDisabled={!!q}
+                    // Stable store-action/setState references, not per-row closures - see
+                    // ModRow.tsx's doc comment on why that's what lets memo() actually skip
+                    // re-rendering rows unaffected by whatever caused this component to re-render.
+                    onToggle={toggleMod}
+                    onOpenSettings={setSettingsModId}
+                    onRemove={setRemoveCandidate}
+                    onUpdateOutdated={updateOutdated}
+                  />
+                )
+              })}
+              {bottomSpacer > 0 && <div style={{ height: bottomSpacer }} />}
+            </SortableContext>
+          </DndContext>
+        </div>
       </div>
 
       <AddModDialog open={addOpen} onOpenChange={(open) => (open ? openAddDialog() : closeAddDialog())} />

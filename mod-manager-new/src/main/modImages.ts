@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs"
 import { extname, resolve, sep } from "node:path"
+import { pathToFileURL } from "node:url"
 import { net, protocol } from "electron"
 import type { Manifest } from "../renderer/src/lib/manifest-types"
 
@@ -56,12 +57,8 @@ export function registerModImageProtocolHandler(): void {
       return new Response(null, { status: 404 })
     }
 
-    return net.fetch(pathToFileUrl(resolvedFile))
+    return net.fetch(pathToFileURL(resolvedFile).href)
   })
-}
-
-function pathToFileUrl(p: string): string {
-  return new URL(`file://${p.split(sep).map(encodeURIComponent).join("/")}`).href
 }
 
 function encodeToken(value: string): string {

@@ -50,6 +50,12 @@ const smf = {
       return () => ipcRenderer.removeListener("mods:taskUpdate", listener)
     },
 
+    onCacheProgress: (callback: (progress: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: unknown) => callback(progress)
+      ipcRenderer.on("mods:cacheProgress", listener)
+      return () => ipcRenderer.removeListener("mods:cacheProgress", listener)
+    },
+
     remove: (modId: string) => ipcRenderer.invoke("mods:remove", modId),
     updateOutdated: (modId: string) => ipcRenderer.invoke("mods:updateOutdated", modId)
   },

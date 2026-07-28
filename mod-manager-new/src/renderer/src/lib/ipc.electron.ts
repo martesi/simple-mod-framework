@@ -32,6 +32,9 @@ export function createElectronSmfApi(): SmfApi {
 
       onTaskUpdate: (cb: (update: ModTaskUpdate) => void): Unsubscribe => bridge.mods.onTaskUpdate((update) => cb(update as ModTaskUpdate)),
 
+      onCacheProgress: (cb: (progress: { scanned: number; total: number }) => void): Unsubscribe =>
+        bridge.mods.onCacheProgress((progress) => cb(progress as { scanned: number; total: number })),
+
       remove: (modId) => bridge.mods.remove(modId) as Promise<{ ok: boolean; reason?: string }>,
 
       updateOutdated: (modId) => bridge.mods.updateOutdated(modId) as Promise<ModEntry>

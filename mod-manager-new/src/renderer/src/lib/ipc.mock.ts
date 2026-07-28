@@ -179,6 +179,7 @@ class MockSmfApi implements SmfApi {
   private modsData: ModEntry[] = loadMods()
   private cfg: Config = loadConfig(this.modsData)
   private taskListeners = new Set<(u: ModTaskUpdate) => void>()
+  private cacheProgressListeners = new Set<(p: { scanned: number; total: number }) => void>()
   private progressListeners = new Set<(p: DeployProgress) => void>()
   private activeSnapshot: DeploySnapshot | null = null
   private deployTimer: ReturnType<typeof setInterval> | null = null
@@ -225,10 +226,15 @@ class MockSmfApi implements SmfApi {
     list: async (): Promise<ModEntry[]> => structuredClone(this.modsData),
 
     // No real disk to re-walk outside a real Electron shell - just simulate the "please wait,
-    // re-scanning" beat the real handler's synchronous fs walk (modIndex.ts's rebuild()) incurs,
-    // then hand back whatever's already in memory.
+    // re-scanning" beat the real handler's chunked fs walk (modIndex.ts's rebuildChunked()) incurs,
+    // firing a couple of believable progress ticks along the way, then hand back whatever's
+    // already in memory.
     rebuildIndex: async (): Promise<ModEntry[]> => {
-      await delay(400)
+      const total = this.modsData.length || 1
+      for (let scanned = 1; scanned <= total; scanned++) {
+        await delay(400 / total)
+        for (const cb of this.cacheProgressListeners) cb({ scanned, total })
+      }
       return structuredClone(this.modsData)
     },
 
@@ -286,6 +292,11 @@ class MockSmfApi implements SmfApi {
     onTaskUpdate: (cb: (update: ModTaskUpdate) => void): Unsubscribe => {
       this.taskListeners.add(cb)
       return () => this.taskListeners.delete(cb)
+    },
+
+    onCacheProgress: (cb: (progress: { scanned: number; total: number }) => void): Unsubscribe => {
+      this.cacheProgressListeners.add(cb)
+      return () => this.cacheProgressListeners.delete(cb)
     },
 
     remove: async (modId: string): Promise<{ ok: boolean; reason?: string }> => {

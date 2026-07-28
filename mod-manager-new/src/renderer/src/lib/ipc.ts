@@ -138,6 +138,14 @@ export interface SmfApi {
      */
     beginAdd(file: { name: string; size: number; path: string }): string
     onTaskUpdate(cb: (update: ModTaskUpdate) => void): Unsubscribe
+    /**
+     * Fires while the main process is (re)walking the Mods/ folder from scratch - the cold first
+     * `list()` this launch, an explicit `rebuildIndex()`, or a `modPath` switch (see config.merge's
+     * doc comment). The scan itself is chunked and yields between folders specifically so it never
+     * blocks long enough to make the app look hung; this lets the UI show real progress ("scanned
+     * 120 of 400") during that window instead of the old full-screen "Loading..." block.
+     */
+    onCacheProgress(cb: (progress: { scanned: number; total: number }) => void): Unsubscribe
     /** Rejected while a deploy is active - real handler must enforce this independently of the UI. */
     remove(modId: string): Promise<{ ok: boolean; reason?: string }>
     updateOutdated(modId: string): Promise<ModEntry>

@@ -1,4 +1,5 @@
-import type * as React from "react"
+import * as React from "react"
+import { memo } from "react"
 import { Settings2, TriangleAlert, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
@@ -8,22 +9,40 @@ import { cn } from "@/lib/utils"
 import type { ModEntry } from "@/lib/manifest-types"
 import { OptionType } from "@/lib/manifest-types"
 
+/**
+ * A fixed, deterministic row height (rather than letting content/padding size it intrinsically) -
+ * ModsScreen.tsx's virtualized list needs to know exactly how tall an off-screen row *would* be to
+ * compute the visible scroll range and size the spacer divs above/below it without ever having to
+ * mount and measure one. Keep this in sync with the actual rendered height below (px-[18px], the
+ * two-line name/description block, items-center) if that markup changes.
+ */
+export const MOD_ROW_HEIGHT = 72
+
 export interface ModRowProps {
   mod: ModEntry
   enabled: boolean
   orderLabel: string
   dragging?: boolean
   removeBlocked: boolean
-  onToggle(): void
-  onOpenSettings(): void
-  onRemove(): void
-  onUpdateOutdated(): void
+  /**
+   * Callbacks take the mod's id (or the mod itself, for onRemove's confirm dialog) rather than
+   * being pre-bound per row - this lets ModsScreen.tsx pass the same store-action function
+   * reference (e.g. `toggleMod` itself) for every row instead of a fresh arrow closure per row per
+   * render. That's what makes memo() below actually able to bail out: with a new closure identity
+   * every render, shallow prop comparison would never match and every row would re-render anyway
+   * whenever ModsScreen re-rendered for any reason (e.g. opening the settings drawer) - expensive
+   * with many mods, since each row also mounts dnd-kit's useSortable() (see SortableModRow.tsx).
+   */
+  onToggle(id: string): void
+  onOpenSettings(id: string): void
+  onRemove(mod: ModEntry): void
+  onUpdateOutdated(id: string): void
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>
   style?: React.CSSProperties
   setNodeRef?: (node: HTMLElement | null) => void
 }
 
-export function ModRow({ mod, enabled, orderLabel, dragging, removeBlocked, onToggle, onOpenSettings, onRemove, onUpdateOutdated, dragHandleProps, style, setNodeRef }: ModRowProps) {
+function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggle, onOpenSettings, onRemove, onUpdateOutdated, dragHandleProps, style, setNodeRef }: ModRowProps) {
   const name = mod.isFrameworkMod ? mod.manifest!.name : mod.rpkgModName!
   const description = mod.isFrameworkMod ? mod.manifest!.description : "RPKG-only mod"
   const author = mod.isFrameworkMod ? mod.manifest!.authors.join(", ") : ""
@@ -32,8 +51,8 @@ export function ModRow({ mod, enabled, orderLabel, dragging, removeBlocked, onTo
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      className={cn("flex items-center gap-3.5 border-b border-border px-[18px] py-4 last:border-b-0", dragging && "bg-surface-hover opacity-50")}
+      style={{ height: MOD_ROW_HEIGHT, boxSizing: "border-box", ...style }}
+      className={cn("flex items-center gap-3.5 border-b border-border px-[18px] last:border-b-0", dragging && "bg-surface-hover opacity-50")}
     >
       <div {...dragHandleProps} className="flex h-4 w-2.5 shrink-0 cursor-grab flex-wrap content-between gap-[2px] text-text-3 active:cursor-grabbing">
         {Array.from({ length: 6 }).map((_, i) => (
@@ -55,7 +74,7 @@ export function ModRow({ mod, enabled, orderLabel, dragging, removeBlocked, onTo
               {/* Base UI's Trigger already renders a <button> by default, so
                   the Badge just becomes its (clickable) content - no need to
                   nest another real <button> inside it. */}
-              <TooltipTrigger onClick={onUpdateOutdated} className="appearance-none border-0 bg-transparent p-0">
+              <TooltipTrigger onClick={() => onUpdateOutdated(mod.id)} className="appearance-none border-0 bg-transparent p-0">
                 <Badge variant="warning" className="cursor-pointer gap-1">
                   <TriangleAlert className="h-3 w-3" /> Outdated · Update
                 </Badge>
@@ -68,7 +87,7 @@ export function ModRow({ mod, enabled, orderLabel, dragging, removeBlocked, onTo
       </div>
 
       {hasOptions && (
-        <Button variant="ghost" size="icon" title="Mod settings" onClick={onOpenSettings}>
+        <Button variant="ghost" size="icon" title="Mod settings" onClick={() => onOpenSettings(mod.id)}>
           <Settings2 className="h-[15px] w-[15px] text-text-2" />
         </Button>
       )}
@@ -79,14 +98,21 @@ export function ModRow({ mod, enabled, orderLabel, dragging, removeBlocked, onTo
             (possibly disabled) Button in a span: a disabled real <button>
             can swallow the hover/focus events a tooltip trigger needs. */}
         <TooltipTrigger render={<span />}>
-          <Button variant="ghost" size="icon" disabled={removeBlocked} title={removeBlocked ? "Can't remove while a deploy is running" : "Remove mod"} onClick={onRemove}>
+          <Button variant="ghost" size="icon" disabled={removeBlocked} title={removeBlocked ? "Can't remove while a deploy is running" : "Remove mod"} onClick={() => onRemove(mod)}>
             <X className="h-[15px] w-[15px] text-text-2" />
           </Button>
         </TooltipTrigger>
         {removeBlocked && <TooltipContent>A deploy is running — mods can't be removed until it finishes.</TooltipContent>}
       </Tooltip>
 
-      <Switch checked={enabled} onCheckedChange={onToggle} />
+      <Switch checked={enabled} onCheckedChange={() => onToggle(mod.id)} />
     </div>
   )
 }
+
+/** Memoized so a state change elsewhere in ModsScreen (opening the settings drawer, a remove
+ * confirmation dialog, search text) doesn't force *every* row to re-render - each one also mounts
+ * dnd-kit's useSortable() via SortableModRow.tsx, which isn't free with many mods installed. Only
+ * effective because ModsScreen.tsx passes stable store-action references as the callback props
+ * (see ModRowProps' doc comment above) instead of new closures every render. */
+export const ModRow = memo(ModRowImpl)

@@ -37,7 +37,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
   ipcMain.handle("config:getDefaultPaths", (): DefaultPaths => resolveDefaultUiPaths(paths))
 
-  ipcMain.handle("config:merge", (_event, patch: Partial<Config>): Config => {
+  ipcMain.handle("config:merge", async (_event, patch: Partial<Config>): Promise<Config> => {
     // No retailPath/runtimePath/platform to re-derive and store here anymore - only gamePath
     // itself is persisted (see settings.ts's doc comment), so a typed-in path just gets validated
     // fresh, from scratch, the next time it's actually needed (deploy start/analyseMod below).
@@ -53,7 +53,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
     // mods:rebuildIndex does, right here, so switching mod folders always shows what's actually in
     // the new one instead of stale leftovers from the old one.
     if (modsDirBefore !== undefined && getModsDir() !== modsDirBefore) {
-      index.rebuild()
+      await index.rebuildChunked((scanned, total) => broadcast("mods:cacheProgress", { scanned, total }))
       addKnownMods(paths, index.list().map((m) => m.id))
     }
 
@@ -99,7 +99,18 @@ export function registerIpcHandlers(paths: AppPaths): void {
     return result.canceled || !result.filePaths[0] ? null : result.filePaths[0]
   })
 
-  ipcMain.handle("mods:list", () => {
+  ipcMain.handle("mods:list", async (event) => {
+    // First call this launch (or after a modPath switch reset `built` - see config:merge above):
+    // the index hasn't been scanned yet. Do that scan chunked, broadcasting progress as we go,
+    // instead of index.list()'s own synchronous ensureBuilt() fallback - that one blocks the whole
+    // main process (and every other IPC channel) until the entire Mods/ folder has been walked,
+    // which is what used to leave the renderer stuck behind App.tsx's "Loading Mod Manager..."
+    // screen with zero feedback for as long as the scan took. Subsequent calls this launch just hit
+    // the already-built in-memory index below, same as before.
+    if (!index.isBuilt) {
+      await index.rebuildChunked((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
+    }
+
     const list = index.list()
     // Covers the case mods:rebuildIndex's own comment doesn't: mods that were already sitting in
     // the Mods folder the very first time this app ever launches (e.g. migrated from the old Mod
@@ -110,8 +121,8 @@ export function registerIpcHandlers(paths: AppPaths): void {
     return list
   })
 
-  ipcMain.handle("mods:rebuildIndex", () => {
-    index.rebuild()
+  ipcMain.handle("mods:rebuildIndex", async (event) => {
+    await index.rebuildChunked((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
     const list = index.list()
     // Same write-through mods:beginAdd's install paths do (see modOps.ts's addKnownMods() calls) -
     // a rebuild can surface mods that were dropped into the Mods folder outside this app entirely,
@@ -165,8 +176,8 @@ export function registerIpcHandlers(paths: AppPaths): void {
   // something calls rebuild(). Forcing that rebuild here at least means clicking Update reflects
   // whatever's actually on disk right now, not a stale in-memory read from whenever the app
   // started.
-  ipcMain.handle("mods:updateOutdated", (_event, modId: string) => {
-    index.rebuild()
+  ipcMain.handle("mods:updateOutdated", async (_event, modId: string) => {
+    await index.rebuildChunked()
     const entry = index.list().find((m) => m.id === modId)
     if (!entry) throw new Error(`"${modId}" isn't installed.`)
     return entry

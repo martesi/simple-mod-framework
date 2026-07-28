@@ -21,6 +21,7 @@ export interface SmfBridge {
     rebuildIndex(): Promise<unknown>
     beginAdd(file: { name: string; size: number; path: string }): string
     onTaskUpdate(callback: (update: unknown) => void): () => void
+    onCacheProgress(callback: (progress: unknown) => void): () => void
     remove(modId: string): Promise<unknown>
     updateOutdated(modId: string): Promise<unknown>
   }
