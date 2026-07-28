@@ -40,6 +40,29 @@ const deepMerge = function (x: any, y: any) {
 	})
 }
 
+/**
+ * This module is bundled by two independent pipelines that name the sibling
+ * worker file differently: the CLI's own `bun build --format cjs` (see
+ * scripts/build.js) emits plain `patchWorker.js` next to this file's output,
+ * while the Mod Manager's `electron-vite` build (mod-manager-new, which
+ * embeds this same src/ in-process) emits `patchWorker.cjs` - Rollup/Vite
+ * default to a `.cjs` extension for CommonJS output when the nearest
+ * package.json says `"type": "module"` (mod-manager-new's does, for its
+ * renderer/preload code), to avoid Node misreading the file as ESM. Rather
+ * than hardcode one extension and silently break the other build, check for
+ * both next to wherever this module actually ended up.
+ */
+function resolvePatchWorkerPath(): string {
+	for (const name of ["patchWorker.js", "patchWorker.cjs"]) {
+		const candidate = path.join(__dirname, name)
+		if (fs.existsSync(candidate)) {
+			return candidate
+		}
+	}
+
+	throw new Error(`Could not find patchWorker.js or patchWorker.cjs next to ${__dirname} - was it bundled alongside this module?`)
+}
+
 export default async function deploy(
 	sentryTransaction: Transaction,
 	configureSentryScope: (transaction: unknown) => void,
@@ -1499,7 +1522,7 @@ export default async function deploy(
 		let index = 0
 
 		const workerPool = new WorkerPool(
-			path.join(__dirname, "patchWorker.js"), // must be absolute - `new Worker()` resolves a bare relative name like "patchWorker.js" against the wrong base
+			resolvePatchWorkerPath(), // must be absolute - `new Worker()` resolves a bare relative name like "patchWorker.js" against the wrong base
 			Math.max(Math.ceil(os.cpus().length / 4), 2) // For an 8-core CPU with 16 logical processors there are 4 max threads
 		)
 

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "React 19 + shadcn/ui (Base UI) rebuild of the Mod Manager renderer (LEI-137). Talks to the host process through the SmfApi contract in src/renderer/src/lib/ipc.ts, now backed by real ipcMain.handle channels (LEI-134) - fs/child_process live only in src/main, never the renderer. Embeds the framework core (../src) in-process for deploys/mod analysis (LEI-133) - see src/main/deployPipeline.ts.",
-  "main": "./out/main/index.js",
+  "main": "./out/main/index.cjs",
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
