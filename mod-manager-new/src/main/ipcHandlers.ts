@@ -138,6 +138,21 @@ export function registerIpcHandlers(paths: AppPaths): void {
     const label = file.name.replace(/\.(zip|7z|rar|rpkg)$/i, "")
     const emit: TaskEmit = (update) => {
       event.sender.send("mods:taskUpdate", { taskId, label, ...update })
+
+      // LEI-108's first trigger point (see deploy:analyseMod below): a framework mod just finished
+      // installing, so warm its analysis cache now, in the background, instead of leaving the first
+      // deploy after every single install to pay for it inline. Fire-and-forget on purpose - this
+      // must never hold up the mods:beginAdd task or its "done" status for the renderer, and a
+      // failure here is never fatal (deploy.ts's own inline fallback still covers it, same as before
+      // this existed). update.modId is only set for a single-mod install (installFrameworkMods only
+      // reports one id when the archive contained exactly one mod, and RPKG-only mods have no
+      // manifest to analyse at all - see analyseMod.ts) - multi-mod archives just don't get the
+      // pre-warm, no different from today.
+      if (update.status === "done" && update.modId) {
+        deployManager.runAnalyseMod(update.modId).catch(() => {
+          // Best-effort - see comment above.
+        })
+      }
     }
 
     void runAddModTask(paths, getModsDir(), index, taskId, file.path, file.name, emit)
@@ -193,10 +208,10 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
   ipcMain.handle("deploy:getActiveSnapshot", () => deployManager.getActiveSnapshot())
 
-  // LEI-108 already assumes this channel exists ("background analyseMod, off the deploy critical
-  // path") - LEI-133's job is just to wire it up to a real in-process analysis, not to decide when
-  // it gets called (that's LEI-108's - e.g. after mods:beginAdd finishes, or when a mod's selected
-  // options change).
+  // LEI-108's "background analyseMod, off the deploy critical path": mods:beginAdd's emit callback
+  // above now fires this automatically the moment a mod finishes installing, so this handler mostly
+  // exists for the renderer to trigger it explicitly too (e.g. after a mod's selected options
+  // change - not wired up anywhere yet, unlike the install case).
   //
   // analyseMod runs in the deploy worker thread (same isolation as deploy:start) so the main
   // process event loop is never blocked while the TypeScript compiler/RPKG analysis runs.
