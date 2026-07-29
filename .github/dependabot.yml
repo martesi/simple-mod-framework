@@ -11,10 +11,3 @@ updates:
       interval: "daily"
     commit-message:
       prefix: "chore(depends):"
- 
-  - package-ecosystem: "npm" # See documentation for possible values
-    directory: "/Mod Manager/" # Location of package manifests
-    schedule:
-      interval: "daily"
-    commit-message:
-      prefix: "chore(depends):"
