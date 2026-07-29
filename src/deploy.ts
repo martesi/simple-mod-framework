@@ -1087,18 +1087,48 @@ export default async function deploy(
 				case "material.json": {
 					await logger.debug(`Converting material ${contentIdentifier}`)
 
-					let contentFilePath
-					if (content.source === "disk") {
-						contentFilePath = content.path
-					} else {
-						fs.ensureDirSync(path.join(paths.dataRoot, "virtual"))
-						fs.writeFileSync(path.join(paths.dataRoot, "virtual", "material.json"), Buffer.from(await content.content.arrayBuffer()))
-						contentFilePath = path.join(paths.dataRoot, "virtual", "material.json")
+					// -json_to_material's own output filename(s) are derived from the MATI/MATT/MATB hashes
+					// inside the material.json content, not from contentIdentifier - rather than duplicate
+					// that hashing logic here to predict them, generate into a scratch directory unique to
+					// this content item (never shared with any other content item, cached or not) and copy
+					// out whatever actually landed there. That's also what makes this safe to cache: the
+					// RPKG-only-mod discovery path (discover.ts) uses the same "generate into an isolated
+					// temp dir, then klaw it" trick for exactly the same reason.
+					const materialHash = await xxhash3(contentIdentifier)
+					const materialCacheKey = path.join(`chunk${content.chunk}`, `material-${path.basename(contentIdentifier).slice(0, 15)}-${materialHash}`)
+					const materialTempDir = path.join(paths.dataRoot, "temp", "material", `chunk${content.chunk}`, materialHash)
+
+					if (
+						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
+						!(await copyFromCache(instruction.cacheFolder, materialCacheKey, materialTempDir)) // cache is not available
+					) {
+						fs.emptyDirSync(materialTempDir)
+
+						let contentFilePath
+						if (content.source === "disk") {
+							contentFilePath = content.path
+						} else {
+							fs.ensureDirSync(path.join(paths.dataRoot, "virtual"))
+							fs.writeFileSync(path.join(paths.dataRoot, "virtual", "material.json"), Buffer.from(await content.content.arrayBuffer()))
+							contentFilePath = path.join(paths.dataRoot, "virtual", "material.json")
+						}
+
+						await callRPKGFunction(`-json_to_material "${contentFilePath}" -output_path "${materialTempDir}"`)
+
+						fs.removeSync(path.join(paths.dataRoot, "virtual"))
+
+						await copyToCache(instruction.cacheFolder, materialTempDir, materialCacheKey)
 					}
 
-					await callRPKGFunction(`-json_to_material "${contentFilePath}" -output_path "${path.join(paths.dataRoot, "staging", `chunk${content.chunk}`)}"`)
+					fs.ensureDirSync(path.join(paths.dataRoot, "staging", `chunk${content.chunk}`))
 
-					fs.removeSync(path.join(paths.dataRoot, "virtual"))
+					for (const generatedFile of klaw(materialTempDir)
+						.filter((a) => a.stats.isFile())
+						.map((a) => a.path)) {
+						fs.copyFileSync(generatedFile, path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, path.basename(generatedFile)))
+					}
+
+					fs.removeSync(materialTempDir)
 					break
 				}
 				case "texture.tga": {
