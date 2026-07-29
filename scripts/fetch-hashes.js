@@ -1,13 +1,14 @@
-// Downloads the latest hitman-hashes release and extracts it into the given
-// Third-Party/ folder - either dist/Third-Party (release assembly, see
-// "assemble:win") or build/Third-Party (dev runtime, see scripts/setup.js -
-// the CLI needs these hashes to run/deploy locally too, not just in a
-// packaged release).
+// Downloads the latest hitman-hashes release and extracts it into
+// build/Third-Party (the embedded framework core's dev-mode toolsRoot, see
+// scripts/setup.js and src/main/paths.ts - a packaged build gets the same
+// hashes via electron-builder.yml's extraResources instead, sourced from
+// this same build/Third-Party/hash_list.txt). The "dist" target is unused
+// now (there's no separate release-assembly step anymore) but left in for
+// anyone who wants to fetch hashes into an arbitrary folder by hand.
 //
 // Relies on 7z.exe already being present at build/Third-Party/7z.exe (staged
 // by scripts/link-third-party.js), regardless of which folder is the actual
-// extraction target - so this must run after setup.js's link-third-party
-// step, same as it already had to run after "npm install" for assemble:win.
+// extraction target - so this must run after setup.js's link-third-party step.
 //
 // Usage: node scripts/fetch-hashes.js <dist|build>
 const child_process = require("child_process")

@@ -3,7 +3,7 @@
 //
 //   1. fetch-third-party.js     - download the Third-Party tools that have a stable release to pull from
 //   2. link-third-party.js      - link/seed everything build/Third-Party needs (the embedded framework
-//                                  core's toolsRoot in dev - see mod-manager-new's src/main/paths.ts)
+//                                  core's toolsRoot in dev - see src/main/paths.ts)
 //   3. fetch-hashes.js build    - download hitman-hashes into build/Third-Party/ (needs 7z.exe from
 //                                  step 2 to already be linked there)
 //

@@ -81,7 +81,7 @@ export interface CompileOptions {
  * module is never loaded at all, and even on a genuine cache miss the load
  * cost is only ever paid the first time a script actually needs compiling,
  * not on every process start. This mirrors the dynamic-import reasoning in
- * mod-manager-new/src/main/deployPipeline.ts, which was written for the same
+ * src/main/deployPipeline.ts, which was written for the same
  * reason against the old `typescript` package.
  *
  * IMPORTANT: `esbuild`'s own runtime code refuses to run at all if it
@@ -90,9 +90,8 @@ export interface CompileOptions {
  * JavaScript API cannot be bundled" otherwise) - it must stay a real,
  * external `node_modules/esbuild` (plus `node_modules/@esbuild/win32-x64`,
  * where the actual binary lives) on disk in every consumer of this file, not
- * something a bundler is allowed to inline. See scripts/build.js's EXTERNAL
- * list for the CLI and mod-manager-new/electron.vite.config.ts +
- * electron-builder.yml for the embedded app.
+ * something a bundler is allowed to inline. See electron.vite.config.ts's
+ * `external` list and electron-builder.yml's `extraResources`.
  */
 export async function compile(fileNames: string[], options: CompileOptions, rootDir: string): Promise<string> {
 	for (const fileName of fileNames) {

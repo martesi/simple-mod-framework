@@ -209,8 +209,8 @@ class MockSmfApi implements SmfApi {
       await delay(50)
       return {
         gamePath: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN3",
-        cachePath: "C:\\Users\\you\\AppData\\Roaming\\mod-manager-new\\cache",
-        modPath: "C:\\Users\\you\\AppData\\Roaming\\mod-manager-new\\Mods"
+        cachePath: "C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\cache",
+        modPath: "C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\Mods"
       }
     }
   }

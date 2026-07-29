@@ -1,5 +1,5 @@
 // Sets up build/Third-Party/ - the embedded framework core's dev-mode
-// `toolsRoot` (see mod-manager-new's src/main/paths.ts: packaged builds get
+// `toolsRoot` (see src/main/paths.ts: packaged builds get
 // their tools via electron-builder.yml's extraResources instead, landing at
 // process.resourcesPath; this script mirrors that same layout under build/
 // for `npm run dev`):

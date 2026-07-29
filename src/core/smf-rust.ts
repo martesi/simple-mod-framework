@@ -118,7 +118,7 @@ export function stageDependenciesFrom(fromFolder: string, toStagingDir: string):
 
 // check-disk-space ships as a dual ESM/CJS package (exports.default = fn, plus an __esModule
 // marker). tsc's/bun's default-import interop resolves that correctly, but electron-vite's
-// production build (mod-manager-new/electron.vite.config.ts - main is fully bundled only when
+// production build (electron.vite.config.ts - main is fully bundled only when
 // `command === "build"`) runs it through Rollup's commonjs plugin instead, which doesn't unwrap
 // the nested `.default` the same way and leaves `checkDiskSpaceImport` as the whole module
 // namespace object rather than the function - "checkDiskSpace is not a function" at runtime,

@@ -7,8 +7,8 @@ import { Worker } from "worker_threads"
  * fancier features (dynamic pool scaling, cross-task-type queueing, transferable-aware
  * scheduling, etc). Piscina was originally dropped-in to work around Tauri's `pkg` bundling
  * breaking its worker-thread module resolution (LEI-105) - now that this runs under Electron's own
- * Node (or the CLI's own bundled `patchWorker.js`, see scripts/build.js) instead of a `pkg`
- * snapshot, that problem doesn't exist, so owning this directly is simpler than carrying the
+ * Node (via electron-vite's bundled `patchWorker.cjs`, see electron.vite.config.ts) instead of a
+ * `pkg` snapshot, that problem doesn't exist, so owning this directly is simpler than carrying the
  * dependency.
  *
  * Protocol with the worker side (see patchWorker.ts): each task is sent as

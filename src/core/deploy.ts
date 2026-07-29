@@ -40,16 +40,12 @@ const deepMerge = function (x: any, y: any) {
 }
 
 /**
- * This module is bundled by two independent pipelines that name the sibling
- * worker file differently: the CLI's own `bun build --format cjs` (see
- * scripts/build.js) emits plain `patchWorker.js` next to this file's output,
- * while the Mod Manager's `electron-vite` build (mod-manager-new, which
- * embeds this same src/ in-process) emits `patchWorker.cjs` - Rollup/Vite
- * default to a `.cjs` extension for CommonJS output when the nearest
- * package.json says `"type": "module"` (mod-manager-new's does, for its
- * renderer/preload code), to avoid Node misreading the file as ESM. Rather
- * than hardcode one extension and silently break the other build, check for
- * both next to wherever this module actually ended up.
+ * The Mod Manager's `electron-vite` build (electron.vite.config.ts, which embeds this same
+ * src/core in-process) emits the sibling worker file as `patchWorker.cjs`, not `patchWorker.js` -
+ * Rollup/Vite default to a `.cjs` extension for CommonJS output when the nearest package.json says
+ * `"type": "module"` (this project's does, for its renderer/preload code), to avoid Node
+ * misreading the file as ESM. Check for both extensions next to wherever this module actually
+ * ended up, in case that ever changes.
  */
 function resolvePatchWorkerPath(): string {
 	let currentDir = __dirname
