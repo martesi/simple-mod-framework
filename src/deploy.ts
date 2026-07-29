@@ -368,7 +368,9 @@ export default async function deploy(
 				fs.emptyDirSync(path.join(paths.dataRoot, "temp2"))
 
 				if (!fs.existsSync(path.join(paths.dataRoot, "staging", "chunk0", "002B07020D21D727.ORES"))) {
-					await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${contractsORESChunk}.rpkg`)}" -filter "002B07020D21D727" -output_path temp2`) // Extract the contracts ORES
+					await callRPKGFunction(
+						`-extract_from_rpkg "${path.join(config.runtimePath, `${contractsORESChunk}.rpkg`)}" -filter "002B07020D21D727" -output_path "${path.join(paths.dataRoot, "temp2")}"`
+					) // Extract the contracts ORES
 				} else {
 					fs.ensureDirSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES"))
 					fs.copyFileSync(path.join(paths.dataRoot, "staging", "chunk0", "002B07020D21D727.ORES"), path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES")) // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
@@ -667,10 +669,14 @@ export default async function deploy(
 							const tempRPKG = await rpkgInstance.getRPKGOfHash(config.runtimePath, entityContent.tempHash)
 							const tbluRPKG = await rpkgInstance.getRPKGOfHash(config.runtimePath, entityContent.tbluHash)
 
-							fs.ensureDirSync("qn-update")
+							fs.ensureDirSync(path.join(paths.dataRoot, "qn-update"))
 
-							await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${tempRPKG}.rpkg`)}" -filter "${entityContent.tempHash}" -output_path "qn-update"`)
-							await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${tbluRPKG}.rpkg`)}" -filter "${entityContent.tbluHash}" -output_path "qn-update"`)
+							await callRPKGFunction(
+								`-extract_from_rpkg "${path.join(config.runtimePath, `${tempRPKG}.rpkg`)}" -filter "${entityContent.tempHash}" -output_path "${path.join(paths.dataRoot, "qn-update")}"`
+							)
+							await callRPKGFunction(
+								`-extract_from_rpkg "${path.join(config.runtimePath, `${tbluRPKG}.rpkg`)}" -filter "${entityContent.tbluHash}" -output_path "${path.join(paths.dataRoot, "qn-update")}"`
+							)
 
 							await Promise.all([
 								execCommand(
@@ -1726,7 +1732,7 @@ export default async function deploy(
 						await callRPKGFunction(
 							`-${
 								dependencyPortFromChunk1 ? "extract_non_boot_hash_depends_from" : "extract_non_base_hash_depends_from"
-							} "${path.join(config.runtimePath)}" -filter "${dependencyID}" -output_path temp`
+							} "${path.join(config.runtimePath)}" -filter "${dependencyID}" -output_path "${path.join(paths.dataRoot, "temp")}"`
 						)
 
 						await copyToCache("global", path.join(paths.dataRoot, "temp"), path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`))
@@ -2011,7 +2017,9 @@ export default async function deploy(
 		if (invalidatedData.some((a) => a.data.affected.includes(WWEVhash)) || !(await copyFromCache("global", path.join("WWEV", WWEVhash), path.join(paths.dataRoot, "temp")))) {
 			// we need to re-deploy WWEV OR WWEV data couldn't be copied from cache
 
-			await callRPKGFunction(`-extract_wwev_to_ogg_from "${path.join(config.runtimePath)}" -filter "${WWEVhash}" -output_path temp`) // Extract the WWEV
+			await callRPKGFunction(
+				`-extract_wwev_to_ogg_from "${path.join(config.runtimePath)}" -filter "${WWEVhash}" -output_path "${path.join(paths.dataRoot, "temp")}"`
+			) // Extract the WWEV
 
 			const workingPath = path.join(paths.dataRoot, "temp", "WWEV", `${rpkgOfWWEV}.rpkg`, fs.readdirSync(path.join(paths.dataRoot, "temp", "WWEV", `${rpkgOfWWEV}.rpkg`))[0])
 
@@ -2090,7 +2098,9 @@ export default async function deploy(
 			// we need to re-deploy the localisation files OR the localisation files couldn't be copied from cache
 			fs.ensureDirSync(path.join(paths.dataRoot, "temp", "LOCR", `${localisationFileRPKG}.rpkg`))
 
-			await callRPKGFunction(`-extract_from_rpkg "${path.join(config.runtimePath, `${localisationFileRPKG}.rpkg`)}" -filter "00F5817876E691F1" -output_path temp`)
+			await callRPKGFunction(
+				`-extract_from_rpkg "${path.join(config.runtimePath, `${localisationFileRPKG}.rpkg`)}" -filter "00F5817876E691F1" -output_path "${path.join(paths.dataRoot, "temp")}"`
+			)
 			await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR.meta")}"`)
 
 			execCommand(
