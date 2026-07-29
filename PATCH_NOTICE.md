@@ -1,44 +1,36 @@
 # Local patch notice
 
-This tree carries a small local patch to the framework's deploy pipeline.
+This tree carries a small local patch to the framework's game-detection logic.
 
 ## Unknown game version → Steam fallback
 
-**File:** `src/main.ts` (platform detection, just above `doTheThing()`)
+**File:** `src/main/gameDetect.ts` (`deriveGamePathInfo()`)
 
 The framework identifies the game build by hashing `HITMAN3.exe` (Steam/Epic) or
-`MicrosoftGame.Config` (Game Pass) and looking the hash up in a fixed table. When
-the game updates, its hash is no longer in that table, so `core.config.platform`
-becomes `undefined` and the deploy aborts with:
+`MicrosoftGame.Config` (Game Pass) and looking the hash up in a fixed table (`GAME_HASHES`). When
+the game updates, its hash is no longer in that table, so platform detection would otherwise fail
+and the deploy would abort with "Unknown game version. If the game has recently updated, wait for
+a framework update to be released…".
 
-> Unknown game version. If the game has recently updated, wait for a framework
-> update to be released…
-
-That check made the end-to-end deploy test (`mod-manager-tauri/e2e/`) unrunnable
-against a freshly-updated Steam install. The patch makes an unrecognised hash
-**fall back to `Platform.steam`** instead of aborting, and logs a `WARN` so the
-fallback is visible in `Deploy.log`:
+`deriveGamePathInfo()` makes an unrecognised hash **fall back to `"steam"`** instead of failing,
+and returns `unrecognisedBuild: true` so callers can surface a warning:
 
 ```ts
-core.config.platform = detectedPlatform ?? Platform.steam
+const platform = recognisedPlatform ?? "steam"
 ```
 
 ### Caveats
 
-- The fallback assumes **Steam**. A Game Pass / Microsoft-store install with an
-  unrecognised hash will be mis-detected as Steam. Recognised hashes (Steam,
-  Epic, Microsoft) are unaffected — they still resolve correctly.
-- This is a stopgap for testing on updated builds, not a substitute for a proper
-  framework update that adds the new game hash to the table in `src/main.ts`.
+- The fallback assumes **Steam**. A Game Pass / Microsoft-store install with an unrecognised hash
+  will be mis-detected as Steam. Recognised hashes (Steam, Epic, Microsoft) are unaffected - they
+  still resolve correctly.
+- This is a stopgap for testing on updated builds, not a substitute for a proper framework update
+  that adds the new game hash to `GAME_HASHES`.
 
 ### Rebuilding
 
-The deploy binary must be rebuilt for the patch to take effect:
-
-```sh
-npm run build:linux   # produces a Linux Deploy.exe (used by the e2e tests)
-# or: npm run build:win   # produces a Windows Deploy.exe
-```
-
-Point the e2e integration config at the rebuilt binary via `deployExe` in
-`mod-manager-tauri/e2e/integration.json`.
+Unlike when this patch lived in the old standalone CLI (`src/main.ts`, since removed - the
+framework core is now embedded directly in this Electron app, no separate `Deploy.exe` to rebuild),
+this fallback is permanent application code, not a patch applied on top of a build step. Picking up
+a change to `GAME_HASHES` just means re-running the app (`npm run dev`) or re-packaging it
+(`npm run build:win`) like any other code change - no separate rebuild/patch-reapply step.

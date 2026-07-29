@@ -1,4 +1,4 @@
-// Standalone, dependency-free regression test for src/typescript.ts's compile()
+// Standalone, dependency-free regression test for src/core/typescript.ts's compile()
 // (LEI-139: swapped ts.createProgram/emit for esbuild's transform() - native
 // `esbuild`, not `esbuild-wasm`, see src/typescript.ts's doc comment for why).
 //
@@ -50,16 +50,16 @@ async function checkAsync(name, fn) {
 }
 
 async function main() {
-	// --- Step 1: build src/typescript.ts with the project's own pinned tsc,
-	// exactly like scripts/build.js's own typecheck step does, just scoped to
-	// this one file so the test doesn't need a full project build first. ---
+	// --- Step 1: build src/core/typescript.ts with the project's own pinned
+	// tsc, just scoped to this one file so the test doesn't need a full
+	// project build first. ---
 	const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), "smf-typescript-compile-test-"))
 	const tscBin = path.join(root, "node_modules", "typescript", "bin", "tsc")
 
-	console.log("Compiling src/typescript.ts for the test run...")
+	console.log("Compiling src/core/typescript.ts for the test run...")
 	execFileSync(
 		process.execPath,
-		[tscBin, "--module", "commonjs", "--target", "es2019", "--esModuleInterop", "--moduleResolution", "node", "--skipLibCheck", "--outDir", buildDir, path.join(root, "src", "typescript.ts")],
+		[tscBin, "--module", "commonjs", "--target", "es2019", "--esModuleInterop", "--moduleResolution", "node", "--skipLibCheck", "--outDir", buildDir, path.join(root, "src", "core", "typescript.ts")],
 		{ stdio: "inherit" }
 	)
 

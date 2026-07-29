@@ -42,17 +42,17 @@ files:
 # already a real file there with nothing to dereference - safe to reference
 # directly without staging it anywhere first.
 extraResources:
-  - from: ../For Build/Third-Party
+  - from: For Build/Third-Party
     to: Third-Party
-  - from: ../For Build/Fetched Third-Party
+  - from: For Build/Fetched Third-Party
     to: Third-Party
-  - from: ../build/Third-Party/hash_list.txt
+  - from: build/Third-Party/hash_list.txt
     to: Third-Party/hash_list.txt
-  - from: ../For Build/cleanMicrosoftThumbs.dat
+  - from: For Build/cleanMicrosoftThumbs.dat
     to: cleanMicrosoftThumbs.dat
-  - from: ../For Build/cleanPackageDefinition.txt
+  - from: For Build/cleanPackageDefinition.txt
     to: cleanPackageDefinition.txt
-  - from: ../For Build/cleanThumbs.dat
+  - from: For Build/cleanThumbs.dat
     to: cleanThumbs.dat
   # esbuild (LEI-139 - native, not esbuild-wasm, see src/typescript.ts's doc
   # comment for why) refuses to run if bundled and spawns a subprocess
@@ -70,9 +70,9 @@ extraResources:
   # one level above the archive root. Windows-only deliberately - this is a
   # win-only app (see the `win:` section below), so there's no other
   # @esbuild/<platform> package to ship.
-  - from: ../node_modules/esbuild
+  - from: node_modules/esbuild
     to: node_modules/esbuild
-  - from: ../node_modules/@esbuild/win32-x64
+  - from: node_modules/@esbuild/win32-x64
     to: node_modules/@esbuild/win32-x64
 protocols:
   - name: Simple Mod Framework

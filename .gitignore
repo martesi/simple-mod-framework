@@ -2,15 +2,19 @@ node_modules
 hash_list.txt
 /build
 /dist
+/out
 /Third-Party
 /*.7z
 /*.zip
+.DS_Store
+*.local
+/ui
 
-# For Build/Third-Party/ ships the tools Deploy.exe needs at runtime and is
-# tracked in git as regular (in a couple of cases multi-MB) blobs - this repo
-# is managed with jj, which as of writing doesn't support Git LFS or even
-# .gitattributes at all (https://github.com/jj-vcs/jj/issues/80), so there's
-# no way to avoid that. Tracking the larger files here needs
+# For Build/Third-Party/ ships the tools the embedded framework core needs at
+# runtime and is tracked in git as regular (in a couple of cases multi-MB)
+# blobs - this repo is managed with jj, which as of writing doesn't support
+# Git LFS or even .gitattributes at all (https://github.com/jj-vcs/jj/issues/80),
+# so there's no way to avoid that. Tracking the larger files here needs
 # `jj config set --repo snapshot.max-new-file-size "20MiB"` once per clone -
 # jj's default 1MiB cap on new file snapshots will otherwise refuse them.
 # Don't ignore the whole directory here - that would stop git from tracking

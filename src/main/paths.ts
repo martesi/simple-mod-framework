@@ -39,9 +39,9 @@ export function resolveAppPaths(): AppPaths {
   const toolsRoot = app.isPackaged
     ? process.resourcesPath
     : // Dev: point at the repo's shared `build/` fixture (Third-Party/,
-      // cleanMicrosoftThumbs.dat) - the same folder the old Mod Manager's
-      // dev build used via `process.chdir(".../build/Mod Manager")` + `..`.
-      resolve(app.getAppPath(), "..", "build")
+      // cleanMicrosoftThumbs.dat) - this app *is* the repo root now (LEI-133's
+      // CLI/Mod Manager merge), so build/ sits directly under it.
+      resolve(app.getAppPath(), "build")
 
   cached = { dataRoot, toolsRoot }
   return cached
