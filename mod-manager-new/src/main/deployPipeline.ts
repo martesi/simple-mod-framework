@@ -17,8 +17,8 @@ import path from "node:path"
 // deploy. Dynamic imports mean that cost is only ever paid the first time a deploy or analyseMod
 // actually runs. `import type` for the type-only names below is unaffected either way - those are
 // erased at compile time and never bundled regardless of how the value is imported.
-import type { Core, Logger } from "../../../src/core"
-import type { Config } from "../../../src/types"
+import type { Core, Logger } from "../core/core"
+import type { Config } from "../core/types"
 
 import type { AppPaths } from "./paths"
 import type { AppSettings } from "./settings"
@@ -92,7 +92,7 @@ function withProgress(core: Core, onLog: (line: DeployPipelineLogLine) => void):
 }
 
 async function createEmbeddedCore(paths: AppPaths, config: Config, onLog: (line: DeployPipelineLogLine) => void): Promise<Core> {
-	const [{ createCore }, { setCurrentCore }] = await Promise.all([import("../../../src/core"), import("../../../src/core-singleton")])
+	const [{ createCore }, { setCurrentCore }] = await Promise.all([import("../core/core"), import("../core/core-singleton")])
 
 	const core = createCore(config, {
 		doNotPause: true, // no console to pause in - see CoreOptions.doNotPause's doc comment
@@ -127,7 +127,7 @@ function noopSentryTransaction(): any {
  * printed to a console that doesn't exist here.
  */
 export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game: GamePathInfo, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
-	const { CoreFatalError } = await import("../../../src/core")
+	const { CoreFatalError } = await import("../core/core")
 	const config = buildFrameworkConfig(paths, settings, game)
 	const core = await createEmbeddedCore(paths, config, onLog)
 
@@ -192,11 +192,11 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
 		// mod on every deploy regardless of whether anything had changed; now that only happens for
 		// files that are actually new or modified.
 		await core.logger.verbose("Beginning discovery")
-		const { default: discover } = await import("../../../src/discover")
+		const { default: discover } = await import("../core/discover")
 		const fileMap = await discover(previousFiles)
 
 		await core.logger.verbose("Beginning difference")
-		const { default: difference } = await import("../../../src/difference")
+		const { default: difference } = await import("../core/difference")
 		const { invalidData } = await difference(previousFiles, fileMap)
 
 		await core.logger.verbose("Writing cache")
@@ -207,7 +207,7 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
 		})
 
 		await core.logger.verbose("Beginning deploy")
-		const { default: deploy } = await import("../../../src/deploy")
+		const { default: deploy } = await import("../core/deploy")
 		await deploy(noopSentryTransaction(), () => {}, invalidData)
 
 		await core.logger.verbose("Finishing")
@@ -232,7 +232,7 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
  * change - LEI-133's job is just to make sure the handler exists and runs in-process.
  */
 export async function runAnalyseMod(paths: AppPaths, settings: AppSettings, game: GamePathInfo, modId: string, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
-	const { CoreFatalError } = await import("../../../src/core")
+	const { CoreFatalError } = await import("../core/core")
 	const config = buildFrameworkConfig(paths, settings, game)
 	const core = await createEmbeddedCore(paths, config, onLog)
 
@@ -241,7 +241,7 @@ export async function runAnalyseMod(paths: AppPaths, settings: AppSettings, game
 		await core.rpkgInstance.waitForInitialised()
 
 		fs.ensureDirSync(path.join(paths.dataRoot, "cache"))
-		const { default: analyseMod, loadRPKGHashCache, saveRPKGHashCache } = await import("../../../src/analyseMod")
+		const { default: analyseMod, loadRPKGHashCache, saveRPKGHashCache } = await import("../core/analyseMod")
 		loadRPKGHashCache()
 
 		await core.logger.info(`Analysing ${modId}`)

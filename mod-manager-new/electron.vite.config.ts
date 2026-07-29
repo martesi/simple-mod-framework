@@ -86,7 +86,7 @@ export default defineConfig(({ command }) => ({
           // Without separate entries here those files would never exist in
           // out/main/ and Worker construction would fail silently at runtime.
           index: resolve(__dirname, "src/main/index.ts"),
-          patchWorker: resolve(__dirname, "../src/patchWorker.ts"),
+          patchWorker: resolve(__dirname, "src/core/patchWorker.ts"),
           deployWorker: resolve(__dirname, "src/main/deployWorker.ts"),
           indexWorker: resolve(__dirname, "src/main/indexWorker.ts")
         },
@@ -94,7 +94,7 @@ export default defineConfig(({ command }) => ({
           // Force CJS instead of electron-vite's ESM default (this
           // package.json has "type": "module", which is otherwise auto
           // upgraded to "es"). Originally forced because the embedded
-          // framework core (../src) used to pull in the full `typescript`
+          // framework core (src/core) used to pull in the full `typescript`
           // package at runtime (ts.createProgram, used to compile mod
           // scripts - see analyseMod.ts/deploy.ts/discover.ts), which got
           // fully bundled into this same chunk (LEI-133's "no
