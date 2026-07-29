@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { basename, join, resolve } from "node:path"
+import { basename, dirname, join, resolve } from "node:path"
 import { Worker } from "node:worker_threads"
 import JSON5 from "json5"
 import type { ModEntry, Manifest } from "../renderer/src/lib/manifest-types"
@@ -13,16 +13,24 @@ import type { IndexWorkerMessage, IndexWorkerRequest, SerializedIndexEntry } fro
  * DeployManager's own resolveDeployWorkerPath() (see deployManager.ts).
  */
 function resolveIndexWorkerPath(): string {
-  const candidates = [resolve(__dirname, "indexWorker.cjs"), resolve(__dirname, "indexWorker.js")]
-  for (const p of candidates) {
-    try {
-      require.resolve(p)
-      return p
-    } catch {
-      // Try next candidate.
+  let currentDir = __dirname
+  while (true) {
+    for (const name of ["indexWorker.cjs", "indexWorker.js"]) {
+      const candidate = resolve(currentDir, name)
+      try {
+        require.resolve(candidate)
+        return candidate
+      } catch {
+        // Try next candidate
+      }
     }
+    const parentDir = resolve(currentDir, "..")
+    if (parentDir === currentDir) {
+      break
+    }
+    currentDir = parentDir
   }
-  return candidates[0]
+  return resolve(__dirname, "indexWorker.cjs")
 }
 
 /**
@@ -85,24 +93,66 @@ function toUiManifest(m: DiskManifest): Manifest {
 }
 
 /**
- * Holds the mod list in memory for the lifetime of the main process, rebuilt
- * from disk on `rebuild()` and kept in sync afterwards by `addFolders()` /
- * `remove()` write-throughs - no disk-persisted cache file (unlike the old
- * `Mod Manager/src/lib/utils.ts`'s MOD_INDEX_CACHE_FILE).
+ * Holds the mod list in memory for the lifetime of the main process, and now also mirrors it to a
+ * single JSON file on disk (`<dataRoot>/cache/modIndex.json`) so a normal launch doesn't have to
+ * re-walk `Mods/` at all.
  *
- * That cache existed (LEI-96) because the old renderer re-derived everything
- * from scratch on every single navigation reload. That problem doesn't exist
- * here: this index lives in the long-lived main process instead of the
- * renderer, so it's naturally built once per app launch and pushed to
- * whichever screens need it over IPC - see LEI-134's description ("Main can
- * hold the mod index in memory once ... instead of each reload re-deriving
- * it from disk").
+ * The old `Mod Manager/src/lib/utils.ts` MOD_INDEX_CACHE_FILE was removed (LEI-96/LEI-134) because
+ * the renderer back then had no way to keep it in sync - it just re-derived everything from disk
+ * on every navigation reload, so a stale cache file could silently diverge from reality with no
+ * path back to correctness short of deleting it by hand. That risk doesn't apply the same way here:
+ * every mutation this app makes to `Mods/` already goes through one of a small number of write-through
+ * methods on this class (`addFolders()`, `remove()`, `writeManifest()`, `reindexOne()`, plus a full
+ * `rebuildChunked()`/`rebuildInWorker()`), and every one of them now re-persists the cache file as
+ * part of the same call. The only way the on-disk index can drift from reality is a change made to
+ * `Mods/` from *outside* this app entirely (hand-copying a folder in, editing a manifest with a text
+ * editor) - which is exactly what the explicit "Rebuild cache" action (`mods:rebuildIndex`) exists
+ * to fix, same as it always did.
+ *
+ * `loadOrRebuild()` is what a normal launch calls: read the persisted file (a handful of
+ * milliseconds, no directory walk) and only fall back to a full `rebuildInWorker()` scan if there
+ * isn't one yet (first-ever launch) or it fails to parse.
  */
 export class ModIndex {
   private byId = new Map<string, IndexedMod>()
   private built = false
 
-  constructor(private getModsDir: () => string) {}
+  constructor(
+    private getModsDir: () => string,
+    private dataRoot: string
+  ) {}
+
+  private cachePath(): string {
+    return join(this.dataRoot, "cache", "modIndex.json")
+  }
+
+  /** Best-effort load of the persisted index - returns false (and leaves `byId` untouched) if there's no cache file yet or it's unreadable/malformed. */
+  private tryLoadPersistedCache(): boolean {
+    try {
+      const raw = readFileSync(this.cachePath(), "utf8")
+      const entries = JSON.parse(raw) as SerializedIndexEntry[]
+      if (!Array.isArray(entries)) return false
+      this.loadFromEntries(entries)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Write-through: mirrors the current in-memory index to disk. Called at the end of every method
+   * that mutates `byId`, so the persisted cache is never more than one IPC call stale. Best-effort -
+   * a failed write (e.g. disk full) shouldn't take down mod management; worst case the next launch
+   * just falls back to a full rescan.
+   */
+  private persistCache(): void {
+    try {
+      mkdirSync(dirname(this.cachePath()), { recursive: true })
+      writeFileSync(this.cachePath(), JSON.stringify([...this.byId.values()]))
+    } catch {
+      // Best-effort - see doc comment above.
+    }
+  }
 
   /** True once a scan (sync or chunked) has populated the index at least once this launch. */
   get isBuilt(): boolean {
@@ -114,13 +164,16 @@ export class ModIndex {
   }
 
   /**
-   * Synchronous full disk walk - kept only as a defensive fallback for callers that need the index
-   * built *right now* and can't await anything (folderFor()/manifestFor()/has()/addFolders()/
-   * remove(), all via ensureBuilt() above). In normal operation this never actually runs a real scan:
-   * the app always calls mods:list on launch first, which awaits rebuildChunked() below before
-   * anything else touches the index, so `built` is already true by the time any of those run.
+   * Synchronous fallback for callers that need the index built *right now* and can't await
+   * anything (folderFor()/manifestFor()/has()/addFolders()/remove(), all via ensureBuilt() above).
+   * Tries the persisted cache first (cheap); only does a real synchronous disk walk if there isn't
+   * one yet. In normal operation neither path actually runs here: the app always calls mods:list on
+   * launch first, which awaits loadOrRebuild() below before anything else touches the index, so
+   * `built` is already true by the time any of those run.
    */
   private scanSync(): void {
+    if (this.tryLoadPersistedCache()) return
+
     this.byId.clear()
 
     const modsDir = this.getModsDir()
@@ -136,6 +189,23 @@ export class ModIndex {
     }
 
     this.built = true
+    this.persistCache()
+  }
+
+  /**
+   * The normal launch path (mods:list's first call this session - see ipcHandlers.ts): read the
+   * persisted cache written by a previous launch/action instead of walking `Mods/` at all. Falls
+   * back to a full `rebuildInWorker()` scan only when there's no cache yet (first-ever launch) or it
+   * fails to parse - that scan persists its own result, so this is a one-time cost, not a
+   * per-launch one.
+   */
+  async loadOrRebuild(onProgress?: (scanned: number, total: number) => void): Promise<void> {
+    if (this.tryLoadPersistedCache()) {
+      this.built = true
+      return
+    }
+
+    await this.rebuildInWorker(onProgress)
   }
 
   /**
@@ -173,6 +243,7 @@ export class ModIndex {
     }
 
     this.built = true
+    this.persistCache()
   }
 
   /**
@@ -204,6 +275,7 @@ export class ModIndex {
           onProgress?.(msg.scanned, msg.total)
         } else if (msg.type === "done") {
           this.loadFromEntries(msg.entries)
+          this.persistCache()
           void worker.terminate()
           resolve()
         } else if (msg.type === "error") {
@@ -266,6 +338,7 @@ export class ModIndex {
     for (const folder of folderNames) {
       this.indexFolder(modsDir, folder)
     }
+    this.persistCache()
   }
 
   /**
@@ -284,12 +357,14 @@ export class ModIndex {
     if (!entry) return undefined
 
     this.indexFolder(this.getModsDir(), entry.folder)
+    this.persistCache()
     return this.list().find((m) => m.id === id)
   }
 
   remove(id: string): void {
     this.ensureBuilt()
     this.byId.delete(id)
+    this.persistCache()
   }
 
   folderFor(id: string): string | undefined {
@@ -314,6 +389,7 @@ export class ModIndex {
       entry.manifest = manifest
       Object.assign(entry, this.validate(folder, manifest))
     }
+    this.persistCache()
   }
 
   list(): ModEntry[] {

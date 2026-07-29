@@ -21,7 +21,7 @@ import type { Config, DefaultPaths } from "../renderer/src/lib/manifest-types"
  */
 export function registerIpcHandlers(paths: AppPaths): void {
   const getModsDir = () => resolveModsDir(paths, loadSettings(paths))
-  const index = new ModIndex(getModsDir)
+  const index = new ModIndex(getModsDir, paths.dataRoot)
   setModImageRoot(getModsDir)
 
   function broadcast(channel: string, payload: unknown): void {
@@ -100,14 +100,14 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
   ipcMain.handle("mods:list", async (event) => {
     // First call this launch (or after a modPath switch reset `built` - see config:merge above):
-    // the index hasn't been scanned yet. Do that scan chunked, broadcasting progress as we go,
-    // instead of index.list()'s own synchronous ensureBuilt() fallback - that one blocks the whole
-    // main process (and every other IPC channel) until the entire Mods/ folder has been walked,
-    // which is what used to leave the renderer stuck behind App.tsx's "Loading Mod Manager..."
-    // screen with zero feedback for as long as the scan took. Subsequent calls this launch just hit
-    // the already-built in-memory index below, same as before.
+    // the index hasn't been loaded yet. loadOrRebuild() reads the persisted cache file written by a
+    // previous launch/action - no directory walk at all in the common case - and only falls back to
+    // a full worker-thread scan (broadcasting progress as it goes) if there isn't one yet. That
+    // fallback is what used to run unconditionally on every single launch; now it's a one-time cost
+    // for a fresh install, not a per-launch one. Subsequent calls this launch just hit the
+    // already-built in-memory index below, same as before.
     if (!index.isBuilt) {
-      await index.rebuildInWorker((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
+      await index.loadOrRebuild((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
     }
 
     const list = index.list()
