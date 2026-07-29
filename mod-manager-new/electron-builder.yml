@@ -10,6 +10,10 @@ directories:
 # rather than Piscina - there's no package with its own on-disk-relative
 # worker-bootstrap resolution left that would need node_modules physically
 # present at runtime (see electron.vite.config.ts's doc comment).
+#
+# One exception as of LEI-139: esbuild can't be bundled into out/main at all
+# (see electron.vite.config.ts's `external` comment) - it's shipped
+# separately below via extraResources instead, not through this `files` list.
 files:
   - '!**/*'
   - 'out/**/*'
@@ -50,6 +54,26 @@ extraResources:
     to: cleanPackageDefinition.txt
   - from: ../For Build/cleanThumbs.dat
     to: cleanThumbs.dat
+  # esbuild (LEI-139 - native, not esbuild-wasm, see src/typescript.ts's doc
+  # comment for why) refuses to run if bundled and spawns a subprocess
+  # pointed at a real on-disk binary (@esbuild/win32-x64's esbuild.exe) - it
+  # can't live inside app.asar. Landing both packages at
+  # resources/node_modules/esbuild and resources/node_modules/@esbuild
+  # (siblings of app.asar, not inside it) means out/main/index.cjs's plain
+  # `require("esbuild")` (kept external - see electron.vite.config.ts) still
+  # resolves at runtime, and esbuild's own lib/main.js can in turn resolve
+  # its platform binary via a normal node_modules lookup for
+  # "@esbuild/win32-x64": Electron's asar-aware fs makes app.asar behave like
+  # a normal folder for Node's module resolution, so the usual upward
+  # node_modules search (app.asar/out/main/node_modules,
+  # app.asar/out/node_modules, app.asar/node_modules, then here) finds both
+  # one level above the archive root. Windows-only deliberately - this is a
+  # win-only app (see the `win:` section below), so there's no other
+  # @esbuild/<platform> package to ship.
+  - from: ../node_modules/esbuild
+    to: node_modules/esbuild
+  - from: ../node_modules/@esbuild/win32-x64
+    to: node_modules/@esbuild/win32-x64
 protocols:
   - name: Simple Mod Framework
     schemes:

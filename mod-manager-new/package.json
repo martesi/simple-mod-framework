@@ -27,6 +27,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "crc": "^4.3.2",
+    "esbuild": "^0.25.11",
     "filtrex": "^3.1.0",
     "fs-extra": "^10.1.0",
     "hash-wasm": "^4.12.0",

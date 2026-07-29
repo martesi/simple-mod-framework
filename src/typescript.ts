@@ -2,7 +2,6 @@ import crypto from "crypto"
 import fs from "fs-extra"
 import os from "os"
 import path from "path"
-import ts from "typescript"
 
 // Compiled mod scripts used to land in `<cwd>/compiled` and get wiped after
 // every use (fs.removeSync). Two problems with that:
@@ -49,6 +48,11 @@ function pruneOldCacheEntriesOnce() {
 	}
 }
 
+export interface CompileOptions {
+	/** esbuild `target`, e.g. "es2019". Matches the JS syntax level the framework's own Node runtime supports. */
+	target: string
+}
+
 /**
  * Compiles a mod's TypeScript file(s) and returns the absolute path to the
  * entry file (fileNames[0]) to require().
@@ -57,8 +61,40 @@ function pruneOldCacheEntriesOnce() {
  * controlled, and without this check a `scripts` entry like
  * "../../../../somewhere" would let a mod read (and, before the fix above,
  * write) outside its own folder.
+ *
+ * Uses the native `esbuild` package (LEI-139) rather than `esbuild-wasm` or
+ * the old `typescript` compiler. `esbuild-wasm` was tried first for its
+ * cross-platform story, but that turned out to be a wash: this app only ever
+ * ships for Windows (see electron-builder.yml's `win:` section), so there's
+ * no multi-arch matrix being avoided, and the actual numbers favour native -
+ * `esbuild` + `@esbuild/win32-x64` is ~11.3MB installed vs `esbuild-wasm`'s
+ * ~13.8MB (the WASM blob has to encode a whole Go runtime on top of the
+ * compiler itself). Native is also just the compiler running as machine code
+ * instead of interpreted/JIT-compiled WASM - esbuild's own docs warn the WASM
+ * build can be "in many cases... 10x slower". Both packages need identical
+ * packaging treatment (see the IMPORTANT paragraph below), so there was no
+ * packaging-complexity upside to WASM to weigh against any of that either.
+ *
+ * `esbuild` is `await import(...)`ed lazily, *inside* the cache-miss branch
+ * below, rather than statically at the top of this file: on a cache hit (the
+ * common case - most deploys re-run against unchanged mod scripts) the
+ * module is never loaded at all, and even on a genuine cache miss the load
+ * cost is only ever paid the first time a script actually needs compiling,
+ * not on every process start. This mirrors the dynamic-import reasoning in
+ * mod-manager-new/src/main/deployPipeline.ts, which was written for the same
+ * reason against the old `typescript` package.
+ *
+ * IMPORTANT: `esbuild`'s own runtime code refuses to run at all if it
+ * detects it's been bundled (it checks that `__filename`/`__dirname` still
+ * point at its own unmodified `lib/main.js`, and throws "The esbuild
+ * JavaScript API cannot be bundled" otherwise) - it must stay a real,
+ * external `node_modules/esbuild` (plus `node_modules/@esbuild/win32-x64`,
+ * where the actual binary lives) on disk in every consumer of this file, not
+ * something a bundler is allowed to inline. See scripts/build.js's EXTERNAL
+ * list for the CLI and mod-manager-new/electron.vite.config.ts +
+ * electron-builder.yml for the embedded app.
  */
-export function compile(fileNames: string[], options: ts.CompilerOptions, rootDir: string): string {
+export async function compile(fileNames: string[], options: CompileOptions, rootDir: string): Promise<string> {
 	for (const fileName of fileNames) {
 		const relative = path.relative(rootDir, fileName)
 		if (relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -78,25 +114,44 @@ export function compile(fileNames: string[], options: ts.CompilerOptions, rootDi
 	const key = hash.digest("hex")
 
 	const destDir = path.join(cacheRoot, key)
-	const entryPath = path.join(destDir, path.relative(rootDir, fileNames[0]).replace(/\.ts$/, ".js"))
+	const entryPath = path.join(destDir, path.relative(rootDir, fileNames[0]).replace(/\.tsx?$/, ".js"))
 
 	if (fs.existsSync(entryPath)) {
-		return entryPath // cache hit - this exact source (and these exact options) already compiled
+		return entryPath // cache hit - this exact source (and these exact options) already compiled - esbuild never even gets loaded
 	}
 
-	const program = ts.createProgram(fileNames, options)
-	program.emit(undefined, (filename, data) => {
-		const relative = path.relative(rootDir, filename)
+	// Not imported until we actually need to transpile something - see the doc comment above.
+	const { transform } = await import("esbuild")
+
+	for (const fileName of fileNames) {
+		const relative = path.relative(rootDir, fileName).replace(/\.tsx?$/, ".js")
 		if (relative.startsWith("..") || path.isAbsolute(relative)) {
 			// Should be unreachable given the check above, but never write
 			// outside destDir under any circumstances.
 			throw new Error(`Refusing to write compiled output outside its cache folder: ${relative}`)
 		}
 
+		const ext = path.extname(fileName).toLowerCase()
+		const loader = ext === ".tsx" ? "tsx" : ext === ".jsx" ? "jsx" : ext === ".js" ? "js" : "ts"
+
+		// format: "cjs" plus esbuild's own ESM interop helpers (always injected
+		// for cjs output, no separate flag needed) reproduces what
+		// esModuleInterop did under ts.createProgram. `allowJs`/`resolveJsonModule`
+		// have no equivalent here because there's no type-checker or module
+		// resolver in the loop any more (there never was - see LEI-139) - a
+		// mod script's own `import data from "./x.json"` downlevels to a plain
+		// `require("./x.json")`, which Node already resolves natively.
+		const result = await transform(fs.readFileSync(fileName, "utf8"), {
+			loader,
+			format: "cjs",
+			target: options.target,
+			sourcefile: fileName
+		})
+
 		const outPath = path.join(destDir, relative)
 		fs.ensureDirSync(path.dirname(outPath))
-		fs.writeFileSync(outPath, data)
-	})
+		fs.writeFileSync(outPath, result.code)
+	}
 
 	return entryPath
 }

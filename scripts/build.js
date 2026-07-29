@@ -17,8 +17,20 @@
 // on-disk layout in ways bundling would break:
 //   - hash-wasm / hdr-histogram-js load WASM binaries from disk.
 //   - @sentry/* patches node internals / does its own dynamic requires.
-//   - typescript is used at runtime (deploy.ts transpiles mod authors'
-//     script files with it) and is 10+ MB - no benefit to bundling it.
+//   - esbuild is used at runtime (src/typescript.ts's `transform()` call,
+//     used to compile mod authors' script files - see LEI-139, and see that
+//     file's doc comment for why native `esbuild` was picked over
+//     `esbuild-wasm`) and, unlike the packages above, *must* stay external
+//     rather than merely benefiting from it: esbuild's own runtime code
+//     checks that __filename/__dirname still point at its unmodified
+//     lib/main.js and throws "The esbuild JavaScript API cannot be bundled"
+//     if a bundler has inlined it. It still needs to be a real, unmodified
+//     node_modules/esbuild *and* node_modules/@esbuild/win32-x64 (the actual
+//     binary) on disk next to the built exe for @yao-pkg/pkg's own
+//     snapshotting - see that build's own asset-copying step (mirroring the
+//     existing Third-Party/7z.exe handling, since esbuild spawns a subprocess
+//     pointed at a real file path, which won't resolve to anything from
+//     inside a pkg snapshot).
 // `three` and `crc` are also deliberately kept out of package.json's
 // "dependencies" (they're devDependencies instead), even though bun build
 // needs them present in node_modules at build time. That's not just style -
@@ -69,7 +81,7 @@ const EXTERNAL = [
 	"rfc6902",
 	"semver",
 	"tslib",
-	"typescript"
+	"esbuild"
 ]
 
 function typecheck() {

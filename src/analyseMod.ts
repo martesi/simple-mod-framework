@@ -1,7 +1,6 @@
 import * as ts from "./typescript"
 
 import type { DeployInstruction, Manifest, ManifestOptionData, ModScript } from "./types"
-import { ModuleKind, ScriptTarget } from "typescript"
 import { compileExpression, useDotAccessOperatorAndOptionalChaining } from "filtrex"
 import { FrameworkVersion, config, logger, paths, rpkgInstance } from "./core-singleton"
 import { extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, winPathEscape } from "./utils"
@@ -462,15 +461,9 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 
 	if (deployInstruction.manifestSources.scripts.length) {
 		for (const files of deployInstruction.manifestSources.scripts) {
-			const compiledScriptPath = ts.compile(
+			const compiledScriptPath = await ts.compile(
 				files.map((a) => path.join(config.modsPath, mod, a)),
-				{
-					esModuleInterop: true,
-					allowJs: true,
-					target: ScriptTarget.ES2019,
-					module: ModuleKind.CommonJS,
-					resolveJsonModule: true
-				},
+				{ target: "es2019" },
 				path.join(config.modsPath, mod)
 			)
 

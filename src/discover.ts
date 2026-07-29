@@ -12,7 +12,6 @@ import { md5 } from "hash-wasm"
 import path from "path"
 import semver from "semver"
 import { xxhash3 } from "hash-wasm"
-import { ModuleKind, ScriptTarget } from "typescript"
 import { compileExpression, useDotAccessOperatorAndOptionalChaining } from "filtrex"
 import { normaliseToHash } from "./utils"
 
@@ -262,15 +261,9 @@ export default async function discover(previousFileMap: { [x: string]: Discovere
 
 			await logger.verbose("Discovering scripts")
 			for (const files of scripts) {
-				const compiledScriptPath = ts.compile(
+				const compiledScriptPath = await ts.compile(
 					files.map((a) => path.join(config.modsPath, mod, a)),
-					{
-						esModuleInterop: true,
-						allowJs: true,
-						target: ScriptTarget.ES2019,
-						module: ModuleKind.CommonJS,
-						resolveJsonModule: true
-					},
+					{ target: "es2019" },
 					path.join(config.modsPath, mod)
 				)
 

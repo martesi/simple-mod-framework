@@ -50,6 +50,25 @@ export default defineConfig(({ command }) => ({
       // index.cjs again" cost for. Left at the default (true) there instead.
       externalizeDeps: command !== "build",
       rollupOptions: {
+        // esbuild (the embedded core's mod-script transpiler as of LEI-139,
+        // replacing the old `typescript` package - see src/typescript.ts;
+        // native `esbuild` rather than `esbuild-wasm` because this app only
+        // ships for Windows anyway, so WASM's cross-platform story bought
+        // nothing, and native is both smaller installed and avoids the
+        // "10x slower" WASM performance hit - see src/typescript.ts's doc
+        // comment) is the one dependency that must stay external even though
+        // externalizeDeps is off for build: esbuild's own runtime code
+        // checks that __filename/__dirname still point at its own unmodified
+        // lib/main.js and throws "The esbuild JavaScript API cannot be
+        // bundled" if it detects it's been inlined by a bundler - it also
+        // spawns a subprocess pointed at a real on-disk binary
+        // (@esbuild/win32-x64's esbuild.exe), which has to resolve to an
+        // actual path outside app.asar. See electron-builder.yml's
+        // extraResources entries that ship node_modules/esbuild and
+        // node_modules/@esbuild/win32-x64 alongside the packaged app so this
+        // require() still resolves at runtime once out/main/index.cjs lives
+        // inside app.asar.
+        external: ["esbuild"],
         input: {
           // The default single "index" entry only emits out/main/index.cjs.
           // src/deploy.ts's WorkerPool (see deployPipeline.ts, LEI-133) needs
@@ -74,25 +93,34 @@ export default defineConfig(({ command }) => ({
         output: {
           // Force CJS instead of electron-vite's ESM default (this
           // package.json has "type": "module", which is otherwise auto
-          // upgraded to "es"). The embedded framework core (../src)
-          // pulls in the full `typescript` package at runtime
-          // (src/typescript.ts's ts.createProgram, used to compile mod
-          // scripts - see analyseMod.ts/deploy.ts/discover.ts) which gets
+          // upgraded to "es"). Originally forced because the embedded
+          // framework core (../src) used to pull in the full `typescript`
+          // package at runtime (ts.createProgram, used to compile mod
+          // scripts - see analyseMod.ts/deploy.ts/discover.ts), which got
           // fully bundled into this same chunk (LEI-133's "no
-          // externalizeDepsPlugin"). electron-vite's ESM output path runs
+          // externalizeDepsPlugin") - electron-vite's ESM output path runs
           // an esmShimPlugin that regex-scans the *entire* bundled chunk
           // for the last `import ... from "..."` text to decide where to
-          // splice in a `__dirname`/`__filename`/`require` shim - with
+          // splice in a `__dirname`/`__filename`/`require` shim, and with
           // typescript.js's ~50k lines of source in the chunk (which
-          // itself contains plenty of string literals/comments that read
-          // like import statements, e.g. codefix diagnostic strings such
-          // as "Convert named imports to default import"), that regex
-          // reliably finds a false-positive match *inside* a string
-          // literal and splices the shim there, truncating the string and
+          // contained plenty of string literals/comments that read like
+          // import statements, e.g. codefix diagnostic strings such as
+          // "Convert named imports to default import"), that regex
+          // reliably found a false-positive match *inside* a string
+          // literal and spliced the shim there, truncating the string and
           // producing esbuild's "Unterminated string literal" transform
-          // failure. CJS output skips esmShimPlugin entirely (it only
-          // runs `if (format === 'es')`) and needs no shim in the first
-          // place - __dirname/__filename/require already work natively.
+          // failure.
+          //
+          // `typescript` is gone now (LEI-139 replaced it with the external
+          // esbuild above), so that specific false-positive is no
+          // longer possible - but CJS is kept regardless: preload (below)
+          // is forced to CJS for an unrelated, still-current reason
+          // (Electron's sandboxed preload loader), and switching main back
+          // to ESM would be a separate change nobody's asked for and hasn't
+          // been tested against the worker entry points below. CJS output
+          // skips esmShimPlugin entirely (it only runs `if (format ===
+          // 'es')`) and needs no shim in the first place -
+          // __dirname/__filename/require already work natively.
           format: "cjs"
         }
       }

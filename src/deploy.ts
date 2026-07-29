@@ -16,7 +16,6 @@ import analyseMod, {
 	thirdParty
 } from "./analyseMod"
 import type { DeployInstruction, HMLanguageToolsLOCR, Manifest, ManifestOptionData, ModScript } from "./types"
-import { ModuleKind, ScriptTarget } from "typescript"
 import { FrameworkVersion, config, logger, options, paths, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
 import { copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
 import { WorkerPool } from "./workerPool"
@@ -262,15 +261,9 @@ export default async function deploy(
 			for (const files of instruction.manifestSources.scripts) {
 				await logger.verbose(`Executing script: ${files[0]}`)
 
-				const compiledScriptPath = ts.compile(
+				const compiledScriptPath = await ts.compile(
 					files.map((a) => path.join(config.modsPath, instruction.cacheFolder, a)),
-					{
-						esModuleInterop: true,
-						allowJs: true,
-						target: ScriptTarget.ES2019,
-						module: ModuleKind.CommonJS,
-						resolveJsonModule: true
-					},
+					{ target: "es2019" },
 					path.join(config.modsPath, instruction.cacheFolder)
 				)
 
@@ -1898,15 +1891,9 @@ export default async function deploy(
 			for (const files of instruction.manifestSources.scripts) {
 				await logger.verbose(`Executing script: ${files[0]}`)
 
-				const compiledScriptPath = ts.compile(
+				const compiledScriptPath = await ts.compile(
 					files.map((a) => path.join(config.modsPath, instruction.cacheFolder, a)),
-					{
-						esModuleInterop: true,
-						allowJs: true,
-						target: ScriptTarget.ES2019,
-						module: ModuleKind.CommonJS,
-						resolveJsonModule: true
-					},
+					{ target: "es2019" },
 					path.join(config.modsPath, instruction.cacheFolder)
 				)
 
