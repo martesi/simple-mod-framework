@@ -1973,22 +1973,47 @@ export default async function deploy(
 		})
 		configureSentryScope(sentryContractDestinations)
 
-		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
+		// Content-addressed, not invalidatedData-driven: nothing in discover.ts's fileMap tracks the
+		// Destinations registry hash (004F4B738474CEAD) at all, so there's no per-file invalidation
+		// signal to gate on here the way the Content-phase cases do. What's cacheable instead is the
+		// *result* - contractsToAddToDestinations is already fully assembled in memory by this point
+		// from every enabled mod's contract.json content, so hashing it directly and keying the cache
+		// on that hash is exact: same set of contracts (regardless of which mods or in what order they
+		// were discovered) -> same registry edits -> cache hit, skip the extract+splice entirely.
+		const destinationsHash = await xxhash3(JSON.stringify(contractsToAddToDestinations))
+		const destinationsCacheKey = path.join("destinations", destinationsHash)
+		const destinationsOutputDir = path.join(paths.dataRoot, "temp", "destinationsOutput")
 
-		const rpkgOfDestinations = await getRPKGOfHash("004F4B738474CEAD")
+		if (!(await copyFromCache("global", destinationsCacheKey, destinationsOutputDir))) {
+			fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
-		await extractOrCopyToTemp(rpkgOfDestinations, "004F4B738474CEAD", "JSON")
+			const rpkgOfDestinations = await getRPKGOfHash("004F4B738474CEAD")
 
-		const registry = fs.readJSONSync(path.join(paths.dataRoot, "temp", rpkgOfDestinations, "JSON", "004F4B738474CEAD.JSON"))
+			await extractOrCopyToTemp(rpkgOfDestinations, "004F4B738474CEAD", "JSON")
 
-		for (const { id, before, after, context } of contractsToAddToDestinations) {
-			await logger.debug(`Adding contract ${id} to Destinations`)
+			const registry = fs.readJSONSync(path.join(paths.dataRoot, "temp", rpkgOfDestinations, "JSON", "004F4B738474CEAD.JSON"))
 
-			if (before) {
-				registry.Root.Children.splice(
-					registry.Root.Children.findIndex((a: { Id: string }) => a.Id === before),
-					0,
-					{
+			for (const { id, before, after, context } of contractsToAddToDestinations) {
+				await logger.debug(`Adding contract ${id} to Destinations`)
+
+				if (before) {
+					registry.Root.Children.splice(
+						registry.Root.Children.findIndex((a: { Id: string }) => a.Id === before),
+						0,
+						{
+							Id: id,
+							_comment: "Automatically added by SMF.",
+							NarrativeContext: context || "Mission",
+							Meta: {
+								Ui: {
+									Row: 3,
+									Col: 5
+								}
+							}
+						}
+					)
+				} else if (after) {
+					registry.Root.Children.splice(registry.Root.Children.findIndex((a: { Id: string }) => a.Id === after) + 1, 0, {
 						Id: id,
 						_comment: "Automatically added by SMF.",
 						NarrativeContext: context || "Mission",
@@ -1998,38 +2023,31 @@ export default async function deploy(
 								Col: 5
 							}
 						}
-					}
-				)
-			} else if (after) {
-				registry.Root.Children.splice(registry.Root.Children.findIndex((a: { Id: string }) => a.Id === after) + 1, 0, {
-					Id: id,
-					_comment: "Automatically added by SMF.",
-					NarrativeContext: context || "Mission",
-					Meta: {
-						Ui: {
-							Row: 3,
-							Col: 5
+					})
+				} else {
+					registry.Root.Children.push({
+						Id: id,
+						_comment: "Automatically added by SMF.",
+						NarrativeContext: context || "Mission",
+						Meta: {
+							Ui: {
+								Row: 3,
+								Col: 5
+							}
 						}
-					}
-				})
-			} else {
-				registry.Root.Children.push({
-					Id: id,
-					_comment: "Automatically added by SMF.",
-					NarrativeContext: context || "Mission",
-					Meta: {
-						Ui: {
-							Row: 3,
-							Col: 5
-						}
-					}
-				})
+					})
+				}
 			}
+
+			fs.ensureDirSync(destinationsOutputDir)
+			fs.writeJSONSync(path.join(destinationsOutputDir, "004F4B738474CEAD.JSON"), registry)
+
+			await copyToCache("global", destinationsOutputDir, destinationsCacheKey)
 		}
 
 		fs.ensureDirSync(path.join(paths.dataRoot, "staging", "chunk0"))
 
-		fs.writeJSONSync(path.join(paths.dataRoot, "staging", "chunk0", "004F4B738474CEAD.JSON"), registry)
+		fs.copyFileSync(path.join(destinationsOutputDir, "004F4B738474CEAD.JSON"), path.join(paths.dataRoot, "staging", "chunk0", "004F4B738474CEAD.JSON"))
 
 		sentryContractDestinations.finish()
 	}
@@ -2301,31 +2319,47 @@ export default async function deploy(
 		})
 		configureSentryScope(sentryThumbsPatchingTransaction)
 
-		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
+		// Content-addressed on {skipIntro, thumbs} - same reasoning as Contract destinations above:
+		// no file-level invalidation signal exists for these (they're manifest-level strings, not
+		// content files discover.ts ever sees), but the result is a pure function of this already-
+		// assembled-in-memory input, so hashing it directly is exact.
+		const thumbsHash = await xxhash3(JSON.stringify({ skipIntro: config.skipIntro, thumbs }))
+		const thumbsCacheKey = path.join("thumbs", thumbsHash)
+		const thumbsOutputDir = path.join(paths.dataRoot, "temp", "thumbsOutput")
 
-		if (!fs.existsSync(path.join(paths.dataRoot, "cleanThumbs.dat"))) {
-			// If there is no clean thumbs, copy the one from Retail
-			fs.copyFileSync(path.join(config.retailPath, "thumbs.dat"), path.join(paths.dataRoot, "cleanThumbs.dat"))
+		if (!(await copyFromCache("global", thumbsCacheKey, thumbsOutputDir))) {
+			fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
+
+			if (!fs.existsSync(path.join(paths.dataRoot, "cleanThumbs.dat"))) {
+				// If there is no clean thumbs, copy the one from Retail
+				fs.copyFileSync(path.join(config.retailPath, "thumbs.dat"), path.join(paths.dataRoot, "cleanThumbs.dat"))
+			}
+
+			execCommand(`"${thirdParty("h6xtea.exe")}" -d --src "${path.join(paths.dataRoot, "cleanThumbs.dat")}" --dst "${path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted")}"`) // Decrypt thumbs
+
+			let thumbsContent = fs.readFileSync(path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted"), "utf8").split(/\r?\n/).join("\n")
+
+			if (config.skipIntro) {
+				// Skip intro
+				thumbsContent = thumbsContent.replace("Boot.entity", "MainMenu.entity")
+			}
+
+			for (const patch of thumbs) {
+				// Manifest patches
+				thumbsContent = thumbsContent.replace(/\[Hitman5\]\n/gi, "[Hitman5]\n" + patch + "\n")
+			}
+
+			fs.writeFileSync(path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted"), thumbsContent)
+			execCommand(`"${thirdParty("h6xtea.exe")}" -e --src "${path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted")}" --dst "${path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted.encrypted")}"`) // Encrypt thumbs
+
+			fs.ensureDirSync(thumbsOutputDir)
+			fs.copyFileSync(path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted.encrypted"), path.join(thumbsOutputDir, "thumbs.dat"))
+
+			await copyToCache("global", thumbsOutputDir, thumbsCacheKey)
 		}
 
-		execCommand(`"${thirdParty("h6xtea.exe")}" -d --src "${path.join(paths.dataRoot, "cleanThumbs.dat")}" --dst "${path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted")}"`) // Decrypt thumbs
-
-		let thumbsContent = fs.readFileSync(path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted"), "utf8").split(/\r?\n/).join("\n")
-
-		if (config.skipIntro) {
-			// Skip intro
-			thumbsContent = thumbsContent.replace("Boot.entity", "MainMenu.entity")
-		}
-
-		for (const patch of thumbs) {
-			// Manifest patches
-			thumbsContent = thumbsContent.replace(/\[Hitman5\]\n/gi, "[Hitman5]\n" + patch + "\n")
-		}
-
-		fs.writeFileSync(path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted"), thumbsContent)
-		execCommand(`"${thirdParty("h6xtea.exe")}" -e --src "${path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted")}" --dst "${path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted.encrypted")}"`) // Encrypt thumbs
 		fs.copyFileSync(
-			path.join(paths.dataRoot, "temp", "thumbs.dat.decrypted.encrypted"),
+			path.join(thumbsOutputDir, "thumbs.dat"),
 			config.outputToSeparateDirectory ? path.join(paths.dataRoot, "Output", "thumbs.dat") : path.join(config.retailPath, "thumbs.dat")
 		) // Output thumbs
 
@@ -2363,54 +2397,71 @@ export default async function deploy(
 	execCommand(`"${thirdParty("h6xtea.exe")}" -d --src "${path.join(paths.dataRoot, "cleanPackageDefinition.txt")}" --dst "${path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted")}"`)
 
 	await logger.verbose("Reading packagedefinition")
-	let packagedefinitionContent = fs
-		.readFileSync(path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted"), "utf8")
-		.split(/\r?\n/)
-		.join("\r\n")
-		.replace(/patchlevel=[0-9]*/g, "patchlevel=310") // Patch levels
+	const basePackagedefinitionContent = fs.readFileSync(path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted"), "utf8")
 
-	for (const brick of packagedefinition) {
-		// Apply all PD changes
-		await logger.verbose(`Applying packagedefinition ${brick.type} change`)
-		switch (brick.type) {
-			case "partition":
-				packagedefinitionContent += "\r\n"
-				packagedefinitionContent += `@partition name=${brick.name} parent=${brick.parent} type=${brick.partitionType} patchlevel=310\r\n`
-				break
-			case "entity":
-				if (!packagedefinitionContent.includes(brick.path)) {
-					const newPD = packagedefinitionContent.replace(
-						new RegExp(`@partition name=${brick.partition} parent=(.*?) type=(.*?) patchlevel=310\r\n`),
-						(_a, parent, type) => `@partition name=${brick.partition} parent=${parent} type=${type} patchlevel=310\r\n${brick.path}\r\n`
-					)
+	// Content-addressed on {basePackagedefinitionContent, packagedefinition} - same reasoning as
+	// Contract destinations/Thumbs above. basePackagedefinitionContent has to be included in the key
+	// (not just the mods' packagedefinition bricks) because the self-heal check above can refresh
+	// cleanPackageDefinition.txt out from under us (Steam file verification resetting Runtime's own
+	// copy) - if that happens the correct output changes even when no mod's bricks did.
+	const packagedefinitionHash = await xxhash3(basePackagedefinitionContent + JSON.stringify(packagedefinition))
+	const packagedefinitionCacheKey = path.join("packagedefinition", packagedefinitionHash)
+	const packagedefinitionOutputDir = path.join(paths.dataRoot, "temp", "packagedefinitionOutput")
 
-					if (packagedefinitionContent === newPD) {
-						await logger.error(`Couldn't find packagedefinition partition ${brick.partition} in which to add ${brick.path}!`)
+	if (!(await copyFromCache("global", packagedefinitionCacheKey, packagedefinitionOutputDir))) {
+		let packagedefinitionContent = basePackagedefinitionContent
+			.split(/\r?\n/)
+			.join("\r\n")
+			.replace(/patchlevel=[0-9]*/g, "patchlevel=310") // Patch levels
+
+		for (const brick of packagedefinition) {
+			// Apply all PD changes
+			await logger.verbose(`Applying packagedefinition ${brick.type} change`)
+			switch (brick.type) {
+				case "partition":
+					packagedefinitionContent += "\r\n"
+					packagedefinitionContent += `@partition name=${brick.name} parent=${brick.parent} type=${brick.partitionType} patchlevel=310\r\n`
+					break
+				case "entity":
+					if (!packagedefinitionContent.includes(brick.path)) {
+						const newPD = packagedefinitionContent.replace(
+							new RegExp(`@partition name=${brick.partition} parent=(.*?) type=(.*?) patchlevel=310\r\n`),
+							(_a, parent, type) => `@partition name=${brick.partition} parent=${parent} type=${type} patchlevel=310\r\n${brick.path}\r\n`
+						)
+
+						if (packagedefinitionContent === newPD) {
+							await logger.error(`Couldn't find packagedefinition partition ${brick.partition} in which to add ${brick.path}!`)
+						}
+
+						packagedefinitionContent = newPD
 					}
-
-					packagedefinitionContent = newPD
-				}
-				break
+					break
+			}
 		}
+
+		await logger.verbose("Writing new packagedefinition")
+
+		// Add blank lines to ensure correct encryption (XTEA uses blocks of 8 bytes)
+		fs.writeFileSync(path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted"), `${packagedefinitionContent}\r\n\r\n\r\n\r\n`)
+
+		execCommand(
+			`"${thirdParty("h6xtea.exe")}" -e --src "${path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted")}" --dst "${path.join(
+				paths.dataRoot,
+				"temp",
+				"packagedefinition.txt.decrypted.encrypted"
+			)}"`
+		) // Encrypt PD
+
+		fs.ensureDirSync(packagedefinitionOutputDir)
+		fs.copyFileSync(path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted.encrypted"), path.join(packagedefinitionOutputDir, "packagedefinition.txt"))
+
+		await copyToCache("global", packagedefinitionOutputDir, packagedefinitionCacheKey)
 	}
-
-	await logger.verbose("Writing new packagedefinition")
-
-	// Add blank lines to ensure correct encryption (XTEA uses blocks of 8 bytes)
-	fs.writeFileSync(path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted"), `${packagedefinitionContent}\r\n\r\n\r\n\r\n`)
-
-	execCommand(
-		`"${thirdParty("h6xtea.exe")}" -e --src "${path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted")}" --dst "${path.join(
-			paths.dataRoot,
-			"temp",
-			"packagedefinition.txt.decrypted.encrypted"
-		)}"`
-	) // Encrypt PD
 
 	await logger.verbose("Copying new packagedefinition to output")
 
 	fs.copyFileSync(
-		path.join(paths.dataRoot, "temp", "packagedefinition.txt.decrypted.encrypted"),
+		path.join(packagedefinitionOutputDir, "packagedefinition.txt"),
 		config.outputToSeparateDirectory ? path.join(paths.dataRoot, "Output", "packagedefinition.txt") : path.join(config.runtimePath, "packagedefinition.txt")
 	) // Output PD
 
