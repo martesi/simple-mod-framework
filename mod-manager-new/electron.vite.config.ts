@@ -59,8 +59,17 @@ export default defineConfig(({ command }) => ({
           // build and the CLI's own bun build name it differently) to hand
           // to `new Worker(...)` - a second entry here is what makes that
           // file actually exist in the bundled output.
+          //
+          // deployWorker/indexWorker follow the same pattern: each is a
+          // self-contained worker_threads script that needs to be a
+          // separately-loadable file next to index.cjs at runtime so
+          // DeployManager/ModIndex can hand their path to `new Worker(...)`.
+          // Without separate entries here those files would never exist in
+          // out/main/ and Worker construction would fail silently at runtime.
           index: resolve(__dirname, "src/main/index.ts"),
-          patchWorker: resolve(__dirname, "../src/patchWorker.ts")
+          patchWorker: resolve(__dirname, "../src/patchWorker.ts"),
+          deployWorker: resolve(__dirname, "src/main/deployWorker.ts"),
+          indexWorker: resolve(__dirname, "src/main/indexWorker.ts")
         },
         output: {
           // Force CJS instead of electron-vite's ESM default (this

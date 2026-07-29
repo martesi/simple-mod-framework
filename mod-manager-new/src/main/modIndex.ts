@@ -1,10 +1,29 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { basename, join, resolve } from "node:path"
+import { Worker } from "node:worker_threads"
 import JSON5 from "json5"
 import type { ModEntry, Manifest } from "../renderer/src/lib/manifest-types"
 import type { DiskManifest } from "./diskManifest"
 import { isRpkgOnlyModFolder, validateModFolder } from "./validateMod"
 import { rewriteManifestImages } from "./modImages"
+import type { IndexWorkerMessage, IndexWorkerRequest, SerializedIndexEntry } from "./indexWorker"
+
+/**
+ * Resolves the on-disk path to indexWorker.cjs bundled next to this file - mirrors
+ * DeployManager's own resolveDeployWorkerPath() (see deployManager.ts).
+ */
+function resolveIndexWorkerPath(): string {
+  const candidates = [resolve(__dirname, "indexWorker.cjs"), resolve(__dirname, "indexWorker.js")]
+  for (const p of candidates) {
+    try {
+      require.resolve(p)
+      return p
+    } catch {
+      // Try next candidate.
+    }
+  }
+  return candidates[0]
+}
 
 /**
  * The major version this build of the manager targets - mods whose
@@ -19,7 +38,8 @@ export const CURRENT_FRAMEWORK_VERSION = "3.0.0"
 
 const MANAGED_FOLDER = "Managed by SMF, do not touch"
 
-interface IndexedMod {
+/** Exported so indexWorker.ts can use the same shape and main can load the result directly. */
+export interface IndexedMod {
   /** Folder name under Mods/. */
   folder: string
   id: string
@@ -152,6 +172,66 @@ export class ModIndex {
       }
     }
 
+    this.built = true
+  }
+
+  /**
+   * Same full scan as rebuildChunked(), but runs the entire Mods/ directory walk in a
+   * `node:worker_threads` Worker thread so the Electron main process event loop is completely free
+   * for other IPC (config:get, deploy:start, etc.) while a large collection is being scanned.
+   * Progress messages are forwarded from the worker to `onProgress` on the main thread as they
+   * arrive, so the renderer still gets live "scanned N of M" updates via the mods:cacheProgress
+   * broadcast (see ipcHandlers.ts).
+   *
+   * Falls back to rebuildChunked() if the worker file can't be located at runtime (e.g. in tests
+   * or when running from source without a build step).
+   */
+  async rebuildInWorker(onProgress?: (scanned: number, total: number) => void): Promise<void> {
+    const modsDir = this.getModsDir()
+
+    return new Promise<void>((resolve, reject) => {
+      let worker: Worker
+      try {
+        worker = new Worker(resolveIndexWorkerPath())
+      } catch {
+        // Worker file missing (e.g. running tests directly from source) - fall back gracefully.
+        void this.rebuildChunked(onProgress).then(resolve, reject)
+        return
+      }
+
+      worker.on("message", (msg: IndexWorkerMessage) => {
+        if (msg.type === "progress") {
+          onProgress?.(msg.scanned, msg.total)
+        } else if (msg.type === "done") {
+          this.loadFromEntries(msg.entries)
+          void worker.terminate()
+          resolve()
+        } else if (msg.type === "error") {
+          void worker.terminate()
+          reject(new Error(msg.message))
+        }
+      })
+
+      worker.on("error", (err) => {
+        void worker.terminate()
+        reject(err)
+      })
+
+      const req: IndexWorkerRequest = { modsDir }
+      worker.postMessage(req)
+    })
+  }
+
+  /**
+   * Populates the in-memory map directly from pre-computed entries returned by the index worker,
+   * avoiding any further disk I/O on the main thread. Equivalent to running indexFolder() for each
+   * entry but without re-reading any files.
+   */
+  private loadFromEntries(entries: SerializedIndexEntry[]): void {
+    this.byId.clear()
+    for (const entry of entries) {
+      this.byId.set(entry.id, entry as IndexedMod)
+    }
     this.built = true
   }
 

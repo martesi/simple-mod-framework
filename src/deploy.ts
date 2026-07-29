@@ -216,7 +216,7 @@ export default async function deploy(
 				deployInstruction = deserialiseDeployInstruction(cached.deployInstruction)
 			} else {
 				await logger.info(`No valid analysis cache for ${manifest.name} - analysing now (this will be cached for next time)`)
-				deployInstruction = await analyseMod(mod)
+				deployInstruction = await analyseMod(manifest.id)
 			}
 
 			if (!deployInstruction) {

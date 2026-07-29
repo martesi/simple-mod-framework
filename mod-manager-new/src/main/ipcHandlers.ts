@@ -3,7 +3,6 @@ import type { AppPaths } from "./paths"
 import { addKnownMods, loadSettings, mergeSettings, resolveDefaultUiPaths, resolveModsDir } from "./settings"
 import { fromUiPatch, toUiConfig } from "./configMapping"
 import { deriveGamePathInfo } from "./gameDetect"
-import { runAnalyseMod, type DeployPipelineLogLine } from "./deployPipeline"
 import { ModIndex } from "./modIndex"
 import { setModImageRoot } from "./modImages"
 import { removeModFolder, runAddModTask, type TaskEmit } from "./modOps"
@@ -53,7 +52,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
     // mods:rebuildIndex does, right here, so switching mod folders always shows what's actually in
     // the new one instead of stale leftovers from the old one.
     if (modsDirBefore !== undefined && getModsDir() !== modsDirBefore) {
-      await index.rebuildChunked((scanned, total) => broadcast("mods:cacheProgress", { scanned, total }))
+      await index.rebuildInWorker((scanned, total) => broadcast("mods:cacheProgress", { scanned, total }))
       addKnownMods(paths, index.list())
     }
 
@@ -108,7 +107,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
     // screen with zero feedback for as long as the scan took. Subsequent calls this launch just hit
     // the already-built in-memory index below, same as before.
     if (!index.isBuilt) {
-      await index.rebuildChunked((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
+      await index.rebuildInWorker((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
     }
 
     const list = index.list()
@@ -122,7 +121,7 @@ export function registerIpcHandlers(paths: AppPaths): void {
   })
 
   ipcMain.handle("mods:rebuildIndex", async (event) => {
-    await index.rebuildChunked((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
+    await index.rebuildInWorker((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
     const list = index.list()
     // Same write-through mods:beginAdd's install paths do (see modOps.ts's addKnownMods() calls) -
     // a rebuild can surface mods that were dropped into the Mods folder outside this app entirely,
@@ -198,18 +197,10 @@ export function registerIpcHandlers(paths: AppPaths): void {
   // path") - LEI-133's job is just to wire it up to a real in-process analysis, not to decide when
   // it gets called (that's LEI-108's - e.g. after mods:beginAdd finishes, or when a mod's selected
   // options change).
-  ipcMain.handle("deploy:analyseMod", async (event, modId: string): Promise<{ ok: boolean; error?: string }> => {
-    if (deployManager.isActive()) {
-      return { ok: false, error: "A deploy is currently running." }
-    }
-
-    const settings = loadSettings(paths)
-    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, paths) : ({ ok: false, error: "" } as const)
-    if (!detection.ok) {
-      return { ok: false, error: detection.error || "No valid game folder is set - open Settings and pick your game's Retail folder first." }
-    }
-
-    const onLog = (line: DeployPipelineLogLine) => event.sender.send("deploy:analyseModLog", { modId, ...line })
-    return runAnalyseMod(paths, settings, detection, modId, onLog)
+  //
+  // analyseMod runs in the deploy worker thread (same isolation as deploy:start) so the main
+  // process event loop is never blocked while the TypeScript compiler/RPKG analysis runs.
+  ipcMain.handle("deploy:analyseMod", async (_event, modId: string): Promise<{ ok: boolean; error?: string }> => {
+    return deployManager.runAnalyseMod(modId)
   })
 }
