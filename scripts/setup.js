@@ -2,17 +2,10 @@
 // steps that used to be chained directly in package.json's "postinstall":
 //
 //   1. fetch-third-party.js     - download the Third-Party tools that have a stable release to pull from
-//   2. link-third-party.js      - link/seed everything build/ needs to look like an unpacked dist/
+//   2. link-third-party.js      - link/seed everything build/Third-Party needs (the embedded framework
+//                                  core's toolsRoot in dev - see mod-manager-new's src/main/paths.ts)
 //   3. fetch-hashes.js build    - download hitman-hashes into build/Third-Party/ (needs 7z.exe from
-//                                  step 2 to already be linked there) - the CLI needs these to actually
-//                                  run/deploy locally, not just in a packaged release (see "assemble:win"
-//                                  for the dist/Third-Party equivalent used there)
-//
-// (piscina used to need a manual staging step here too, because it was
-// vendored in ./piscina instead of being a normal npm dependency. It's now
-// just "piscina" in package.json's dependencies like everything else - see
-// deploy.ts for why the vendoring/patch existed and why it's no longer
-// needed.)
+//                                  step 2 to already be linked there)
 //
 // Runs automatically via "npm install" (see "postinstall") if no build/
 // directory is present, and can be re-run by hand at any time with
@@ -49,33 +42,3 @@ try {
 } catch (e) {
 	console.warn(`Couldn't fetch hitman-hashes automatically (${e.message}). Re-run \`npm run setup\` later, or place them in "build/Third-Party/" by hand.`)
 }
-
-// Patch piscina's worker.js to support loading from pkg's virtual filesystem
-try {
-	const piscinaWorkerPath = path.join(__dirname, "..", "node_modules", "piscina", "dist", "worker.js")
-	if (fs.existsSync(piscinaWorkerPath)) {
-		let workerContent = fs.readFileSync(piscinaWorkerPath, "utf8")
-		const targetStr = 'handler = await Promise.resolve(`${filename}`).then(s => __importStar(require(s)));'
-		if (workerContent.includes(targetStr)) {
-			const replacementStr = `let target = filename;
-		const fs = require('fs');
-		const path = require('path');
-		if (!fs.existsSync(target) && target.endsWith('patchWorker.js')) {
-			target = path.resolve(__dirname, "../../../build/compiled/patchWorker.js");
-		}
-		handler = await Promise.resolve(\`\${target}\`).then(s => __importStar(require(s)));`
-			workerContent = workerContent.replace(targetStr, replacementStr)
-			fs.writeFileSync(piscinaWorkerPath, workerContent, "utf8")
-			console.log("Successfully patched piscina worker path resolution for pkg compatibility.")
-		} else if (workerContent.includes("process.pkg")) {
-			console.log("Piscina worker already patched.")
-		} else {
-			console.warn("Could not find target require statement in piscina worker.js for patching.")
-		}
-	} else {
-		console.warn("Piscina worker.js not found at expected path: " + piscinaWorkerPath)
-	}
-} catch (e) {
-	console.warn("Failed to patch piscina worker: " + e.message)
-}
-
