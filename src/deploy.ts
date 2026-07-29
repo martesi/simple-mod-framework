@@ -53,11 +53,19 @@ const deepMerge = function (x: any, y: any) {
  * both next to wherever this module actually ended up.
  */
 function resolvePatchWorkerPath(): string {
-	for (const name of ["patchWorker.js", "patchWorker.cjs"]) {
-		const candidate = path.join(__dirname, name)
-		if (fs.existsSync(candidate)) {
-			return candidate
+	let currentDir = __dirname
+	while (true) {
+		for (const name of ["patchWorker.js", "patchWorker.cjs"]) {
+			const candidate = path.join(currentDir, name)
+			if (fs.existsSync(candidate)) {
+				return candidate
+			}
 		}
+		const parentDir = path.dirname(currentDir)
+		if (parentDir === currentDir) {
+			break
+		}
+		currentDir = parentDir
 	}
 
 	throw new Error(`Could not find patchWorker.js or patchWorker.cjs next to ${__dirname} - was it bundled alongside this module?`)

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
 import { parentPort } from "node:worker_threads"
 import JSON5 from "json5"
 import type { DiskManifest } from "./diskManifest"

@@ -21,21 +21,24 @@ export interface DeployProgressEmit {
  * __dirname is the out/main/ directory when running under electron-vite dev or after a build.
  */
 function resolveDeployWorkerPath(): string {
-  // electron-vite build emits CJS files - check both extensions so the path works identically
-  // in dev (index.cjs / deployWorker.cjs) and a packaged build (same names inside app.asar).
-  const candidates = [resolve(__dirname, "deployWorker.cjs"), resolve(__dirname, "deployWorker.js")]
-  for (const p of candidates) {
-    try {
-      // A quick existsSync-equivalent: if `require.resolve` throws, the file isn't there.
-      require.resolve(p)
-      return p
-    } catch {
-      // Try next candidate.
+  let currentDir = __dirname
+  while (true) {
+    for (const name of ["deployWorker.cjs", "deployWorker.js"]) {
+      const candidate = resolve(currentDir, name)
+      try {
+        require.resolve(candidate)
+        return candidate
+      } catch {
+        // Try next candidate
+      }
     }
+    const parentDir = resolve(currentDir, "..")
+    if (parentDir === currentDir) {
+      break
+    }
+    currentDir = parentDir
   }
-  // If neither candidate resolves (e.g. in tests), fall back to the first - the Worker constructor
-  // will surface the missing-file error with a clear message at spawn time.
-  return candidates[0]
+  return resolve(__dirname, "deployWorker.cjs")
 }
 
 /**
