@@ -320,25 +320,40 @@ async function doTheThing() {
 	fs.emptyDirSync(path.join(dataRoot, "staging"))
 	fs.emptyDirSync(path.join(dataRoot, "temp"))
 
-	await core.logger.verbose("Beginning discovery")
-	const fileMap = await discover()
 	fs.ensureDirSync(path.join(dataRoot, "cache"))
 
+	// Checked *before* discovery now (rather than after) so its result - specifically, whether the
+	// previous run's file map is even still valid - can be handed to discover() below. A framework or
+	// game update invalidates every fingerprint in one shot (new game files, possibly new discovery
+	// logic), so in that case discover() gets an empty map and does a full uncached walk, same as it
+	// always used to unconditionally.
 	await core.logger.verbose("Checking cache versions")
+	let previousFiles: Record<string, { hash: string; dependencies: string[]; affected: string[]; size?: number; mtimeMs?: number }> = {}
 	if (fs.existsSync(path.join(dataRoot, "cache", "map.json"))) {
+		const cachedMap = fs.readJSONSync(path.join(dataRoot, "cache", "map.json"))
 		if (
-			fs.readJSONSync(path.join(dataRoot, "cache", "map.json")).frameworkVersion < core.FrameworkVersion ||
-			fs.readJSONSync(path.join(dataRoot, "cache", "map.json")).game !==
+			cachedMap.frameworkVersion < core.FrameworkVersion ||
+			cachedMap.game !==
 				(fs.existsSync(path.join(core.config.retailPath, "Runtime", "chunk0.rpkg"))
 					? md5File.sync(path.join(core.config.retailPath, "..", "MicrosoftGame.Config"))
 					: md5File.sync(path.join(core.config.runtimePath, "..", "Retail", "HITMAN3.exe")))
 		) {
 			fs.emptyDirSync(path.join(dataRoot, "cache")) // Empty the cache when the framework or game updates
+		} else {
+			previousFiles = cachedMap.files ?? {}
 		}
 	}
 
+	// discover() uses previousFiles' per-file size/mtime fingerprints to skip re-hashing (and, for
+	// RPKG-only mods, re-extracting) anything that hasn't changed since the last deploy - see its own
+	// doc comment. This used to unconditionally re-walk and re-hash every single file in every mod on
+	// every deploy regardless of whether anything had changed; now that only happens for files that
+	// are actually new or modified.
+	await core.logger.verbose("Beginning discovery")
+	const fileMap = await discover(previousFiles)
+
 	await core.logger.verbose("Beginning difference")
-	const { invalidData } = await difference(fs.existsSync(path.join(dataRoot, "cache", "map.json")) ? fs.readJSONSync(path.join(dataRoot, "cache", "map.json")).files : {}, fileMap)
+	const { invalidData } = await difference(previousFiles, fileMap)
 
 	await core.logger.verbose("Writing cache")
 	fs.writeJSONSync(path.join(dataRoot, "cache", "map.json"), {

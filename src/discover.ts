@@ -24,10 +24,42 @@ const deepMerge = function (x: any, y: any) {
 	})
 }
 
-export default async function discover(): Promise<{ [x: string]: { hash: string; dependencies: string[]; affected: string[] } }> {
+export interface DiscoveredFileData {
+	hash: string
+	dependencies: string[]
+	affected: string[]
+	/**
+	 * Fingerprint (from `fs.Stats`) of this file as of when `hash`/`dependencies`/`affected` were
+	 * computed - lets a future `discover()` call recognise "this exact file, unchanged" without
+	 * re-reading/re-hashing/re-extracting it. Optional/absent on cache entries written before this
+	 * field existed, which just means "no fingerprint to compare against" - always a cache miss,
+	 * never wrong data (see `fingerprintUnchanged()`).
+	 */
+	size?: number
+	mtimeMs?: number
+}
+
+/** True if `previous` is a real cache entry whose fingerprint matches the file's current on-disk stats - i.e. it's safe to reuse `previous.hash`/`dependencies`/`affected` without re-reading the file at all. */
+function fingerprintUnchanged(previous: DiscoveredFileData | undefined, stat: fs.Stats): boolean {
+	return previous !== undefined && previous.size === stat.size && previous.mtimeMs === stat.mtimeMs
+}
+
+/**
+ * Walks every mod in the load order and computes each of its files' content hash plus the
+ * dependency/invalidation graph (`dependencies`/`affected`) that `difference.ts` uses to figure out
+ * what changed since the last deploy.
+ *
+ * `previousFileMap` is the `files` map this same function returned (and `deployPipeline.ts`/
+ * `main.ts` persisted to `cache/map.json`) on the *previous* deploy. For any file whose size and
+ * mtime still match what's recorded there, this skips re-reading/re-hashing it (and, for RPKG-only
+ * mods, skips re-extracting the RPKG entirely) and just reuses the previous result - the same
+ * "unchanged mtime+size implies unchanged content" assumption `analyseMod.ts`'s per-mod cache
+ * already relies on. Pass `{}` (the default) to force a full, uncached walk.
+ */
+export default async function discover(previousFileMap: { [x: string]: DiscoveredFileData } = {}): Promise<{ [x: string]: DiscoveredFileData }> {
 	await logger.info("Discovering mod contents")
 
-	const fileMap: { [x: string]: { hash: string; dependencies: Array<string>; affected: Array<string> } } = {}
+	const fileMap: { [x: string]: DiscoveredFileData } = {}
 
 	// All base game TEMP and TBLU hashes
 	const baseGameEntityHashes = new Set(
@@ -80,19 +112,31 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 
 			for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, mod))) {
 				for (const contentFile of fs.readdirSync(path.join(config.modsPath, mod, chunkFolder))) {
+					const rpkgFilePath = path.join(config.modsPath, mod, chunkFolder, contentFile)
+					const stat = fs.statSync(rpkgFilePath)
+					const cached = previousFileMap[rpkgFilePath]
+
+					if (fingerprintUnchanged(cached, stat)) {
+						await logger.verbose(`${rpkgFilePath} is unchanged since the last deploy - reusing its cached contents instead of re-extracting it`)
+						fileMap[rpkgFilePath] = { hash: cached!.hash, dependencies: cached!.dependencies, affected: cached!.affected, size: stat.size, mtimeMs: stat.mtimeMs }
+						continue
+					}
+
 					fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
-					await logger.verbose(`-extract_from_rpkg "${path.join(config.modsPath, mod, chunkFolder, contentFile)}" -output_path "${path.join(paths.dataRoot, "temp")}"`)
-					await rpkgInstance.callFunction(`-extract_from_rpkg "${path.join(config.modsPath, mod, chunkFolder, contentFile)}" -output_path "${path.join(paths.dataRoot, "temp")}"`)
+					await logger.verbose(`-extract_from_rpkg "${rpkgFilePath}" -output_path "${path.join(paths.dataRoot, "temp")}"`)
+					await rpkgInstance.callFunction(`-extract_from_rpkg "${rpkgFilePath}" -output_path "${path.join(paths.dataRoot, "temp")}"`)
 
-					await logger.verbose(`Adding ${path.join(config.modsPath, mod, chunkFolder, contentFile)} to fileMap`)
-					fileMap[path.join(config.modsPath, mod, chunkFolder, contentFile)] = {
-						hash: await xxhash3(fs.readFileSync(path.join(config.modsPath, mod, chunkFolder, contentFile))),
+					await logger.verbose(`Adding ${rpkgFilePath} to fileMap`)
+					fileMap[rpkgFilePath] = {
+						hash: await xxhash3(fs.readFileSync(rpkgFilePath)),
 						dependencies: [], // Raw files: depend on nothing, overwrite contained files
 						affected: klaw(path.join(paths.dataRoot, "temp"))
 							.filter((a) => a.stats.isFile())
 							.filter((a) => !a.path.endsWith(".meta"))
-							.map((a) => path.basename(a.path).split(".")[0])
+							.map((a) => path.basename(a.path).split(".")[0]),
+						size: stat.size,
+						mtimeMs: stat.mtimeMs
 					}
 
 					fs.removeSync(path.join(paths.dataRoot, "temp"))
@@ -252,6 +296,20 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 					for (const contentFilePath of klaw(path.join(config.modsPath, mod, contentFolder, chunkFolder))
 						.filter((a) => a.stats.isFile())
 						.map((a) => a.path)) {
+						const contentStat = fs.statSync(contentFilePath)
+						const cachedContent = previousFileMap[contentFilePath]
+
+						if (fingerprintUnchanged(cachedContent, contentStat)) {
+							fileMap[contentFilePath] = {
+								hash: cachedContent!.hash,
+								dependencies: cachedContent!.dependencies,
+								affected: cachedContent!.affected,
+								size: contentStat.size,
+								mtimeMs: contentStat.mtimeMs
+							}
+							continue
+						}
+
 						const dependencies: string[] = []
 						const affected: string[] = []
 
@@ -393,7 +451,9 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 						fileMap[contentFilePath] = {
 							hash: await xxhash3(fs.readFileSync(contentFilePath)),
 							dependencies,
-							affected
+							affected,
+							size: contentStat.size,
+							mtimeMs: contentStat.mtimeMs
 						}
 					}
 				}
@@ -409,6 +469,20 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 					for (const blob of klaw(path.join(config.modsPath, mod, blobsFolder))
 						.filter((a) => a.stats.isFile())
 						.map((a) => a.path)) {
+						const blobStat = fs.statSync(blob)
+						const cachedBlob = previousFileMap[blob]
+
+						if (fingerprintUnchanged(cachedBlob, blobStat)) {
+							fileMap[blob] = {
+								hash: cachedBlob!.hash,
+								dependencies: cachedBlob!.dependencies,
+								affected: cachedBlob!.affected,
+								size: blobStat.size,
+								mtimeMs: blobStat.mtimeMs
+							}
+							continue
+						}
+
 						const blobPath = blob.replace(path.join(config.modsPath, mod, blobsFolder), "").slice(1).split(path.sep).join("/").toLowerCase()
 
 						let blobHash
@@ -423,7 +497,9 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 						fileMap[blob] = {
 							hash: await xxhash3(fs.readFileSync(blob)),
 							dependencies: ["00858D45F5F9E3CA"],
-							affected: ["00858D45F5F9E3CA", blobHash]
+							affected: ["00858D45F5F9E3CA", blobHash],
+							size: blobStat.size,
+							mtimeMs: blobStat.mtimeMs
 						}
 					}
 				}
@@ -514,7 +590,9 @@ export default async function discover(): Promise<{ [x: string]: { hash: string;
 		fileMap[a[0]] = {
 			hash: a[1].hash,
 			dependencies: [...new Set(a[1].dependencies)],
-			affected: [...new Set(a[1].affected)]
+			affected: [...new Set(a[1].affected)],
+			size: a[1].size,
+			mtimeMs: a[1].mtimeMs
 		}
 	})
 

@@ -165,25 +165,39 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
 		fs.emptyDirSync(path.join(paths.dataRoot, "staging"))
 		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
-		await core.logger.verbose("Beginning discovery")
-		const { default: discover } = await import("../../../src/discover")
-		const fileMap = await discover()
 		fs.ensureDirSync(path.join(paths.dataRoot, "cache"))
 
 		const gameHash = computeGameHash(config.retailPath, config.runtimePath)
 		const mapPath = path.join(paths.dataRoot, "cache", "map.json")
 
+		// Checked *before* discovery now (rather than after) so its result - specifically, whether the
+		// previous run's file map is even still valid - can be handed to discover() below. A framework
+		// or game update invalidates every fingerprint in one shot (new game files, possibly new
+		// discovery logic), so in that case discover() gets an empty map and does a full uncached walk,
+		// same as it always used to unconditionally.
 		await core.logger.verbose("Checking cache versions")
+		let previousFiles: Record<string, { hash: string; dependencies: string[]; affected: string[]; size?: number; mtimeMs?: number }> = {}
 		if (fs.existsSync(mapPath)) {
 			const cached = fs.readJSONSync(mapPath)
 			if (cached.frameworkVersion < core.FrameworkVersion || cached.game !== gameHash) {
 				fs.emptyDirSync(path.join(paths.dataRoot, "cache")) // Empty the cache when the framework or game updates
+			} else {
+				previousFiles = cached.files ?? {}
 			}
 		}
 
+		// discover() uses previousFiles' per-file size/mtime fingerprints to skip re-hashing (and, for
+		// RPKG-only mods, re-extracting) anything that hasn't changed since the last deploy - see its
+		// own doc comment. This used to unconditionally re-walk and re-hash every single file in every
+		// mod on every deploy regardless of whether anything had changed; now that only happens for
+		// files that are actually new or modified.
+		await core.logger.verbose("Beginning discovery")
+		const { default: discover } = await import("../../../src/discover")
+		const fileMap = await discover(previousFiles)
+
 		await core.logger.verbose("Beginning difference")
 		const { default: difference } = await import("../../../src/difference")
-		const { invalidData } = await difference(fs.existsSync(mapPath) ? fs.readJSONSync(mapPath).files : {}, fileMap)
+		const { invalidData } = await difference(previousFiles, fileMap)
 
 		await core.logger.verbose("Writing cache")
 		fs.writeJSONSync(mapPath, {
