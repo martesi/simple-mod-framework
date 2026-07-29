@@ -28,6 +28,6 @@ npm run dev   # launches the Electron app
 `npm run build` typechecks and produces an `out/` bundle; `npm run build:win` additionally packages
 it with electron-builder; `npm run preview` launches a built `out/` without a dev server.
 
-`postinstall`/`npm run setup` populate `build/Third-Party` (RPKG tools, hitman-hashes, etc.) - the
+`postinstall`/`npm run setup` populate `extra/Third-Party` (RPKG tools, hitman-hashes, etc.) - the
 embedded framework core's dev-mode `toolsRoot` (see `src/main/paths.ts`). A packaged build gets the
-same tools via `electron-builder.yml`'s `extraResources` instead.
+same tools via `electron-builder.yml`'s `extraResources`, sourced from that same folder.

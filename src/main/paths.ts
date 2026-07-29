@@ -38,10 +38,12 @@ export function resolveAppPaths(): AppPaths {
 
   const toolsRoot = app.isPackaged
     ? process.resourcesPath
-    : // Dev: point at the repo's shared `build/` fixture (Third-Party/,
+    : // Dev: point straight at the repo's committed extra/ folder (Third-Party/,
       // cleanMicrosoftThumbs.dat) - this app *is* the repo root now (LEI-133's
-      // CLI/Mod Manager merge), so build/ sits directly under it.
-      resolve(app.getAppPath(), "build")
+      // CLI/Mod Manager merge), and extra/ already has the same layout
+      // electron-builder.yml's extraResources gives resourcesPath when packaged,
+      // so no separate build/ staging step is needed to mirror it anymore.
+      resolve(app.getAppPath(), "extra")
 
   cached = { dataRoot, toolsRoot }
   return cached

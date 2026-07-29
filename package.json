@@ -10,7 +10,7 @@
   "scripts": {
     "postinstall": "node scripts/setup.js --postinstall",
     "setup": "node scripts/setup.js",
-    "fetch:hashes": "node scripts/fetch-hashes.js build",
+    "fetch:hashes": "node scripts/fetch-hashes.js",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "build:win": "npm run typecheck && electron-vite build && electron-builder --win --dir",

@@ -6,7 +6,7 @@
 //     <- extracted from TonyTools.zip, github.com/AnthonyFuller/TonyTools (latest release)
 //     (TonyTools-LICENSE is NOT in that zip - TonyTools doesn't bundle a
 //     license file in its releases, so that one is committed instead, in
-//     For Build/Third-Party/)
+//     extra/Third-Party/)
 //   - 7z.exe
 //     <- actually 7za.exe, extracted from the "Extra: standalone console
 //     version" package, github.com/ip7z/7zip (latest release), and copied
@@ -29,33 +29,31 @@
 //     bootstrapping problem; Windows only, since that's the only platform
 //     this repo ships 7z.exe for.
 //     (7z-LICENSE isn't fetched here - unconfirmed whether the Extra
-//     package bundles it, so it stays committed in For Build/Third-Party/
+//     package bundles it, so it stays committed in extra/Third-Party/
 //     either way.)
 //
-// These land in "For Build/Fetched Third-Party/", which is gitignored -
-// nothing here is ever the only copy of a file, so there's nothing to lose
-// by wiping it and re-running this script. Contrast with
-// "For Build/Third-Party/", which holds the tools that DON'T have a source
-// like this to fetch from, and so are committed to the repo instead, as
-// regular (in a couple of cases multi-MB) git blobs - this repo is managed
-// with jj, which doesn't support Git LFS, so there's no way around that. See
-// .gitignore for the `jj config set --repo snapshot.max-new-file-size`
-// needed to track them.
+// These land in "extra/Third-Party/", alongside the tools committed straight
+// to git (see .gitignore - each downloaded filename is ignored individually
+// there, since the directory as a whole is not: nothing here is ever the
+// only copy of a file, so there's nothing to lose by wiping one of these and
+// re-running this script, unlike the committed tools sharing the same
+// folder.
 //
 // Safe to re-run - skips anything already downloaded. Never throws: a
 // network hiccup here shouldn't fail the "npm install" this runs from as
 // part of postinstall (see scripts/setup.js), so failures are logged as
-// warnings, and scripts/link-third-party.js will just be short those files
-// until this is re-run successfully (`npm run setup`) or they're placed by
-// hand.
-const fs = require("fs")
-const https = require("https")
-const os = require("os")
-const path = require("path")
-const { execFileSync } = require("child_process")
+// warnings.
+import fs from "fs"
+import https from "https"
+import os from "os"
+import path from "path"
+import { execFileSync } from "child_process"
+import { fileURLToPath } from "url"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const root = path.join(__dirname, "..")
-const dest = path.join(root, "For Build", "Fetched Third-Party")
+const dest = path.join(root, "extra", "Third-Party")
 fs.mkdirSync(dest, { recursive: true })
 
 // Set SMF_DEBUG=1 to log every HTTP request this script makes (status,
@@ -194,7 +192,7 @@ async function ensureTonyTools() {
 			const found = findFile(extractDir, file)
 			if (!found) {
 				throw new Error(
-					`Couldn't find ${file} inside TonyTools.zip - the release layout may have changed. Check https://github.com/AnthonyFuller/TonyTools/releases/latest by hand and place it in "For Build/Fetched Third-Party/" yourself.`
+					`Couldn't find ${file} inside TonyTools.zip - the release layout may have changed. Check https://github.com/AnthonyFuller/TonyTools/releases/latest by hand and place it in "extra/Third-Party/" yourself.`
 				)
 			}
 			fs.copyFileSync(found, path.join(dest, file))
@@ -261,7 +259,7 @@ async function ensureSevenZip() {
 		if (DEBUG) console.error(`[debug] extracted ${asset.name}, contents: ${fs.readdirSync(extractDir).join(", ")}`)
 		const found = findFile(extractDir, "7za.exe")
 		if (!found) {
-			throw new Error(`Couldn't find 7za.exe inside ${asset.name} - the package layout may have changed. Place a 7-Zip build at "For Build/Fetched Third-Party/7z.exe" yourself.`)
+			throw new Error(`Couldn't find 7za.exe inside ${asset.name} - the package layout may have changed. Place a 7-Zip build at "extra/Third-Party/7z.exe" yourself.`)
 		}
 		fs.copyFileSync(found, path.join(dest, "7z.exe"))
 	} finally {
@@ -291,14 +289,13 @@ async function task(label, placeHint, fn) {
 	}
 }
 
-;(async () => {
-	await Promise.all([
-		task("For Build/Fetched Third-Party/quickentity-rs.exe", 'Place it in "For Build/Fetched Third-Party/" by hand.', ensureQuickEntityRs),
-		task(
-			"For Build/Fetched Third-Party/{HMLanguageTools.exe, HMTextureTools.exe}",
-			'Place HMLanguageTools.exe and HMTextureTools.exe in "For Build/Fetched Third-Party/" by hand.',
-			ensureTonyTools
-		),
-		task("For Build/Fetched Third-Party/7z.exe", 'Place a 7-Zip build at "For Build/Fetched Third-Party/7z.exe" by hand.', ensureSevenZip)
-	])
-})()
+// Top-level await (native in ESM) replaces the old CommonJS `;(async () => { ... })()` IIFE.
+await Promise.all([
+	task("extra/Third-Party/quickentity-rs.exe", 'Place it in "extra/Third-Party/" by hand.', ensureQuickEntityRs),
+	task(
+		"extra/Third-Party/{HMLanguageTools.exe, HMTextureTools.exe}",
+		'Place HMLanguageTools.exe and HMTextureTools.exe in "extra/Third-Party/" by hand.',
+		ensureTonyTools
+	),
+	task("extra/Third-Party/7z.exe", 'Place a 7-Zip build at "extra/Third-Party/7z.exe" by hand.', ensureSevenZip)
+])

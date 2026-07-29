@@ -1,6 +1,6 @@
 // Standalone, dependency-free regression test for src/core/typescript.ts's compile()
 // (LEI-139: swapped ts.createProgram/emit for esbuild's transform() - native
-// `esbuild`, not `esbuild-wasm`, see src/typescript.ts's doc comment for why).
+// `esbuild`, not `esbuild-wasm`, see src/core/typescript.ts's doc comment for why).
 //
 // This intentionally does NOT go through discover.ts/analyseMod.ts/deploy.ts,
 // a real manifest, or a real mod install - all of that pulls in RPKG tooling,
@@ -15,13 +15,22 @@
 // Requires: `esbuild` (+ its platform binary, e.g. @esbuild/win32-x64)
 // installed in the root node_modules (real dependency as of LEI-139) and the
 // `typescript` devDependency already pinned in package.json (used here only
-// to JIT-compile src/typescript.ts itself for the test run - nothing to do
-// with the mod-script transpiler being tested).
-const assert = require("assert")
-const { execFileSync } = require("child_process")
-const fs = require("fs")
-const os = require("os")
-const path = require("path")
+// to JIT-compile src/core/typescript.ts itself for the test run - nothing to
+// do with the mod-script transpiler being tested).
+import assert from "assert"
+import { execFileSync } from "child_process"
+import fs from "fs"
+import { createRequire } from "module"
+import os from "os"
+import path from "path"
+import { fileURLToPath } from "url"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// compile()'s own output, and the tsc-compiled copy of typescript.ts below,
+// are both plain CommonJS (esbuild --format cjs / tsc --module commonjs) -
+// this repo's package.json says "type": "module", so a real `require` (not a
+// bare import) is what's needed to load them, cache-busting included.
+const require = createRequire(import.meta.url)
 
 const root = path.join(__dirname, "..", "..")
 const fixturesDir = path.join(__dirname, "fixtures")
@@ -64,16 +73,15 @@ async function main() {
 	)
 
 	const builtPath = path.join(buildDir, "typescript.js")
-	assert.ok(fs.existsSync(builtPath), "expected src/typescript.ts to compile to typescript.js")
+	assert.ok(fs.existsSync(builtPath), "expected src/core/typescript.ts to compile to typescript.js")
 
 	// esbuild resolves relative to the *compiled file's own location* via
 	// normal node_modules upward search - buildDir is outside the project, so
 	// point NODE_PATH at the real root node_modules for this process (same
 	// trick used to manually verify this before committing the test).
-	const NodeModule = require("module")
-	NodeModule._initPaths.call ? null : null // no-op, just documenting intent
+	const Module = require("module")
 	process.env.NODE_PATH = path.join(root, "node_modules") + (process.env.NODE_PATH ? path.delimiter + process.env.NODE_PATH : "")
-	NodeModule._initPaths()
+	Module._initPaths()
 
 	const { compile } = require(builtPath)
 
