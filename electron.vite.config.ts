@@ -1,6 +1,7 @@
 import { resolve } from "node:path"
 import { defineConfig } from "electron-vite"
 import react from "@vitejs/plugin-react"
+import babel from "vite-plugin-babel"
 
 // This app replaces the old Svelte Mod Manager's Electron renderer (see
 // LEI-137 for the UI rebuild). fs/child_process access lives only in
@@ -165,6 +166,34 @@ export default defineConfig(({ command }) => ({
         "@": resolve(__dirname, "src/renderer/src")
       }
     },
-    plugins: [react()]
+    plugins: [
+      react(),
+      // React Compiler (React 19's own reason for existing here - see package.json's doc comment)
+      // via a standalone Babel pass rather than @vitejs/plugin-react's old inline `babel.plugins`
+      // option: that option was removed outright in @vitejs/plugin-react@6 in favour of a
+      // `reactCompilerPreset()` + `@rolldown/plugin-babel` combo, but that plugin has a hard peer
+      // dependency on the Rolldown bundler itself (`rolldown: ^1.0.0-rc.5`) - this app still runs on
+      // plain Rollup-based Vite (electron.vite.config.ts's `rollupOptions` below assume Rollup
+      // throughout), not rolldown-vite, so that combo doesn't apply here. `vite-plugin-babel` is the
+      // bundler-agnostic path React's own docs show for exactly this case (see their React Router
+      // recipe) - a real, independent Vite plugin, not tied to @vitejs/plugin-react's internals.
+      //
+      // `enforce: "pre"` (vite-plugin-babel's default) runs this before @vitejs/plugin-react's own
+      // esbuild-based transform regardless of array order, which is required here: the compiler
+      // needs to see original JSX/hook calls, not whatever @vitejs/plugin-react would've already
+      // lowered them to. `@babel/preset-typescript` with `isTSX`/`allExtensions` only parses
+      // TS/TSX syntax so Babel can walk the AST - it deliberately does NOT lower JSX to
+      // `React.createElement` itself (that's not what isTSX-without-preset-react does), leaving
+      // @vitejs/plugin-react's own JSX transform (with its automatic-runtime/Fast-Refresh wiring)
+      // as the one place that still happens.
+      babel({
+        include: /\.[jt]sx?$/,
+        exclude: /node_modules/,
+        babelConfig: {
+          presets: [["@babel/preset-typescript", { isTSX: true, allExtensions: true }]],
+          plugins: ["babel-plugin-react-compiler"]
+        }
+      })
+    ]
   }
 }))

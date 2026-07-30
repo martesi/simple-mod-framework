@@ -53,6 +53,8 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/preset-typescript": "^7.29.7",
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@eslint/js": "^9.20.1",
     "@types/fs-extra": "^9.0.13",
@@ -67,6 +69,7 @@
     "@types/three": "^0.133.0",
     "@vitejs/plugin-react": "^6.0.4",
     "autoprefixer": "^10.4.20",
+    "babel-plugin-react-compiler": "^1.0.0",
     "electron": "^43.1.1",
     "electron-builder": "^25.1.8",
     "electron-vite": "6.0.0-beta.1",
@@ -78,6 +81,7 @@
     "three": "^0.133.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.24.0",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "vite-plugin-babel": "^1.7.3"
   }
 }
