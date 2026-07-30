@@ -1,20 +1,24 @@
 // Single entry point for "make a fresh clone runnable" - coordinates the
 // steps that used to be chained directly in package.json's "postinstall":
 //
+//   0. node_modules/electron/install.js - download the actual Electron binary for this
+//                                          platform (see the doc comment right above that
+//                                          call below for why this has to be done explicitly)
 //   1. fetch-third-party.js     - download the Third-Party tools that have a stable release to pull from
 //   2. fetch-hashes.js          - download hitman-hashes into extra/Third-Party (needs 7z.exe from
 //                                  step 1 to already be there)
 //
-// Both land straight in extra/Third-Party - the embedded framework core's
+// Steps 1 and 2 land straight in extra/Third-Party - the embedded framework core's
 // dev-mode toolsRoot (see src/main/paths.ts) - alongside the tools already
 // committed there, so there's no separate build/ staging step to run first.
 //
-// Runs automatically via "npm install" (see "postinstall") if extra/Third-Party
-// doesn't look populated yet, and can be re-run by hand at any time with
-// `npm run setup` - e.g. to retry after a network hiccup or force a re-fetch.
-// Both steps just warn on failure rather than throwing, so neither fails the
-// "npm install" this runs from as part of postinstall (see fetch-third-party.js).
-// Safe to re-run: both steps are themselves idempotent.
+// Runs automatically via "npm install"/"bun install" (see "postinstall"). Step 0 always
+// runs (it's cheap to skip-check, see below); steps 1-2 skip themselves if extra/Third-Party
+// doesn't look populated yet. Can be re-run by hand at any time with `npm run setup` - e.g.
+// to retry after a network hiccup or force a re-fetch. All three steps just warn on failure
+// rather than throwing, so none of them fail the "npm install"/"bun install" this runs from
+// as part of postinstall (see fetch-third-party.js). Safe to re-run: all three are themselves
+// idempotent.
 //
 // Each step still runs as its own process (rather than being merged into
 // one file) so `node scripts/fetch-third-party.js` etc. keep working
@@ -28,7 +32,34 @@ import { fileURLToPath } from "url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// Only run on postinstall if extra/Third-Party already has more than the
+// Electron's own package no longer declares a "postinstall" script (electron@43.1.1's
+// package.json has an empty "scripts": {} - it only exposes an "install-electron" bin
+// pointing at this same install.js) - older electron versions had a real postinstall that
+// npm ran automatically as part of installing the "electron" dependency, no project-side
+// wiring needed. Even if it still did, bun wouldn't run it automatically anyway: bun only
+// executes lifecycle scripts (preinstall/install/postinstall) for dependencies explicitly
+// listed in a "trustedDependencies" array (or bun's own small default allowlist), as a
+// supply-chain-attack mitigation, and this project doesn't have such a list. So nothing has
+// ever triggered Electron's own binary download automatically since this project moved to
+// bun (`git log` shows scripts/setup.js/its predecessors never called this either, even
+// pre-bun) - `electron-vite dev`/`build` would fail with "Electron uninstall" without it.
+// Calling it here works around both problems at once: this is the *project's own*
+// postinstall script (not a dependency's), so bun's trustedDependencies gate doesn't apply
+// to it at all - and install.js has its own `isInstalled()` early-exit (checks for the
+// platform binary already being present), so this is safe and cheap to call unconditionally
+// on every postinstall run rather than needing our own populated-check like steps 1-2 below.
+const electronInstallScript = path.join(__dirname, "..", "node_modules", "electron", "install.js")
+if (fs.existsSync(electronInstallScript)) {
+	try {
+		execFileSync(process.execPath, [electronInstallScript], { stdio: "inherit" })
+	} catch (e) {
+		console.warn(`Couldn't download the Electron binary automatically (${e.message}). Re-run \`npm run setup\` later, or run \`node node_modules/electron/install.js\` (or \`bun run install-electron\`) by hand.`)
+	}
+} else {
+	console.warn('"electron" not found in node_modules - skipping its binary download. Run `npm install`/`bun install` first.')
+}
+
+// Only run steps 1-2 on postinstall if extra/Third-Party already has more than the
 // tools committed to git in it (a rough "has setup already run here" check -
 // a fresh clone only has the committed subset).
 const thirdPartyDir = path.join(__dirname, "..", "extra", "Third-Party")
