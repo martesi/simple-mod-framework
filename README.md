@@ -3,12 +3,12 @@
 A mod framework for HITMAN 3 that allows the automatic synthesis of mods from source files.
 
 This is a single Electron app (React 19 + shadcn/ui on Base UI) - there's no separate CLI anymore.
-The framework core (deploy/discover/analyse a mod, `src/core`) is embedded in-process, replacing the
+The framework core (deploy/discover/analyse a mod, `src/main/core`) is embedded in-process, replacing the
 old `Deploy.exe` subprocess.
 
 `src/main`/`src/preload` are the real backend, not stubs. `src/main/ipcHandlers.ts` registers the
 actual `ipcMain.handle` channels (config, mods, deploy) backed by `modIndex.ts`/`modOps.ts`/
-`deployManager.ts`/`deployPipeline.ts` - the latter is the only place that reaches into `src/core`,
+`deployManager.ts`/`deployPipeline.ts` - the latter is the only place that reaches into `src/main/core`,
 including the game-directory picker and userData-backed settings. `src/preload/index.ts` exposes
 those channels as `window.smf`, with no raw `fs`/`child_process` handed to the renderer.
 

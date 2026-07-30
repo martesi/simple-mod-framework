@@ -1,6 +1,6 @@
-// Standalone, dependency-free regression test for src/core/typescript.ts's compile()
+// Standalone, dependency-free regression test for src/main/core/typescript.ts's compile()
 // (LEI-139: swapped ts.createProgram/emit for esbuild's transform() - native
-// `esbuild`, not `esbuild-wasm`, see src/core/typescript.ts's doc comment for why).
+// `esbuild`, not `esbuild-wasm`, see src/main/core/typescript.ts's doc comment for why).
 //
 // This intentionally does NOT go through discover.ts/analyseMod.ts/deploy.ts,
 // a real manifest, or a real mod install - all of that pulls in RPKG tooling,
@@ -15,7 +15,7 @@
 // Requires: `esbuild` (+ its platform binary, e.g. @esbuild/win32-x64)
 // installed in the root node_modules (real dependency as of LEI-139) and the
 // `typescript` devDependency already pinned in package.json (used here only
-// to JIT-compile src/core/typescript.ts itself for the test run - nothing to
+// to JIT-compile src/main/core/typescript.ts itself for the test run - nothing to
 // do with the mod-script transpiler being tested).
 import assert from "assert"
 import { execFileSync } from "child_process"
@@ -59,21 +59,29 @@ async function checkAsync(name, fn) {
 }
 
 async function main() {
-	// --- Step 1: build src/core/typescript.ts with the project's own pinned
+	// --- Step 1: build src/main/core/typescript.ts with the project's own pinned
 	// tsc, just scoped to this one file so the test doesn't need a full
 	// project build first. ---
 	const buildDir = fs.mkdtempSync(path.join(os.tmpdir(), "smf-typescript-compile-test-"))
 	const tscBin = path.join(root, "node_modules", "typescript", "bin", "tsc")
 
-	console.log("Compiling src/core/typescript.ts for the test run...")
+	console.log("Compiling src/main/core/typescript.ts for the test run...")
 	execFileSync(
 		process.execPath,
-		[tscBin, "--module", "commonjs", "--target", "es2019", "--esModuleInterop", "--moduleResolution", "node", "--skipLibCheck", "--outDir", buildDir, path.join(root, "src", "core", "typescript.ts")],
+		// --moduleResolution node (aka "node10") is deprecated-to-error as of TypeScript 6.0 - see
+		// package.json's typescript devDependency doc comment. TS 6.0's own migration guidance is
+		// "nodenext" for code targeting Node directly, or "bundler" for `--module commonjs`/esnext
+		// output resolved by something other than Node's own resolver - this repo's `--module
+		// commonjs` here is exactly that latter case (TS 6 quietly made "bundler" the resolution
+		// --module commonjs gets by default now anyway), and "nodenext" would additionally require
+		// `--module` to also be node16/nodenext, which would change this test's deliberately-CJS
+		// output.
+		[tscBin, "--module", "commonjs", "--target", "es2019", "--esModuleInterop", "--moduleResolution", "bundler", "--skipLibCheck", "--outDir", buildDir, path.join(root, "src", "main", "core", "typescript.ts")],
 		{ stdio: "inherit" }
 	)
 
 	const builtPath = path.join(buildDir, "typescript.js")
-	assert.ok(fs.existsSync(builtPath), "expected src/core/typescript.ts to compile to typescript.js")
+	assert.ok(fs.existsSync(builtPath), "expected src/main/core/typescript.ts to compile to typescript.js")
 
 	// esbuild resolves relative to the *compiled file's own location* via
 	// normal node_modules upward search - buildDir is outside the project, so

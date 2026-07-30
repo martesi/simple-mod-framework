@@ -6,10 +6,10 @@ import { FrameworkVersion, config, logger, paths, rpkgInstance } from "./core-si
 import { extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, winPathEscape } from "./utils"
 
 import { OptionType } from "./types"
+import { walk } from "./fsWalk"
 import child_process from "child_process"
 import fs from "fs-extra"
 import json5 from "json5"
-import klaw from "klaw-sync"
 import md5 from "md5"
 import mergeWith from "lodash.mergewith"
 import path from "path"
@@ -240,7 +240,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 		!(
 			fs.existsSync(path.join(config.modsPath, mod)) &&
 			!fs.existsSync(path.join(config.modsPath, mod, "manifest.json")) &&
-			klaw(path.join(config.modsPath, mod))
+			(await walk(path.join(config.modsPath, mod)))
 				.filter((a) => a.stats.isFile())
 				.map((a) => a.path)
 				.some((a) => a.endsWith(".rpkg"))
@@ -355,13 +355,13 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 
 	// Fingerprint of every file that can affect this mod's output - manifest.json, every file in
 	// its resolved content/blobs folders, and its script files. This is the "manifest hash" half
-	// of the cache key. Cheap: klaw-sync has already stat'd every entry for the walk below, so
+	// of the cache key. Cheap: walk() has already stat'd every entry for the walk below, so
 	// this is just capturing data that's already in memory, not extra I/O.
 	const fingerprint: { path: string; size: number; mtimeMs: number }[] = [{ path: "manifest.json", size: manifestRaw.length, mtimeMs: fs.statSync(manifestPath).mtimeMs }]
 
 	for (const contentFolder of contentFolders) {
 		for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, mod, contentFolder))) {
-			for (const contentFile of klaw(path.join(config.modsPath, mod, contentFolder, chunkFolder)).filter((a) => a.stats.isFile())) {
+			for (const contentFile of (await walk(path.join(config.modsPath, mod, contentFolder, chunkFolder))).filter((a) => a.stats.isFile())) {
 				const contentFilePath = contentFile.path
 				const contentType = path.basename(contentFilePath).split(".").slice(1).join(".")
 
@@ -392,7 +392,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 	}
 
 	for (const blobsFolder of blobsFolders) {
-		for (const blobFile of klaw(path.join(config.modsPath, mod, blobsFolder)).filter((a) => a.stats.isFile())) {
+		for (const blobFile of (await walk(path.join(config.modsPath, mod, blobsFolder))).filter((a) => a.stats.isFile())) {
 			const blob = blobFile.path
 			const blobPath = blob.replace(path.join(config.modsPath, mod, blobsFolder), "").slice(1).split(path.sep).join("/").toLowerCase()
 

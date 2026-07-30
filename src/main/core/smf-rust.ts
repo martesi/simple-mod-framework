@@ -11,8 +11,8 @@
 
 import checkDiskSpaceImport from "check-disk-space"
 import fs from "fs-extra"
-import klaw from "klaw-sync"
 import path from "path"
+import { walk } from "./fsWalk"
 
 /**
  * Natural-order comparator (so "chunk9" sorts before "chunk10"), matching the
@@ -50,19 +50,20 @@ function naturalCompare(a: string, b: string): number {
  * base chunk, sorted in descending order), drops chunk .meta files that already
  * have a .meta.json sibling, and copies the survivors into `toStagingDir`.
  *
- * Synchronous by design - callers (deploy.ts) rely on the staging directory being fully
- * populated by the time this returns, just like the old native call was.
+ * Async now (the walk itself no longer blocks the event loop - see `./fsWalk`'s klaw-sync ->
+ * klaw doc comment) but still awaited by every caller (deploy.ts) before it relies on the
+ * staging directory being fully populated, just like the old synchronous native call was.
  *
  * `toStagingDir` must be a fully resolved absolute path (the caller's responsibility - see
  * LEI-130) rather than a bare folder name joined against `"staging"` here, since this module no
  * longer assumes `process.cwd()` is the framework's data root.
  */
-export function stageDependenciesFrom(fromFolder: string, toStagingDir: string): void {
+export async function stageDependenciesFrom(fromFolder: string, toStagingDir: string): Promise<void> {
 	const reRpkg = /00[0-9A-F]*\..*?\\(chunk[0-9]*(?:patch[0-9]*)?)\\/i
 	const reRpkgChunk = /00[0-9A-F]*\..*?\\(chunk[0-9]*)(?:patch[0-9]*)?\\/i
 	const reMeta = /chunk[0-9]*(?:patch[0-9]*)?\.meta/i
 
-	const allFiles = klaw(fromFolder)
+	const allFiles = (await walk(fromFolder))
 		.filter((entry) => entry.stats.isFile())
 		.map((entry) => {
 			const rpkgMatch = entry.path.match(reRpkg)

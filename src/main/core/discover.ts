@@ -7,13 +7,13 @@ import { type Manifest, Language, OptionType, ModScript } from "./types"
 import mergeWith from "lodash.mergewith"
 import fs from "fs-extra"
 import json5 from "json5"
-import klaw from "klaw-sync"
 import { md5 } from "hash-wasm"
 import path from "path"
 import semver from "semver"
 import { xxhash3 } from "hash-wasm"
 import { compileExpression, useDotAccessOperatorAndOptionalChaining } from "filtrex"
 import { normaliseToHash } from "./utils"
+import { walk } from "./fsWalk"
 
 const deepMerge = function (x: any, y: any) {
 	return mergeWith(x, y, (orig, src) => {
@@ -86,7 +86,7 @@ export default async function discover(previousFileMap: { [x: string]: Discovere
 			!(
 				fs.existsSync(path.join(config.modsPath, mod)) &&
 				!fs.existsSync(path.join(config.modsPath, mod, "manifest.json")) &&
-				klaw(path.join(config.modsPath, mod))
+				(await walk(path.join(config.modsPath, mod)))
 					.filter((a) => a.stats.isFile())
 					.map((a) => a.path)
 					.some((a) => a.endsWith(".rpkg"))
@@ -130,7 +130,7 @@ export default async function discover(previousFileMap: { [x: string]: Discovere
 					fileMap[rpkgFilePath] = {
 						hash: await xxhash3(fs.readFileSync(rpkgFilePath)),
 						dependencies: [], // Raw files: depend on nothing, overwrite contained files
-						affected: klaw(path.join(paths.dataRoot, "temp"))
+						affected: (await walk(path.join(paths.dataRoot, "temp")))
 							.filter((a) => a.stats.isFile())
 							.filter((a) => !a.path.endsWith(".meta"))
 							.map((a) => path.basename(a.path).split(".")[0]),
@@ -286,7 +286,7 @@ export default async function discover(previousFileMap: { [x: string]: Discovere
 			/* ---------------------------------------------------------------------------------------------- */
 			for (const contentFolder of contentFolders) {
 				for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, mod, contentFolder))) {
-					for (const contentFilePath of klaw(path.join(config.modsPath, mod, contentFolder, chunkFolder))
+					for (const contentFilePath of (await walk(path.join(config.modsPath, mod, contentFolder, chunkFolder)))
 						.filter((a) => a.stats.isFile())
 						.map((a) => a.path)) {
 						const contentStat = fs.statSync(contentFilePath)
@@ -459,7 +459,7 @@ export default async function discover(previousFileMap: { [x: string]: Discovere
 			/* ---------------------------------------------------------------------------------------------- */
 			if (blobsFolders.length) {
 				for (const blobsFolder of blobsFolders) {
-					for (const blob of klaw(path.join(config.modsPath, mod, blobsFolder))
+					for (const blob of (await walk(path.join(config.modsPath, mod, blobsFolder)))
 						.filter((a) => a.stats.isFile())
 						.map((a) => a.path)) {
 						const blobStat = fs.statSync(blob)

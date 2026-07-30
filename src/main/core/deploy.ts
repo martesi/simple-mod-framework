@@ -18,13 +18,12 @@ import analyseMod, {
 import type { DeployInstruction, HMLanguageToolsLOCR, Manifest, ManifestOptionData, ModScript } from "./types"
 import { FrameworkVersion, config, logger, options, paths, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
 import { copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
+import { walk } from "./fsWalk"
 import { WorkerPool } from "./workerPool"
 
-import type { Transaction } from "@sentry/tracing"
 import { crc32 } from "crc"
 import fs from "fs-extra"
 import json5 from "json5"
-import klaw from "klaw-sync"
 import md5 from "md5"
 import mergeWith from "lodash.mergewith"
 import os from "os"
@@ -66,8 +65,23 @@ function resolvePatchWorkerPath(): string {
 	throw new Error(`Could not find patchWorker.js or patchWorker.cjs next to ${__dirname} - was it bundled alongside this module?`)
 }
 
+/**
+ * Minimal span-tree shape `deploy()` uses to structure each stage as a child of the last, and to
+ * hand a per-stage handle to `configureSentryScope` below. This used to be literally Sentry's own
+ * `Transaction`/`Span` type (`@sentry/tracing`) - real Sentry reporting was never actually wired up
+ * (nothing anywhere calls `Sentry.init()`; `deployPipeline.ts`'s `buildFrameworkConfig` always sets
+ * `reportErrors: false`, and every caller of `deploy()` only ever passes a no-op stub - see
+ * `noopSpan()`), so the dependency on `@sentry/tracing` was only ever there for this one type shape.
+ * Kept as a local type instead of a real span-tree implementation: nothing currently consumes the
+ * `op`/`description` metadata passed to `startChild()` for anything other than shaping a no-op tree.
+ */
+export interface Span {
+	startChild(options?: { op?: string; description?: string }): Span
+	finish(): void
+}
+
 export default async function deploy(
-	sentryTransaction: Transaction,
+	sentryTransaction: Span,
 	configureSentryScope: (transaction: unknown) => void,
 	invalidatedData: {
 		filePath: string
@@ -137,7 +151,7 @@ export default async function deploy(
 			!(
 				fs.existsSync(path.join(config.modsPath, mod)) &&
 				!fs.existsSync(path.join(config.modsPath, mod, "manifest.json")) &&
-				klaw(path.join(config.modsPath, mod))
+				(await walk(path.join(config.modsPath, mod)))
 					.filter((a) => a.stats.isFile())
 					.map((a) => a.path)
 					.some((a) => a.endsWith(".rpkg"))
@@ -182,7 +196,7 @@ export default async function deploy(
 
 				allRPKGTypes[chunkFolder] = "patch"
 
-				const allFiles = klaw(path.join(paths.dataRoot, "temp"))
+				const allFiles = (await walk(path.join(paths.dataRoot, "temp")))
 					.filter((a) => a.stats.isFile())
 					.map((a) => a.path)
 
@@ -1082,7 +1096,7 @@ export default async function deploy(
 					// this content item (never shared with any other content item, cached or not) and copy
 					// out whatever actually landed there. That's also what makes this safe to cache: the
 					// RPKG-only-mod discovery path (discover.ts) uses the same "generate into an isolated
-					// temp dir, then klaw it" trick for exactly the same reason.
+					// temp dir, then walk it" trick for exactly the same reason.
 					const materialHash = await xxhash3(contentIdentifier)
 					const materialCacheKey = path.join(`chunk${content.chunk}`, `material-${path.basename(contentIdentifier).slice(0, 15)}-${materialHash}`)
 					const materialTempDir = path.join(paths.dataRoot, "temp", "material", `chunk${content.chunk}`, materialHash)
@@ -1111,7 +1125,7 @@ export default async function deploy(
 
 					fs.ensureDirSync(path.join(paths.dataRoot, "staging", `chunk${content.chunk}`))
 
-					for (const generatedFile of klaw(materialTempDir)
+					for (const generatedFile of (await walk(materialTempDir))
 						.filter((a) => a.stats.isFile())
 						.map((a) => a.path)) {
 						fs.copyFileSync(generatedFile, path.join(paths.dataRoot, "staging", `chunk${content.chunk}`, path.basename(generatedFile)))
@@ -1745,7 +1759,7 @@ export default async function deploy(
 					) {
 						await logger.debug(`Copying dependency ${dependencyID} from cache`)
 
-						rust_utils.stageDependenciesFrom(
+						await rust_utils.stageDependenciesFrom(
 							path.join(paths.dataRoot, "cache", "global", path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`)),
 							path.join(paths.dataRoot, "staging", `chunk${dependencyChunk}`)
 						)
@@ -1764,7 +1778,7 @@ export default async function deploy(
 
 						await copyToCache("global", path.join(paths.dataRoot, "temp"), path.join("dependencies", `${dependencyID}-${dependencyPortFromChunk1 ? 1 : 0}`))
 
-						rust_utils.stageDependenciesFrom(path.join(paths.dataRoot, "temp"), path.join(paths.dataRoot, "staging", `chunk${dependencyChunk}`))
+						await rust_utils.stageDependenciesFrom(path.join(paths.dataRoot, "temp"), path.join(paths.dataRoot, "staging", `chunk${dependencyChunk}`))
 
 						fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 					}

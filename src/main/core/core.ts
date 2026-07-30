@@ -1,37 +1,27 @@
 const FrameworkVersion = "2.33.40"
 const isDevBuild = false
 
-import * as Sentry from "@sentry/node"
+import log from "electron-log/node"
 
 import type { Config } from "./types"
 import RPKGInstance from "./rpkg"
-import chalk from "chalk"
-import child_process from "child_process"
 import fs from "fs-extra"
 import json5 from "json5"
 import path from "path"
 
 /**
- * Options controlling how a {@link Core}'s logger behaves. All CLI-specific (console
- * printing/pausing) - an embedder (e.g. the mod manager's main process) will typically leave
- * these at their defaults.
+ * Options controlling how a {@link Core}'s logger behaves. The old CLI-era knobs
+ * (`useConsoleLogging`/`pauseAfterLogging`/`doNotPause`, plus the `pause()` "press any key to
+ * continue" behaviour they gated) are gone along with the CLI itself - there's no console for an
+ * embedder to pause in, and nothing ever set any of them to a non-default value once the CLI was
+ * dropped. Logging itself now goes through `electron-log` (see the `logger` construction below)
+ * instead of a hand-rolled chalk-coloured `process.stdout.write` + manual `Deploy.log`
+ * `fs.appendFileSync` - a "proper" log writer gives file rotation/formatting for free, and nothing
+ * downstream of the embedded app was actually reading main-process stdout anyway.
  */
 export interface CoreOptions {
-	/** Print to the console (with ANSI colouring, no per-level filtering) instead of the default "write to Deploy.log and filter by logLevel" behaviour. Used by the CLI's `--useConsoleLogging` flag. */
-	useConsoleLogging?: boolean
-
-	/** In non-console-logging mode, which log levels get printed to stdout/stderr (everything is always appended to Deploy.log regardless). Defaults to every level. */
-	logLevel?: string[]
-
-	/** CLI-only debugging aid: block for a keypress after every logged line. */
-	pauseAfterLogging?: boolean
-
-	/**
-	 * Skip the "press any key to continue" pause that normally follows a fatal error.
-	 * Defaults to `true` (no pausing) because most embedders have no console to pause in -
-	 * a real CLI entry point opts back into the interactive pause explicitly.
-	 */
-	doNotPause?: boolean
+	/** Minimum electron-log level (`"error" | "warn" | "info" | "verbose" | "debug" | "silly"`) forwarded to the main-process/DevTools console, or `false` to disable it entirely. Defaults to `"debug"`. Deploy.log itself (the file transport) always receives every level regardless of this - this only controls what's cheap-to-ignore console noise. */
+	consoleLevel?: false | "error" | "warn" | "info" | "verbose" | "debug" | "silly"
 
 	/**
 	 * Injected filesystem roots - replaces the old assumption that "the framework's own folder"
@@ -58,7 +48,7 @@ export interface Logger {
 
 	/**
 	 * Log an error. By default this is fatal - it runs cleanup (registered cleanup callbacks,
-	 * Sentry, the RPKG process) and then throws a {@link CoreFatalError} instead of calling
+	 * the RPKG process) and then throws a {@link CoreFatalError} instead of calling
 	 * `process.exit()`; it is up to whichever caller is running the core (the CLI entry point,
 	 * or an embedder's IPC handler) to decide what to do with that - typically `process.exit(1)`
 	 * for a CLI, or surfacing the error to the UI for an embedder. Pass `exitAfter: false` for a
@@ -72,10 +62,7 @@ export type CleanupCallback = () => void | Promise<void>
 
 /** {@link CoreOptions}, normalised to concrete values - see {@link Core.options}. */
 export interface ResolvedCoreOptions {
-	useConsoleLogging: boolean
-	logLevel: string[]
-	pauseAfterLogging: boolean
-	doNotPause: boolean
+	consoleLevel: false | "error" | "warn" | "info" | "verbose" | "debug" | "silly"
 }
 
 /**
@@ -130,7 +117,7 @@ export interface Core {
 	registerCleanup(fn: CleanupCallback): void
 	unregisterCleanup(fn: CleanupCallback): void
 
-	/** Run the same cleanup a fatal error would (registered cleanups, Sentry, the RPKG process), without throwing - for a normal/successful end of a deploy. */
+	/** Run the same cleanup a fatal error would (registered cleanups, the RPKG process), without throwing - for a normal/successful end of a deploy. */
 	cleanExit(): Promise<void>
 }
 
@@ -145,8 +132,7 @@ export interface Core {
  * touches the filesystem until this function is actually called.
  */
 export function createCore(configOrPath: Config | string, options: CoreOptions = {}): Core {
-	const logLevel = options.logLevel?.length ? options.logLevel : ["debug", "info", "warn", "error"]
-	const doNotPause = options.doNotPause ?? true
+	const consoleLevel = options.consoleLevel ?? "debug"
 
 	const config: Config = typeof configOrPath === "string" ? json5.parse(fs.readFileSync(configOrPath, "utf8")) : configOrPath
 
@@ -183,17 +169,26 @@ export function createCore(configOrPath: Config | string, options: CoreOptions =
 
 	const rpkgInstance = new RPKGInstance(path.join(toolsRoot, "Third-Party", "rpkg-cli"))
 
+	// electron-log's own file/console transports replace the old hand-rolled pair of a manual
+	// `fs.appendFileSync` to Deploy.log plus a chalk-coloured `process.stdout.write` - "a proper
+	// electron log writer" instead of reinventing formatting/level-filtering ourselves. `/node`
+	// (not `/main`) deliberately: this same createCore() runs both on the main thread and inside a
+	// worker thread (see patchWorker.ts), and `electron-log/main`'s default log-path resolution
+	// (plus its renderer-IPC-bridge `initialize()` step, which we don't use here anyway) goes
+	// through Electron's `app` module - not something a plain `node:worker_threads` Worker is
+	// guaranteed to have working access to. `/node` never touches `app` at all, so it behaves
+	// identically in both contexts; we already pass `dataRoot` in explicitly instead of relying on
+	// electron-log's own Electron-app-path default regardless.
 	const logFilePath = path.join(dataRoot, "Deploy.log")
+	log.transports.file.resolvePathFn = () => logFilePath
 
-	/**
-	 * Append-only write instead of the old "keep the whole log in a string and rewrite the entire
-	 * file on every single log call" (O(n^2) total bytes written per deploy) - see LEI-129. There's
-	 * no reason to keep the accumulated log text in memory either now that every call is just a
-	 * single small write.
-	 */
-	function appendLog(line: string) {
-		fs.appendFileSync(logFilePath, line)
-	}
+	// Deploy.log is meant to be a complete record - every level, always - matching the old
+	// unconditional appendLog() behaviour. `consoleLevel` only governs the separate console
+	// transport below (main-process stdout / DevTools), which nothing downstream of this embedded
+	// app actually reads once the CLI's own terminal went away - it's left on by default purely as
+	// a cheap `npm run dev` convenience, not because anything in production consumes it.
+	log.transports.file.level = "silly"
+	log.transports.console.level = consoleLevel
 
 	const cleanupCallbacks = new Set<CleanupCallback>()
 
@@ -217,8 +212,6 @@ export function createCore(configOrPath: Config | string, options: CoreOptions =
 
 		cleanupCallbacks.clear()
 
-		await Sentry.close()
-
 		rpkgInstance.exit()
 	}
 
@@ -226,129 +219,44 @@ export function createCore(configOrPath: Config | string, options: CoreOptions =
 		await runCleanup()
 	}
 
-	function pause() {
-		child_process.execSync("pause", {
-			// @ts-expect-error This code works and I'm not going to question it
-			shell: true,
-			stdio: "inherit"
-		})
-	}
-
-	/** Shared by both logger flavours' `error()` - run cleanup and throw instead of `process.exit()`. */
+	/** Shared by `logger.error()` - run cleanup and throw instead of `process.exit()`. */
 	async function fatalError(text: string): Promise<never> {
 		await runCleanup()
 		throw new CoreFatalError(text)
 	}
 
-	const logger: Logger = options.useConsoleLogging
-		? {
-				async verbose(text, mod) {
-					appendLog(`\nDETAIL\t${mod || "Deploy"}\t${text}`)
-				},
+	const logger: Logger = {
+		async verbose(text, mod) {
+			log.verbose(...(mod ? [`[${mod}]`, text] : [text]))
+		},
 
-				async debug(text, mod) {
-					appendLog(`\nDEBUG\t${mod || "Deploy"}\t${text}`)
-					console.debug("DEBUG", ...(mod ? [mod, text] : [text]))
-				},
+		async debug(text, mod) {
+			log.debug(...(mod ? [`[${mod}]`, text] : [text]))
+		},
 
-				async info(text, mod) {
-					appendLog(`\nINFO\t${mod || "Deploy"}\t${text}`)
-					console.info("INFO", ...(mod ? [mod, text] : [text]))
-				},
+		async info(text, mod) {
+			log.info(...(mod ? [`[${mod}]`, text] : [text]))
+		},
 
-				async warn(text, mod) {
-					appendLog(`\nWARN\t${mod || "Deploy"}\t${text}`)
-					console.warn("WARN", ...(mod ? [mod, text] : [text]))
-				},
+		async warn(text, mod) {
+			log.warn(...(mod ? [`[${mod}]`, text] : [text]))
+		},
 
-				async error(text, exitAfter = true, mod) {
-					appendLog(`\nERROR\t${mod || "Deploy"}\t${text}`)
-					console.log("ERROR", ...(mod ? [mod, text] : [text]))
+		async error(text, exitAfter = true, mod) {
+			log.error(...(mod ? [`[${mod}]`, text] : [text]))
 
-					if (mod) {
-						console.trace() // It's unimportant where framework errors come from
-					}
-
-					if (!doNotPause) {
-						pause()
-					}
-
-					if (exitAfter) {
-						await fatalError(text)
-					}
-				}
+			if (mod) {
+				console.trace() // It's unimportant where framework errors come from
 			}
-		: {
-				async verbose(text, mod) {
-					appendLog(`\nDETAIL\t${mod || "Deploy"}\t${text}`)
 
-					if (logLevel.includes("verbose")) {
-						process.stdout.write(chalk(Object.assign([], { raw: [`{grey DETAIL${mod ? `\t${mod}` : ""}\t${text.replace(/\\/gi, "\\\\")}}\n`] })))
-
-						if (options.pauseAfterLogging) {
-							pause()
-						}
-					}
-				},
-
-				async debug(text, mod) {
-					appendLog(`\nDEBUG\t${mod || "Deploy"}\t${text}`)
-
-					if (logLevel.includes("debug")) {
-						process.stdout.write(chalk(Object.assign([], { raw: [`{grey DEBUG${mod ? `\t${mod}` : ""}\t${text.replace(/\\/gi, "\\\\")}}\n`] })))
-
-						if (options.pauseAfterLogging) {
-							pause()
-						}
-					}
-				},
-
-				async info(text, mod) {
-					appendLog(`\nINFO\t${mod || "Deploy"}\t${text}`)
-
-					if (logLevel.includes("info")) {
-						process.stdout.write(chalk(Object.assign([], { raw: [`{blue INFO}${mod ? `\t{magenta ${mod}}` : ""}\t${text.replace(/\\/gi, "\\\\")}\n`] })))
-
-						if (options.pauseAfterLogging) {
-							pause()
-						}
-					}
-				},
-
-				async warn(text, mod) {
-					appendLog(`\nWARN\t${mod || "Deploy"}\t${text}`)
-
-					if (logLevel.includes("warn")) {
-						process.stdout.write(chalk(Object.assign([], { raw: [`{yellow WARN}${mod ? `\t{magenta ${mod}}` : ""}\t${text.replace(/\\/gi, "\\\\")}\n`] })))
-
-						if (options.pauseAfterLogging) {
-							pause()
-						}
-					}
-				},
-
-				async error(text, exitAfter = true, mod) {
-					appendLog(`\nERROR\t${mod || "Deploy"}\t${text}`)
-
-					// Matches the historical behaviour: if "error" isn't in the configured logLevel,
-					// this call - including the fatal exitAfter path - is a no-op beyond the log file.
-					if (logLevel.includes("error")) {
-						process.stderr.write(chalk(Object.assign([], { raw: [`{red ERROR}${mod ? `\t{magenta ${mod}}` : ""}\t${text.replace(/\\/gi, "\\\\")}\n`] })))
-
-						if (mod) {
-							console.trace() // It's unimportant where framework errors come from
-						}
-
-						if (!doNotPause) {
-							pause()
-						}
-
-						if (exitAfter) {
-							await fatalError(text)
-						}
-					}
-				}
+			// Unlike the old logLevel-gated version of this branch, the fatal exitAfter path always
+			// runs regardless of consoleLevel - whether a stage prints to the console is cosmetic;
+			// whether a deploy actually stops on a real error should never depend on it.
+			if (exitAfter) {
+				await fatalError(text)
 			}
+		}
+	}
 
 	return {
 		FrameworkVersion,
@@ -361,10 +269,7 @@ export function createCore(configOrPath: Config | string, options: CoreOptions =
 			toolsRoot
 		},
 		options: {
-			useConsoleLogging: !!options.useConsoleLogging,
-			logLevel,
-			pauseAfterLogging: !!options.pauseAfterLogging,
-			doNotPause
+			consoleLevel
 		},
 		registerCleanup,
 		unregisterCleanup,

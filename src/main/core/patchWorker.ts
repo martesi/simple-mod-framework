@@ -17,7 +17,7 @@ import "clarify"
 
 const execCommand = function (command: string) {
 	void logger.verbose(`Executing command ${command}`)
-	return new Promise((resolve, reject) => {
+	return new Promise((resolve, _reject) => {
 		const x = child_process.exec(command)
 		x.stdout?.pipe(process.stdout)
 		x.stderr?.pipe(process.stderr)
