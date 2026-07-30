@@ -24,6 +24,29 @@ interface WizardState {
   step: number
 }
 
+/**
+ * Single source of truth for a hazard that shows up at every call site that can make the backend
+ * register a mod into knownMods/modOrder after this store already has a `config` in hand:
+ * mods:list, mods:rebuildIndex, and a fresh install (modOps.ts) all call addKnownMods()
+ * (settings.ts) themselves - see ipcHandlers.ts's mods:list doc comment - to catch mods that were
+ * already sitting on disk (a modPath switch pointed at a folder migrated from the old Mod Manager)
+ * or that just got dropped in. If this store's `config` isn't re-fetched *after* that write-through
+ * resolves, its modOrder stays the pre-registration snapshot, and toggleMod()'s
+ * `config.modOrder.filter(...)` would never find those mods' ids - flipping their switch would
+ * silently produce the same loadOrder it started with.
+ *
+ * `fetchMods` is the one thing that actually varies per caller (init()/setModPath() want
+ * `smf.mods.list()`, rebuildIndex() wants `smf.mods.rebuildIndex()`) - composed in as an argument
+ * instead of this function picking one itself, so the sequencing (mods first, *then* config - not
+ * Promise.all'd, since config:get() has to see whichever of those two calls' own addKnownMods()
+ * write-through actually ran) only has to be written once.
+ */
+async function refreshModsAndConfig(fetchMods: () => Promise<ModEntry[]>): Promise<{ mods: ModEntry[]; config: Config }> {
+  const mods = await fetchMods()
+  const config = await getSmfApi().config.get()
+  return { mods, config }
+}
+
 interface AppState {
   loaded: boolean
   config: Config | null
@@ -125,18 +148,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     // data rather than accumulating anything. See initListeners() for the subscription half.
     set({ config, defaultPaths, loaded: true, modsLoading: true, wizard: { open: !config.gamePath, step: 0 } })
 
-    const mods = await smf.mods.list()
-
-    // mods:list's own addKnownMods() write-through (see ipcHandlers.ts) may have just registered
-    // mods that were already sitting on disk before this app ever indexed them - e.g. a modPath
-    // just pointed at an existing folder migrated from the old Mod Manager - into knownMods/
-    // modOrder on disk. The `config` this store is holding was fetched *before* that write-through
-    // ran, so its modOrder is still the pre-registration snapshot; left alone, toggleMod()'s
-    // `config.modOrder.filter(...)` below would never find those mods' ids and flipping their
-    // switch would silently produce the same loadOrder it started with. Re-fetching here is cheap
-    // (config:get is an in-memory read, same as the one in the Promise.all above) and keeps this
-    // store's config in sync with whatever mods:list just persisted.
-    const freshConfig = await smf.config.get()
+    // See refreshModsAndConfig()'s doc comment - mods:list's own addKnownMods() write-through can
+    // register mods this store's `config` (fetched above, before that write-through ran) doesn't
+    // know about yet.
+    const { mods, config: freshConfig } = await refreshModsAndConfig(() => smf.mods.list())
     set({ mods, modsLoading: false, cacheProgress: null, config: freshConfig })
   },
 
@@ -147,17 +162,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({ addTasks: { ...s.addTasks, [update.taskId]: { ...update, startedAt: s.addTasks[update.taskId]?.startedAt ?? Date.now() } } }))
 
       if (update.status === "done") {
-        // A task finishing is exactly the kind of external mutation that
-        // should refresh the mods list without disturbing anything else the
-        // user is doing (per-row, non-blocking - see ipc.ts). A fresh install
-        // also just ran its own addKnownMods() write-through (see
-        // modOps.ts), same hazard as init()/setModPath()/rebuildIndex()
-        // above - re-fetch config too, or the just-installed mod's id won't
-        // be in this store's modOrder yet and its switch won't do anything.
-        smf.mods.list().then((mods) => {
-          set({ mods })
-          smf.config.get().then((config) => set({ config }))
-        })
+        // A task finishing is exactly the kind of external mutation that should refresh the mods
+        // list without disturbing anything else the user is doing (per-row, non-blocking - see
+        // ipc.ts). See refreshModsAndConfig()'s doc comment for why config comes along too.
+        refreshModsAndConfig(() => smf.mods.list()).then(({ mods, config }) => set({ mods, config }))
         setTimeout(() => {
           set((s) => {
             const next = { ...s.addTasks }
@@ -289,8 +297,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   async removeMod(modId) {
     const result = await getSmfApi().mods.remove(modId)
     if (result.ok) {
-      const smf = getSmfApi()
-      const [config, mods] = await Promise.all([smf.config.get(), smf.mods.list()])
+      // mods:remove itself only ever drops ids from knownMods/modOrder/loadOrder, never adds any -
+      // going through the same refreshModsAndConfig() as every other mods-changed call site anyway
+      // (rather than a one-off Promise.all) keeps this in the one place that gets the mods-then-
+      // config sequencing right, instead of a second copy that happens to be harmless today only
+      // because removal can't trigger mods:list's own addKnownMods() write-through.
+      const { mods, config } = await refreshModsAndConfig(() => getSmfApi().mods.list())
       set({ config, mods })
     }
     return result
@@ -311,13 +323,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   async rebuildIndex() {
     set({ rebuildingIndex: true, cacheProgress: null })
     try {
-      const mods = await getSmfApi().mods.rebuildIndex()
-      // Same addKnownMods() write-through hazard as init()/setModPath() above: a rebuild can
-      // surface mods dropped into the Mods folder outside this app entirely (see
-      // ipcHandlers.ts's mods:rebuildIndex doc comment), and this store's `config` needs a
-      // fresh modOrder/knownMods to actually be able to enable them afterward.
-      const freshConfig = await getSmfApi().config.get()
-      set({ mods, config: freshConfig })
+      // Same addKnownMods() write-through hazard as init()/setModPath() above (see
+      // refreshModsAndConfig()'s doc comment): a rebuild can surface mods dropped into the Mods
+      // folder outside this app entirely (see ipcHandlers.ts's mods:rebuildIndex doc comment), and
+      // this store's `config` needs a fresh modOrder/knownMods to actually be able to enable them
+      // afterward.
+      const { mods, config } = await refreshModsAndConfig(() => getSmfApi().mods.rebuildIndex())
+      set({ mods, config })
       toast.success("Mod cache rebuilt.")
     } finally {
       set({ rebuildingIndex: false, cacheProgress: null })
@@ -390,18 +402,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ config: { ...config, modPath } })
     await getSmfApi().config.merge({ modPath })
     // Pointing at a different folder means a genuinely different set of mods live there - the main
-    // process just force-rebuilt its index against it and registered whatever was already sitting
-    // in that folder into knownMods/modOrder (see ipcHandlers.ts's config:merge -> addKnownMods()),
-    // so re-fetch both here instead of leaving the mod list showing whatever was in the old folder
-    // and `config` (specifically modOrder) stuck on the pre-switch snapshot. Without the config
-    // re-fetch, toggleMod()'s `config.modOrder.filter(...)` would never find any mod that was only
-    // just registered by this switch, and flipping its switch would silently do nothing - the exact
-    // "picked a mod path with existing mods in it, now can't enable any of them" bug. Sequential,
-    // not Promise.all'd: mods:list() has its own addKnownMods() write-through too (see
-    // ipcHandlers.ts), so config:get() has to run *after* it resolves to see that write as well,
-    // not just config:merge's.
-    const mods = await getSmfApi().mods.list()
-    const freshConfig = await getSmfApi().config.get()
+    // process just force-rebuilt its index against it (see ipcHandlers.ts's config:merge). See
+    // refreshModsAndConfig()'s doc comment for why `config` needs the same re-fetch, not just
+    // `mods` - without it this is the exact "picked a mod path with existing mods in it, now can't
+    // enable any of them" bug.
+    const { mods, config: freshConfig } = await refreshModsAndConfig(() => getSmfApi().mods.list())
     set({ mods, config: freshConfig })
   },
 
