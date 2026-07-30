@@ -1,7 +1,7 @@
 import { resolve } from "node:path"
 import { defineConfig } from "electron-vite"
-import react from "@vitejs/plugin-react"
-import babel from "vite-plugin-babel"
+import react, { reactCompilerPreset } from "@vitejs/plugin-react"
+import babel from "@rolldown/plugin-babel"
 
 // This app replaces the old Svelte Mod Manager's Electron renderer (see
 // LEI-137 for the UI rebuild). fs/child_process access lives only in
@@ -169,31 +169,23 @@ export default defineConfig(({ command }) => ({
     plugins: [
       react(),
       // React Compiler (React 19's own reason for existing here - see package.json's doc comment)
-      // via a standalone Babel pass rather than @vitejs/plugin-react's old inline `babel.plugins`
-      // option: that option was removed outright in @vitejs/plugin-react@6 in favour of a
-      // `reactCompilerPreset()` + `@rolldown/plugin-babel` combo, but that plugin has a hard peer
-      // dependency on the Rolldown bundler itself (`rolldown: ^1.0.0-rc.5`) - this app still runs on
-      // plain Rollup-based Vite (electron.vite.config.ts's `rollupOptions` below assume Rollup
-      // throughout), not rolldown-vite, so that combo doesn't apply here. `vite-plugin-babel` is the
-      // bundler-agnostic path React's own docs show for exactly this case (see their React Router
-      // recipe) - a real, independent Vite plugin, not tied to @vitejs/plugin-react's internals.
+      // via `reactCompilerPreset()` + `@rolldown/plugin-babel` - the combo React's own docs
+      // recommend for `@vitejs/plugin-react >= 6.0.0` (that version removed the old inline
+      // `babel.plugins` option outright). An earlier revision of this file reasoned that combo
+      // didn't apply here because `@rolldown/plugin-babel` peer-depends on the Rolldown bundler
+      // itself and this app "still runs on plain Rollup-based Vite" - that was wrong: Vite 8
+      // (this project's `vite: ^8.1.5`) ships Rolldown as its one and only bundler
+      // (rollupOptions above is kept purely as a compat alias for rolldownOptions), and `vite`
+      // itself lists `rolldown` as a hard runtime dependency, not a peer left for the app to
+      // provide. So this app has been on Rolldown since the vite@8 bump, and the Rolldown-native
+      // plugin is the correct, officially-documented path - `vite-plugin-babel` was an unnecessary
+      // bundler-agnostic detour based on a false premise.
       //
-      // `enforce: "pre"` (vite-plugin-babel's default) runs this before @vitejs/plugin-react's own
-      // esbuild-based transform regardless of array order, which is required here: the compiler
-      // needs to see original JSX/hook calls, not whatever @vitejs/plugin-react would've already
-      // lowered them to. `@babel/preset-typescript` with `isTSX`/`allExtensions` only parses
-      // TS/TSX syntax so Babel can walk the AST - it deliberately does NOT lower JSX to
-      // `React.createElement` itself (that's not what isTSX-without-preset-react does), leaving
-      // @vitejs/plugin-react's own JSX transform (with its automatic-runtime/Fast-Refresh wiring)
-      // as the one place that still happens.
-      babel({
-        include: /\.[jt]sx?$/,
-        exclude: /node_modules/,
-        babelConfig: {
-          presets: [["@babel/preset-typescript", { isTSX: true, allExtensions: true }]],
-          plugins: ["babel-plugin-react-compiler"]
-        }
-      })
+      // No `@babel/preset-typescript` needed either (unlike the old vite-plugin-babel setup):
+      // `@rolldown/plugin-babel` already configures per-extension parserOpts internally
+      // (`typescript`/`jsx` parser plugins for .ts/.tsx/.jsx) so it can parse this repo's TSX
+      // without any extra preset wiring on our end.
+      babel({ presets: [reactCompilerPreset()] })
     ]
   }
 }))
