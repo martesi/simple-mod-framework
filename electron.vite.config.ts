@@ -28,27 +28,36 @@ export default defineConfig(({ command }) => ({
     build: {
       // Same fix as preload below, applied preemptively here rather than
       // after the fact: electron-vite's build.externalizeDeps defaults to
-      // true, which leaves every package.json "dependencies" entry (as
-      // opposed to devDependencies - typescript is why that one already
-      // ends up bundled, see the output.format comment below) as a bare
-      // require("pkg-name") in out/main/index.cjs instead of inlining it.
-      // That's invisible in `npm run dev` because a real node_modules folder
+      // true, which leaves every package.json "dependencies" entry as a
+      // bare require("pkg-name") in out/main/index.cjs instead of inlining
+      // it - only devDependencies (and phantom deps) that are actually
+      // imported get bundled/tree-shaken regardless of this setting (see
+      // https://electron-vite.org/guide/dependency-handling). That's
+      // invisible in `npm run dev` because a real node_modules folder
       // happens to be sitting on disk next to the project - but
       // electron-builder.yml ships only `out/**/*` with no node_modules in
-      // the packaged app, so main's own fs-extra/json5/chalk/semver/etc.
-      // requires (all "dependencies") would 404 the same way
-      // @electron-toolkit/preload just did in preload, the first time this
-      // actually gets packaged rather than run from source. Disabling it
-      // bundles all of it into index.cjs, matching what electron-builder.yml's
-      // own doc comment already assumes is true ("no node_modules carried
-      // into app.asar because main/preload are fully bundled").
+      // the packaged app, so a "dependencies" require would 404 the same
+      // way @electron-toolkit/preload once did in preload, the first time
+      // this actually gets packaged rather than run from source. Disabling
+      // it bundles everything into index.cjs, matching what
+      // electron-builder.yml's own doc comment already assumes is true
+      // ("no node_modules carried into app.asar because main/preload are
+      // fully bundled").
       //
-      // Only disabled for `command === 'build'` though - `electron-vite dev`
-      // also goes through this same config but runs main straight out of
-      // out/main next to a real node_modules folder (see above), so there's
-      // no packaging step to protect against and every dev restart isn't
-      // worth paying the "bundle all of typescript's ~50k lines into
-      // index.cjs again" cost for. Left at the default (true) there instead.
+      // As of the package.json dependencies/devDependencies pass, esbuild
+      // (see the `external` comment below) is now the *only* entry left
+      // under "dependencies" - everything else src/main actually imports
+      // (fs-extra, json5, semver, three, etc.) was moved to devDependencies
+      // specifically so it gets bundled/tree-shaken instead of shipped
+      // whole as an unbundled require, matching electron-vite's own
+      // documented recommendation. Since esbuild is separately forced
+      // external unconditionally via `rollupOptions.external` below (for
+      // reasons that have nothing to do with externalizeDeps), this
+      // `command !== "build"` conditional may not have any observable
+      // effect left - flagged rather than removed outright, since that
+      // claim hasn't been verified against electron-vite's own internals
+      // (only against its docs), and this repo's sandbox can't run a real
+      // `electron-vite dev`/`build` to confirm either way.
       externalizeDeps: command !== "build",
       rollupOptions: {
         // esbuild (the embedded core's mod-script transpiler as of LEI-139,
