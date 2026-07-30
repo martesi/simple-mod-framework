@@ -13,8 +13,6 @@ import path from "path"
 import { parentPort } from "worker_threads"
 import { xxhash3 } from "hash-wasm"
 
-import "clarify"
-
 const execCommand = function (command: string) {
 	void logger.verbose(`Executing command ${command}`)
 	return new Promise((resolve, _reject) => {

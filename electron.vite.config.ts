@@ -1,5 +1,6 @@
 import { resolve } from "node:path"
-import { defineConfig } from "electron-vite"
+import { defineConfig, type UserConfig } from "electron-vite"
+import type { ConfigEnv } from "vite"
 import react, { reactCompilerPreset } from "@vitejs/plugin-react"
 import babel from "@rolldown/plugin-babel"
 
@@ -23,7 +24,7 @@ import babel from "@rolldown/plugin-babel"
 // src/workerPool.ts, LEI-132) instead of Piscina - no package-specific
 // node_modules layout to worry about at runtime, see electron-builder.yml's
 // doc comment.
-export default defineConfig(({ command }) => ({
+export default defineConfig(async ({ command }: ConfigEnv): Promise<UserConfig> => ({
   main: {
     build: {
       // Same fix as preload below, applied preemptively here rather than
@@ -194,7 +195,23 @@ export default defineConfig(({ command }) => ({
       // `@rolldown/plugin-babel` already configures per-extension parserOpts internally
       // (`typescript`/`jsx` parser plugins for .ts/.tsx/.jsx) so it can parse this repo's TSX
       // without any extra preset wiring on our end.
-      babel({ presets: [reactCompilerPreset()] })
+      //
+      // `await` is required here, unlike every other plugin factory in this file:
+      // @rolldown/plugin-babel's default export is an `async function`, so calling babel(...)
+      // returns a Promise<Plugin>, not a Plugin. Vite itself tolerates a bare Promise inside
+      // `plugins` (it flattens/awaits plugin arrays internally), but electron-vite's own
+      // RendererConfigFactory.build() deep-clones the resolved renderer config *before* Vite
+      // gets to do that, and its deepClone() only special-cases arrays/plain-objects/functions/
+      // RegExp - a raw Promise fails its `Object.prototype.toString.call(v) === '[object Object]'`
+      // check and throws "Cannot deep clone non-plain object". Requires this whole config
+      // factory to be `async` (see the `defineConfig(async (...) => ...)` above) so this await
+      // has somewhere to live. The explicit `(env: ConfigEnv): Promise<UserConfig>` annotation
+      // on that factory isn't optional style - without it, TypeScript's overload resolution for
+      // electron-vite's `defineConfig()` fails ("no overload matches this call"): it can't infer
+      // which of the sync/async/union overloads applies before it has contextually typed this
+      // object literal, so properties like `format: "cjs"` widen to `string` instead of staying
+      // literal, and the widened shape then fails to structurally match any overload.
+      await babel({ presets: [reactCompilerPreset()] })
     ]
   }
 }))

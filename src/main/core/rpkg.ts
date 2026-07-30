@@ -1,8 +1,6 @@
 import child_process from "child_process"
 import path from "path"
 
-import "clarify"
-
 /**
  * Thrown when the underlying rpkg-cli process exits unexpectedly (crashes) instead of on
  * request. Replaces the previous behaviour of calling `process.exit(1)` from inside the
