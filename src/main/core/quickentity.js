@@ -106,7 +106,7 @@ import * as LosslessJSON from "lossless-json"
 import { Decimal } from "decimal.js"
 import rfc6902 from "rfc6902"
 import deepEqual from "lodash.isequal"
-import deepMerge from "lodash.merge"
+import deepMerge from "lodash.mergewith"
 
 import * as THREE from "three"
 
