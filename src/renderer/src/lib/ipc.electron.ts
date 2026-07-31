@@ -1,5 +1,5 @@
 import type { Config, DefaultPaths, ModEntry } from "./manifest-types"
-import type { DeployProgress, DeploySnapshot, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
+import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
 
 /**
  * The real `SmfApi` implementation (LEI-134), backed by the `smf` bridge
@@ -37,7 +37,11 @@ export function createElectronSmfApi(): SmfApi {
 
       remove: (modId) => bridge.mods.remove(modId) as Promise<{ ok: boolean; reason?: string }>,
 
-      updateOutdated: (modId) => bridge.mods.updateOutdated(modId) as Promise<ModEntry>
+      updateOutdated: (modId) => bridge.mods.updateOutdated(modId) as Promise<ModEntry>,
+
+      buildStatuses: () => bridge.mods.buildStatuses() as Promise<ModBuildInfo[]>,
+
+      rebuildCacheDb: () => bridge.mods.rebuildCacheDb() as Promise<{ ok: boolean; reason?: string }>
     },
 
     deploy: {

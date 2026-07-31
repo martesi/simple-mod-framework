@@ -32,6 +32,7 @@ export function ModsScreen() {
   const mods = useAppStore((s) => s.mods)
   const modsLoading = useAppStore((s) => s.modsLoading)
   const cacheProgress = useAppStore((s) => s.cacheProgress)
+  const buildStatuses = useAppStore((s) => s.buildStatuses)
   const config = useAppStore((s) => s.config)
   const search = useAppStore((s) => s.search)
   const setSearch = useAppStore((s) => s.setSearch)
@@ -147,6 +148,7 @@ export function ModsScreen() {
               {windowed.map((mod) => {
                 const enabled = enabledIds.includes(mod.id)
                 const enabledIndex = enabledIds.indexOf(mod.id)
+                const build = buildStatuses[mod.id]
                 return (
                   <SortableModRow
                     key={mod.id}
@@ -156,6 +158,8 @@ export function ModsScreen() {
                     orderLabel={enabledIndex >= 0 ? String(enabledIndex + 1) : ""}
                     removeBlocked={deployActive}
                     dragDisabled={!!q}
+                    buildStatus={build?.status}
+                    buildError={build?.error}
                     // Stable store-action/setState references, not per-row closures - see
                     // ModRow.tsx's doc comment on why that's what lets memo() actually skip
                     // re-rendering rows unaffected by whatever caused this component to re-render.

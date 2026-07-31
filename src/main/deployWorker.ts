@@ -1,6 +1,7 @@
 import { parentPort } from "node:worker_threads"
 import type { AppPaths } from "./paths"
 import type { AppSettings } from "./settings"
+import type { ModsConfig } from "./modsConfig"
 import type { GamePathInfo } from "./gameDetect"
 import { runFullDeploy, runAnalyseMod, type DeployPipelineLogLine } from "./deployPipeline"
 
@@ -18,8 +19,8 @@ import { runFullDeploy, runAnalyseMod, type DeployPipelineLogLine } from "./depl
  */
 
 export type DeployWorkerRequest =
-  | { id: number; type: "deploy"; paths: AppPaths; settings: AppSettings; game: GamePathInfo }
-  | { id: number; type: "analyseMod"; paths: AppPaths; settings: AppSettings; game: GamePathInfo; modId: string }
+  | { id: number; type: "deploy"; paths: AppPaths; settings: AppSettings; modsConfig: ModsConfig; game: GamePathInfo }
+  | { id: number; type: "analyseMod"; paths: AppPaths; settings: AppSettings; modsConfig: ModsConfig; game: GamePathInfo; modId: string }
 
 export type DeployWorkerMessage =
   | { id: number; type: "log"; line: DeployPipelineLogLine }
@@ -38,8 +39,8 @@ port.on("message", async (req: DeployWorkerRequest) => {
   try {
     const result =
       req.type === "deploy"
-        ? await runFullDeploy(req.paths, req.settings, req.game, onLog)
-        : await runAnalyseMod(req.paths, req.settings, req.game, req.modId, onLog)
+        ? await runFullDeploy(req.paths, req.settings, req.modsConfig, req.game, onLog)
+        : await runAnalyseMod(req.paths, req.settings, req.modsConfig, req.game, req.modId, onLog)
 
     port.postMessage(result.ok ? ({ id: req.id, type: "done", ok: true } satisfies DeployWorkerMessage) : ({ id: req.id, type: "done", ok: false, error: result.error } satisfies DeployWorkerMessage))
   } catch (err) {

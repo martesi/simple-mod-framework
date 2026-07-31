@@ -3,7 +3,11 @@ import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
 import type { DeployStage } from "@/lib/ipc"
 
+// Matches deployManager.ts's STAGE_INDEX ordering exactly - "waiting-for-cache-build" (LEI-141's
+// queue-aware deploy gate) only ever actually shows when at least one mod in the load order isn't
+// eager-built yet; most deploys skip straight past it to "sorting", same as before this stage existed.
 const STAGES: { key: DeployStage; label: string }[] = [
+  { key: "waiting-for-cache-build", label: "Waiting for mods to finish building" },
   { key: "sorting", label: "Sorting load order" },
   { key: "extracting", label: "Extracting RPKG mods" },
   { key: "patching", label: "Patching game files" },

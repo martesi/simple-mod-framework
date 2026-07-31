@@ -1,6 +1,8 @@
-import { ExternalLink } from "lucide-react"
+import { useState } from "react"
+import { ExternalLink, Loader2 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
 import { ACCENTS, ACCENT_LABELS, resolveDark, type Accent, type ThemeMode } from "@/lib/theme"
@@ -34,10 +36,19 @@ export function SettingsScreen() {
   const browseCachePath = useAppStore((s) => s.browseCachePath)
   const browseModPath = useAppStore((s) => s.browseModPath)
   const openWizard = useAppStore((s) => s.openWizard)
+  const rebuildCacheDb = useAppStore((s) => s.rebuildCacheDb)
+  const rebuildingCacheDb = useAppStore((s) => s.rebuildingCacheDb)
+
+  const [confirmRebuildOpen, setConfirmRebuildOpen] = useState(false)
 
   if (!config || !defaultPaths) return null
 
   const dark = resolveDark(config.themeMode, systemDark)
+
+  async function confirmRebuildCacheDb() {
+    setConfirmRebuildOpen(false)
+    await rebuildCacheDb()
+  }
 
   return (
     <div className="max-w-[520px]">
@@ -122,6 +133,20 @@ export function SettingsScreen() {
         <Switch checked={config.developerMode} onCheckedChange={toggleDevMode} />
       </div>
 
+      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">Advanced</div>
+      <div className="mb-6 flex items-center justify-between rounded-lg border border-border bg-surface px-[18px] py-4 shadow-sm">
+        <div>
+          <div className="text-[14px] font-semibold">Rebuild cache database</div>
+          <div className="text-[12.5px] text-text-2">
+            Wipes and rebuilds cache.db from scratch (mods, manifests, per-mod builds) - the "something's wrong with the cache" recovery option. Doesn't touch your Mods folder or load order.
+          </div>
+        </div>
+        <Button variant="outline" disabled={rebuildingCacheDb} onClick={() => setConfirmRebuildOpen(true)}>
+          {rebuildingCacheDb ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Rebuild cache database
+        </Button>
+      </div>
+
       <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">About</div>
       <div className="rounded-lg border border-border bg-surface shadow-sm">
         {ABOUT_LINKS.map(({ label, href }, i) => (
@@ -137,6 +162,24 @@ export function SettingsScreen() {
           </a>
         ))}
       </div>
+
+      <Dialog open={confirmRebuildOpen} onOpenChange={setConfirmRebuildOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rebuild cache database</DialogTitle>
+            <DialogDescription>
+              This deletes cache.db and rebuilds every mod's cache from scratch - the same work as a first launch. It can take a while with a lot of mods installed, and any deploy is blocked until it
+              finishes. Your Mods folder and load order aren't touched.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmRebuildOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmRebuildCacheDb}>Rebuild</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

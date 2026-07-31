@@ -1,6 +1,6 @@
 import * as React from "react"
 import { memo } from "react"
-import { Settings2, TriangleAlert, X } from "lucide-react"
+import { Loader2, Settings2, TriangleAlert, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import type { ModEntry } from "@/lib/manifest-types"
 import { OptionType } from "@/lib/manifest-types"
+import type { ModBuildInfo } from "@/lib/ipc"
 
 /**
  * A fixed, deterministic row height (rather than letting content/padding size it intrinsically) -
@@ -37,12 +38,15 @@ export interface ModRowProps {
   onOpenSettings(id: string): void
   onRemove(mod: ModEntry): void
   onUpdateOutdated(id: string): void
+  /** LEI-141's per-mod eager-build status - `undefined` for a mod that's never had a build recorded (RPKG-only mods, or one whose first build hasn't run yet). */
+  buildStatus?: ModBuildInfo["status"]
+  buildError?: string
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>
   style?: React.CSSProperties
   setNodeRef?: (node: HTMLElement | null) => void
 }
 
-function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggle, onOpenSettings, onRemove, onUpdateOutdated, dragHandleProps, style, setNodeRef }: ModRowProps) {
+function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggle, onOpenSettings, onRemove, onUpdateOutdated, buildStatus, buildError, dragHandleProps, style, setNodeRef }: ModRowProps) {
   const name = mod.isFrameworkMod ? mod.manifest!.name : mod.rpkgModName!
   const description = mod.isFrameworkMod ? mod.manifest!.description : "RPKG-only mod"
   const author = mod.isFrameworkMod ? mod.manifest!.authors.join(", ") : ""
@@ -80,6 +84,21 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
                 </Badge>
               </TooltipTrigger>
               <TooltipContent>Built for an older framework version — click to update it</TooltipContent>
+            </Tooltip>
+          )}
+          {buildStatus === "building" && (
+            <Badge variant="accent" className="gap-1">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" /> Building…
+            </Badge>
+          )}
+          {buildStatus === "failed" && (
+            <Tooltip>
+              <TooltipTrigger render={<span />}>
+                <Badge variant="warning" className="gap-1">
+                  <TriangleAlert className="h-3 w-3" /> Build failed
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>{buildError || "Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database."}</TooltipContent>
             </Tooltip>
           )}
         </div>
