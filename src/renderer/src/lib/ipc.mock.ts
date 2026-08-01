@@ -1,5 +1,5 @@
 import { OptionType, type Config, type DefaultPaths, type Manifest, type ModEntry } from "./manifest-types"
-import type { DeployProgress, DeploySnapshot, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
+import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
 
 /**
  * STUB IMPLEMENTATION - see the big comment block in ipc.ts.
@@ -321,6 +321,23 @@ class MockSmfApi implements SmfApi {
       this.modsData = this.modsData.map((m) => (m.id === modId ? { ...m, outdated: false, manifest: m.manifest && { ...m.manifest, frameworkVersion: "3.0.0" } } : m))
       saveMods(this.modsData)
       return structuredClone(this.modsData.find((m) => m.id === modId)!)
+    },
+
+    // No real cache.db outside a real Electron shell - every mod just reports "ready" immediately,
+    // since this mock has nothing that could ever be "building".
+    buildStatuses: async (): Promise<ModBuildInfo[]> => {
+      await delay(50)
+      return this.modsData.filter((m) => m.isFrameworkMod).map((m) => ({ modId: m.id, status: "ready" as const }))
+    },
+
+    rebuildCacheDb: async (): Promise<{ ok: boolean; reason?: string }> => {
+      if (this.activeSnapshot) return { ok: false, reason: "A deploy is currently running." }
+      const total = this.modsData.length || 1
+      for (let scanned = 1; scanned <= total; scanned++) {
+        await delay(300 / total)
+        for (const cb of this.cacheProgressListeners) cb({ scanned, total })
+      }
+      return { ok: true }
     }
   }
 

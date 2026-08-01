@@ -1,9 +1,13 @@
-import { Check, ChevronDown, X } from "lucide-react"
+import { Check, ChevronDown, TriangleAlert, X } from "lucide-react"
 import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
 import type { DeployStage } from "@/lib/ipc"
 
+// Matches deployManager.ts's STAGE_INDEX ordering exactly - "waiting-for-cache-build" (LEI-141's
+// queue-aware deploy gate) only ever actually shows when at least one mod in the load order isn't
+// eager-built yet; most deploys skip straight past it to "sorting", same as before this stage existed.
 const STAGES: { key: DeployStage; label: string }[] = [
+  { key: "waiting-for-cache-build", label: "Waiting for mods to finish building" },
   { key: "sorting", label: "Sorting load order" },
   { key: "extracting", label: "Extracting RPKG mods" },
   { key: "patching", label: "Patching game files" },
@@ -25,10 +29,16 @@ export function DeployToast() {
 
   const currentStageIndex = deploy.progress?.stageIndex ?? -1
   const done = deploy.progress?.done ?? false
+  // `done` alone only means "the pipeline stopped running" - deployManager.ts sets it on both the
+  // success and failure paths (see its "finalizing"/ok:false emits, e.g. the queue-aware gate's
+  // build-wait timeout). `ok` is what actually distinguishes the two.
+  const failed = done && deploy.progress?.ok === false
   const progressPct = done ? 100 : Math.round(((Math.max(currentStageIndex, 0) + 0.5) / STAGES.length) * 100)
 
   let statusLine = "This may take a moment…"
-  if (done) {
+  if (failed) {
+    statusLine = deploy.progress?.logLine || "Deploy failed."
+  } else if (done) {
     statusLine = "Deploy finished successfully."
   } else if (currentStageIndex >= 0) {
     const stage = STAGES[currentStageIndex]
@@ -41,11 +51,22 @@ export function DeployToast() {
   return (
     <div className="absolute bottom-5 right-5 z-[100] flex max-h-[70vh] w-[360px] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-md animate-fade-in">
       <div onClick={toggleDeployExpanded} className="flex cursor-pointer items-center gap-3 px-4 py-3.5">
-        <div className={cn("flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-accent-foreground", done ? "bg-success" : "bg-accent")}>
-          {done ? <Check className="h-3 w-3" strokeWidth={3} /> : <div className="h-[11px] w-[11px] animate-spin-slow rounded-full border-2 border-accent-foreground border-t-transparent" />}
+        <div
+          className={cn(
+            "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-accent-foreground",
+            failed ? "bg-danger" : done ? "bg-success" : "bg-accent"
+          )}
+        >
+          {failed ? (
+            <TriangleAlert className="h-3 w-3" strokeWidth={3} />
+          ) : done ? (
+            <Check className="h-3 w-3" strokeWidth={3} />
+          ) : (
+            <div className="h-[11px] w-[11px] animate-spin-slow rounded-full border-2 border-accent-foreground border-t-transparent" />
+          )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-bold text-text">{done ? "Mods applied" : "Applying your mods"}</div>
+          <div className="text-[13.5px] font-bold text-text">{failed ? "Deploy failed" : done ? "Mods applied" : "Applying your mods"}</div>
           <div className="truncate text-[12px] text-text-2">{statusLine}</div>
         </div>
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-text-3 transition-transform", deploy.expanded && "rotate-180")} />
@@ -69,20 +90,22 @@ export function DeployToast() {
         <div className="overflow-y-auto">
           <div className="px-4 pb-1 pt-3">
             {STAGES.map((stage, i) => {
-              const isDone = currentStageIndex > i || done
+              const isDone = currentStageIndex > i || (done && !failed)
+              const isFailedHere = failed && currentStageIndex === i
               const isActive = currentStageIndex === i && !done
               return (
                 <div key={stage.key} className="flex items-center gap-3 py-[7px]">
                   <div
                     className={cn(
                       "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-accent-foreground",
-                      isDone ? "bg-success" : isActive ? "bg-accent" : "bg-surface-2"
+                      isFailedHere ? "bg-danger" : isDone ? "bg-success" : isActive ? "bg-accent" : "bg-surface-2"
                     )}
                   >
-                    {isDone && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                    {isFailedHere && <TriangleAlert className="h-2.5 w-2.5" strokeWidth={3} />}
+                    {isDone && !isFailedHere && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
                     {isActive && <div className="h-[9px] w-[9px] animate-spin-slow rounded-full border-2 border-accent-foreground border-t-transparent" />}
                   </div>
-                  <div className={cn("text-[13px]", isDone || isActive ? "text-text" : "text-text-3")}>
+                  <div className={cn("text-[13px]", isDone || isActive || isFailedHere ? "text-text" : "text-text-3")}>
                     {stage.label}
                     {isActive && stage.key === "patching" && deploy.progress?.currentModId && (
                       <span className="text-text-2">

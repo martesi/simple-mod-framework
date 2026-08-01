@@ -23,8 +23,10 @@ import type { Span } from "./core/deploy"
 
 import type { AppPaths } from "./paths"
 import type { AppSettings } from "./settings"
-import { resolveModsDir } from "./settings"
-import { computeGameHash, type GamePathInfo } from "./gameDetect"
+import { resolveModsDir, resolveTempDir } from "./settings"
+import type { GamePathInfo } from "./gameDetect"
+import type { ModsConfig } from "./modsConfig"
+import { openDb } from "./db"
 
 export interface DeployPipelineLogLine {
 	level: "verbose" | "debug" | "info" | "warn" | "error"
@@ -36,15 +38,16 @@ export type DeployPipelineResult = { ok: true } | { ok: false; error: string }
 
 /**
  * Builds the framework core's real `Config` object in memory from this app's persisted
- * `AppSettings` plus a fresh `GamePathInfo` - no `config.json` on disk involved (LEI-133's "no
- * on-disk config.json required for normal operation"). `retailPath`/`runtimePath`/`platform` come
- * from `game` (the caller's own `gameDetect.ts`'s `deriveGamePathInfo()` call against the
- * persisted `gamePath` - see deployManager.ts/ipcHandlers.ts) rather than from `settings` directly,
- * since only `gamePath` itself is persisted (see settings.ts's doc comment) - `createCore()` still
- * runs them through `path.resolve(dataRoot, ...)` internally, but since they're already absolute
- * that's a no-op (see `src/core.ts`).
+ * `AppSettings` + `ModsConfig` (LEI-141's config split - load order/options live in `Mods/config.json`
+ * now, not `settings.json`) plus a one-shot-detected `GamePathInfo` - no `config.json` on disk
+ * involved (LEI-133's "no on-disk config.json required for normal operation"). `retailPath`/
+ * `runtimePath`/`platform` come from `game` (the caller's `gameDetect.ts`'s `deriveGamePathInfo()`
+ * call, cached in `cache.db` and only ever re-derived when `gamePath` changes - see
+ * deployManager.ts/ipcHandlers.ts) rather than from `settings` directly, since only `gamePath`
+ * itself is persisted - `createCore()` still runs them through `path.resolve(dataRoot, ...)`
+ * internally, but since they're already absolute that's a no-op (see `src/core.ts`).
  */
-export function buildFrameworkConfig(paths: AppPaths, settings: AppSettings, game: GamePathInfo): Config {
+export function buildFrameworkConfig(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: GamePathInfo): Config {
 	return {
 		retailPath: game.retailPath,
 		runtimePath: game.runtimePath,
@@ -60,9 +63,13 @@ export function buildFrameworkConfig(paths: AppPaths, settings: AppSettings, gam
 		reportErrors: false,
 		errorReportingID: null,
 		developerMode: settings.developerMode,
-		knownMods: settings.knownMods,
-		loadOrder: settings.loadOrder,
-		modOptions: settings.modOptions,
+		// `knownMods` is gone from both config files (LEI-141 - cache.db's `mods` table is the real
+		// membership list) - the framework core's `Config` type still declares the field but nothing
+		// in `analyseMod.ts`/`deploy.ts` actually reads it anymore, so `modOrder` (every known mod,
+		// same as the UI-facing mapping in `configMapping.ts`) is a harmless stand-in.
+		knownMods: modsConfig.modOrder,
+		loadOrder: modsConfig.loadOrder,
+		modOptions: modsConfig.modOptions,
 		platform: game.platform as Config["platform"]
 	}
 }
@@ -94,11 +101,20 @@ function withProgress(core: Core, onLog: (line: DeployPipelineLogLine) => void):
 	}
 }
 
-async function createEmbeddedCore(paths: AppPaths, config: Config, onLog: (line: DeployPipelineLogLine) => void): Promise<Core> {
+/**
+ * `tempDir` (LEI-141's `resolveTempDir()` - see settings.ts) becomes the Core's own `paths.dataRoot`
+ * here - deliberately *not* the app's `AppPaths.dataRoot` (which now holds only settings.json).
+ * `core.ts`'s `CoreOptions.paths.dataRoot` was always meant to be an independently-injectable
+ * "where staging/temp/cache/Deploy.log live" root (its own doc comment already described exactly
+ * this folder's contents); before this change it just happened to be pointed at the same folder as
+ * the app's userData dataRoot. Everything under `core/*.ts` that reads `paths.dataRoot` via
+ * `core-singleton` picks up the new location automatically - no other core file needed to change.
+ */
+async function createEmbeddedCore(tempDir: string, toolsRoot: string, config: Config, onLog: (line: DeployPipelineLogLine) => void): Promise<Core> {
 	const [{ createCore }, { setCurrentCore }] = await Promise.all([import("./core/core"), import("./core/core-singleton")])
 
 	const core = createCore(config, {
-		paths: { dataRoot: paths.dataRoot, toolsRoot: paths.toolsRoot }
+		paths: { dataRoot: tempDir, toolsRoot }
 	})
 
 	const withProgressCore: Core = { ...core, logger: withProgress(core, onLog) }
@@ -125,15 +141,26 @@ function noopSpan(): Span {
 }
 
 /**
- * The embedded equivalent of `src/main.ts`'s `doTheThing()` - discover -> diff/cache -> deploy,
- * replacing the old `spawn('Deploy.exe --doNotPause --colors', ...)` IPC handler (LEI-133). Runs
- * entirely in this process; progress/log lines are streamed out via `onLog` instead of being
- * printed to a console that doesn't exist here.
+ * The embedded equivalent of `src/main.ts`'s `doTheThing()`, replacing the old
+ * `spawn('Deploy.exe --doNotPause --colors', ...)` IPC handler (LEI-133). Runs entirely in this
+ * process (well, this worker thread - see deployWorker.ts); progress/log lines are streamed out via
+ * `onLog` instead of being printed to a console that doesn't exist here.
+ *
+ * LEI-141 dropped the discover -> difference -> deploy pipeline entirely: there's no per-file
+ * content hash, no size/mtime fingerprint, no `cache/map.json`, no game-build hash gating a wholesale
+ * cache wipe. Every mod's `DeployInstruction` already lives in `cache.db`, kept correct by eager
+ * per-mod builds triggered at the moment something actually changed (mod added/updated, options
+ * changed, explicit rebuild - see `ipcHandlers.ts`) rather than recomputed-and-compared here. By the
+ * time this function runs at all, the queue-aware deploy gate (`deployManager.ts`) has already
+ * confirmed every mod in the load order has a `ready` build - `deploy()` itself just reads them.
  */
-export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game: GamePathInfo, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+export async function runFullDeploy(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: GamePathInfo, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+	const tempDir = resolveTempDir(paths, settings)
+	openDb(path.join(tempDir, "cache.db"))
+
 	const { CoreFatalError } = await import("./core/core")
-	const config = buildFrameworkConfig(paths, settings, game)
-	const core = await createEmbeddedCore(paths, config, onLog)
+	const config = buildFrameworkConfig(paths, settings, modsConfig, game)
+	const core = await createEmbeddedCore(tempDir, paths.toolsRoot, config, onLog)
 
 	try {
 		await core.logger.verbose("Initialising RPKG instance")
@@ -166,53 +193,12 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
 		}
 
 		await core.logger.verbose("Emptying folders")
-		fs.emptyDirSync(path.join(paths.dataRoot, "staging"))
-		fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
-
-		fs.ensureDirSync(path.join(paths.dataRoot, "cache"))
-
-		const gameHash = computeGameHash(config.retailPath, config.runtimePath)
-		const mapPath = path.join(paths.dataRoot, "cache", "map.json")
-
-		// Checked *before* discovery now (rather than after) so its result - specifically, whether the
-		// previous run's file map is even still valid - can be handed to discover() below. A framework
-		// or game update invalidates every fingerprint in one shot (new game files, possibly new
-		// discovery logic), so in that case discover() gets an empty map and does a full uncached walk,
-		// same as it always used to unconditionally.
-		await core.logger.verbose("Checking cache versions")
-		let previousFiles: Record<string, { hash: string; dependencies: string[]; affected: string[]; size?: number; mtimeMs?: number }> = {}
-		if (fs.existsSync(mapPath)) {
-			const cached = fs.readJSONSync(mapPath)
-			if (cached.frameworkVersion < core.FrameworkVersion || cached.game !== gameHash) {
-				fs.emptyDirSync(path.join(paths.dataRoot, "cache")) // Empty the cache when the framework or game updates
-			} else {
-				previousFiles = cached.files ?? {}
-			}
-		}
-
-		// discover() uses previousFiles' per-file size/mtime fingerprints to skip re-hashing (and, for
-		// RPKG-only mods, re-extracting) anything that hasn't changed since the last deploy - see its
-		// own doc comment. This used to unconditionally re-walk and re-hash every single file in every
-		// mod on every deploy regardless of whether anything had changed; now that only happens for
-		// files that are actually new or modified.
-		await core.logger.verbose("Beginning discovery")
-		const { default: discover } = await import("./core/discover")
-		const fileMap = await discover(previousFiles)
-
-		await core.logger.verbose("Beginning difference")
-		const { default: difference } = await import("./core/difference")
-		const { invalidData } = await difference(previousFiles, fileMap)
-
-		await core.logger.verbose("Writing cache")
-		fs.writeJSONSync(mapPath, {
-			files: fileMap,
-			frameworkVersion: core.FrameworkVersion,
-			game: gameHash
-		})
+		fs.emptyDirSync(path.join(core.paths.dataRoot, "staging"))
+		fs.emptyDirSync(path.join(core.paths.dataRoot, "temp"))
 
 		await core.logger.verbose("Beginning deploy")
 		const { default: deploy } = await import("./core/deploy")
-		await deploy(noopSpan(), () => {}, invalidData)
+		await deploy(noopSpan(), () => {})
 
 		await core.logger.verbose("Finishing")
 		await core.cleanExit()
@@ -235,16 +221,18 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, game
  * deploy critical path" is meant to call whenever a mod is added/updated or its selected options
  * change - LEI-133's job is just to make sure the handler exists and runs in-process.
  */
-export async function runAnalyseMod(paths: AppPaths, settings: AppSettings, game: GamePathInfo, modId: string, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+export async function runAnalyseMod(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: GamePathInfo, modId: string, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+	const tempDir = resolveTempDir(paths, settings)
+	openDb(path.join(tempDir, "cache.db"))
+
 	const { CoreFatalError } = await import("./core/core")
-	const config = buildFrameworkConfig(paths, settings, game)
-	const core = await createEmbeddedCore(paths, config, onLog)
+	const config = buildFrameworkConfig(paths, settings, modsConfig, game)
+	const core = await createEmbeddedCore(tempDir, paths.toolsRoot, config, onLog)
 
 	try {
 		await core.logger.verbose("Initialising RPKG instance")
 		await core.rpkgInstance.waitForInitialised()
 
-		fs.ensureDirSync(path.join(paths.dataRoot, "cache"))
 		const { default: analyseMod, loadRPKGHashCache, saveRPKGHashCache } = await import("./core/analyseMod")
 		loadRPKGHashCache()
 

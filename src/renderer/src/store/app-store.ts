@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import { toast } from "sonner"
 import { getSmfApi } from "@/lib/ipc"
-import type { DeployProgress, DeploySnapshot, ModTaskUpdate } from "@/lib/ipc"
+import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate } from "@/lib/ipc"
 import type { Config, DefaultPaths, ModEntry } from "@/lib/manifest-types"
 import { WIZARD_STEPS } from "@/lib/wizard-steps"
 
@@ -27,7 +27,7 @@ interface WizardState {
 /**
  * Single source of truth for a hazard that shows up at every call site that can make the backend
  * register a mod into knownMods/modOrder after this store already has a `config` in hand:
- * mods:list, mods:rebuildIndex, and a fresh install (modOps.ts) all call addKnownMods()
+ * mods:list, mods:rebuildIndex, and a fresh install (modOps.ts) all call addNewlyKnownMods()
  * (settings.ts) themselves - see ipcHandlers.ts's mods:list doc comment - to catch mods that were
  * already sitting on disk (a modPath switch pointed at a folder migrated from the old Mod Manager)
  * or that just got dropped in. If this store's `config` isn't re-fetched *after* that write-through
@@ -38,7 +38,7 @@ interface WizardState {
  * `fetchMods` is the one thing that actually varies per caller (init()/setModPath() want
  * `smf.mods.list()`, rebuildIndex() wants `smf.mods.rebuildIndex()`) - composed in as an argument
  * instead of this function picking one itself, so the sequencing (mods first, *then* config - not
- * Promise.all'd, since config:get() has to see whichever of those two calls' own addKnownMods()
+ * Promise.all'd, since config:get() has to see whichever of those two calls' own addNewlyKnownMods()
  * write-through actually ran) only has to be written once.
  */
 async function refreshModsAndConfig(fetchMods: () => Promise<ModEntry[]>): Promise<{ mods: ModEntry[]; config: Config }> {
@@ -57,6 +57,16 @@ interface AppState {
   modsLoading: boolean
   /** Progress of an in-flight main-process cache scan (cold start, "Rebuild cache", or a modPath switch) - null when nothing is scanning. */
   cacheProgress: { scanned: number; total: number } | null
+  /**
+   * LEI-141's per-mod eager-build status, keyed by mod id - absent entries mean "never built"
+   * (RPKG-only mods, or a framework mod whose build hasn't run yet). Kept fresh by a short poll in
+   * initListeners() rather than threaded through every single call site that can kick off a
+   * background build (add/options-change/outdated-update/rebuild all do) - a build finishing is an
+   * async main-process event this store doesn't otherwise get pushed, so polling is simpler and more
+   * robust than trying to enumerate every trigger.
+   */
+  buildStatuses: Record<string, ModBuildInfo>
+  refreshBuildStatuses(): Promise<void>
   addTasks: Record<string, AddTask>
   addDialogOpen: boolean
   deploy: DeployState
@@ -84,6 +94,9 @@ interface AppState {
   /** Whether a rebuildIndex() call is in flight - lets the "Rebuild cache" button show a spinner and disable itself, mirroring the old Mod Manager's "please wait" modal for the same (synchronous, on the main-process side) full-disk-walk operation. */
   rebuildingIndex: boolean
   rebuildIndex(): Promise<void>
+  /** Whether a rebuildCacheDb() call is in flight - the heavier "wipe cache.db and rebuild everything" recovery path (LEI-141), distinct from rebuildIndex()'s lighter re-scan. */
+  rebuildingCacheDb: boolean
+  rebuildCacheDb(): Promise<void>
 
   startDeploy(): Promise<void>
   closeDeploy(): void
@@ -118,7 +131,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   mods: [],
   modsLoading: true,
   cacheProgress: null,
+  buildStatuses: {},
   rebuildingIndex: false,
+  rebuildingCacheDb: false,
   addTasks: {},
   addDialogOpen: false,
   search: "",
@@ -148,15 +163,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     // data rather than accumulating anything. See initListeners() for the subscription half.
     set({ config, defaultPaths, loaded: true, modsLoading: true, wizard: { open: !config.gamePath, step: 0 } })
 
-    // See refreshModsAndConfig()'s doc comment - mods:list's own addKnownMods() write-through can
+    // See refreshModsAndConfig()'s doc comment - mods:list's own addNewlyKnownMods() write-through can
     // register mods this store's `config` (fetched above, before that write-through ran) doesn't
     // know about yet.
     const { mods, config: freshConfig } = await refreshModsAndConfig(() => smf.mods.list())
     set({ mods, modsLoading: false, cacheProgress: null, config: freshConfig })
+    void get().refreshBuildStatuses()
+  },
+
+  async refreshBuildStatuses() {
+    const list = await getSmfApi().mods.buildStatuses()
+    set({ buildStatuses: Object.fromEntries(list.map((b) => [b.modId, b])) })
   },
 
   initListeners() {
     const smf = getSmfApi()
+
+    // Cheap poll (one small IPC round-trip) rather than threading a push event through every
+    // background-build trigger - see buildStatuses' doc comment above.
+    const buildStatusInterval = setInterval(() => {
+      void get().refreshBuildStatuses()
+    }, 2000)
 
     const unsubscribeTaskUpdate = smf.mods.onTaskUpdate((update) => {
       set((s) => ({ addTasks: { ...s.addTasks, [update.taskId]: { ...update, startedAt: s.addTasks[update.taskId]?.startedAt ?? Date.now() } } }))
@@ -209,6 +236,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     return () => {
+      clearInterval(buildStatusInterval)
       unsubscribeTaskUpdate()
       unsubscribeCacheProgress()
       unsubscribeProgress()
@@ -301,7 +329,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // going through the same refreshModsAndConfig() as every other mods-changed call site anyway
       // (rather than a one-off Promise.all) keeps this in the one place that gets the mods-then-
       // config sequencing right, instead of a second copy that happens to be harmless today only
-      // because removal can't trigger mods:list's own addKnownMods() write-through.
+      // because removal can't trigger mods:list's own addNewlyKnownMods() write-through.
       const { mods, config } = await refreshModsAndConfig(() => getSmfApi().mods.list())
       set({ config, mods })
     }
@@ -323,7 +351,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   async rebuildIndex() {
     set({ rebuildingIndex: true, cacheProgress: null })
     try {
-      // Same addKnownMods() write-through hazard as init()/setModPath() above (see
+      // Same addNewlyKnownMods() write-through hazard as init()/setModPath() above (see
       // refreshModsAndConfig()'s doc comment): a rebuild can surface mods dropped into the Mods
       // folder outside this app entirely (see ipcHandlers.ts's mods:rebuildIndex doc comment), and
       // this store's `config` needs a fresh modOrder/knownMods to actually be able to enable them
@@ -333,6 +361,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       toast.success("Mod cache rebuilt.")
     } finally {
       set({ rebuildingIndex: false, cacheProgress: null })
+    }
+  },
+
+  /**
+   * The "something's actually wrong, start clean" recovery path - wipes `cache.db` and rebuilds it
+   * from the three untouched sources (Mods/ contents, Mods/config.json, the current game path), same
+   * as a genuine first launch. Heavier and much rarer than rebuildIndex() above; Settings' Advanced
+   * section is where this lives, not the Mods screen toolbar.
+   */
+  async rebuildCacheDb() {
+    set({ rebuildingCacheDb: true, cacheProgress: null })
+    try {
+      const result = await getSmfApi().mods.rebuildCacheDb()
+      if (!result.ok) {
+        toast.error(result.reason ?? "Couldn't rebuild the cache database.")
+        return
+      }
+      const { mods, config } = await refreshModsAndConfig(() => getSmfApi().mods.list())
+      set({ mods, config })
+      await get().refreshBuildStatuses()
+      toast.success("Cache database rebuilt from scratch.")
+    } finally {
+      set({ rebuildingCacheDb: false, cacheProgress: null })
     }
   },
 

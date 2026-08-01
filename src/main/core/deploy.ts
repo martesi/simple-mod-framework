@@ -3,27 +3,16 @@ import * as rfc6902 from "rfc6902"
 import * as rust_utils from "./smf-rust"
 import * as ts from "./typescript"
 
-import analyseMod, {
-	RPKGHashCache,
-	callRPKGFunction,
-	computeOptionsHash,
-	deserialiseDeployInstruction,
-	execCommand,
-	getRPKGOfHash,
-	loadAnalysisCache,
-	loadRPKGHashCache,
-	saveRPKGHashCache,
-	thirdParty
-} from "./analyseMod"
-import type { DeployInstruction, HMLanguageToolsLOCR, Manifest, ManifestOptionData, ModScript } from "./types"
-import { FrameworkVersion, config, logger, options, paths, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
+import { RPKGHashCache, callRPKGFunction, execCommand, getRPKGOfHash, loadRPKGHashCache, loadReadyDeployInstruction, saveRPKGHashCache, thirdParty } from "./analyseMod"
+import type { DeployInstruction, HMLanguageToolsLOCR, ManifestOptionData, ModScript } from "./types"
+import { config, logger, options, paths, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
 import { copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
+import { resolveModFolder } from "./resolveModFolder"
 import { walk } from "./fsWalk"
 import { WorkerPool } from "./workerPool"
 
 import { crc32 } from "crc"
 import fs from "fs-extra"
-import json5 from "json5"
 import md5 from "md5"
 import mergeWith from "lodash.mergewith"
 import os from "os"
@@ -82,11 +71,7 @@ export interface Span {
 
 export default async function deploy(
 	sentryTransaction: Span,
-	configureSentryScope: (transaction: unknown) => void,
-	invalidatedData: {
-		filePath: string
-		data: { hash: string; dependencies: string[]; affected: string[] }
-	}[]
+	configureSentryScope: (transaction: unknown) => void
 ) {
 	loadRPKGHashCache()
 
@@ -143,54 +128,43 @@ export default async function deploy(
 	/* ---------------------------------------------------------------------------------------------- */
 	/*                                          Analyse mods                                          */
 	/* ---------------------------------------------------------------------------------------------- */
-	for (let mod of config.loadOrder) {
+	// LEI-141: mod ID -> folder resolution is a single cache.db lookup (resolveModFolder(), populated
+	// once by ModIndex on add/remove/update/rebuild) instead of an `fs.readdirSync` + re-parse-every-
+	// manifest.json scan repeated for every mod in the load order. Every framework mod's
+	// DeployInstruction is read straight from its `cache.db` `mod_build` row (loadReadyDeployInstruction())
+	// with no inline fallback re-analysis - the queue-aware deploy gate (`deployManager.ts`) is what
+	// guarantees every required mod is already `ready` by the time deploy() runs at all; a mod that
+	// isn't ready here is a bug in that gate, not something this function should silently paper over
+	// by re-running analysis on its own critical path (see the old inline fallback this replaces).
+	for (const mod of config.loadOrder) {
 		await logger.verbose(`Resolving ${mod}`)
 
-		// NOT Mod folder exists, mod has no manifest, mod has RPKGs (mod is an RPKG-only mod)
-		if (
-			!(
-				fs.existsSync(path.join(config.modsPath, mod)) &&
-				!fs.existsSync(path.join(config.modsPath, mod, "manifest.json")) &&
-				(await walk(path.join(config.modsPath, mod)))
-					.filter((a) => a.stats.isFile())
-					.map((a) => a.path)
-					.some((a) => a.endsWith(".rpkg"))
-			)
-		) {
-			// Find mod with ID in Mods folder, set the current mod to that folder
-			const foundMod = fs
-				.readdirSync(config.modsPath)
-				.find((a) => fs.existsSync(path.join(config.modsPath, a, "manifest.json")) && json5.parse(fs.readFileSync(path.join(config.modsPath, a, "manifest.json"), "utf8")).id === mod)
+		const resolved = resolveModFolder(mod)
+		if (!resolved) {
+			await logger.error(`Could not resolve mod ${mod} to its folder in Mods! Try "Rebuild cache" if this mod was added/changed outside the Mod Manager.`)
+			return
+		}
 
-			if (!foundMod) {
-				await logger.error(`Could not resolve mod ${mod} to its folder in Mods!`)
-				return
-			}
+		const modFolder = resolved.folder
 
-			mod = foundMod
-		} // Essentially, if the mod isn't an RPKG mod, it is referenced by its ID, so this finds the mod folder with the right ID
-
-		if (!fs.existsSync(path.join(config.modsPath, mod, "manifest.json"))) {
+		if (!resolved.isFrameworkMod) {
 			const sentryModTransaction = sentryModsTransaction.startChild({
 				op: "stage",
-				description: mod
+				description: modFolder
 			})
 			configureSentryScope(sentryModTransaction)
 
-			await logger.info(`Staging RPKG mod: ${mod}`)
+			await logger.info(`Staging RPKG mod: ${modFolder}`)
 
-			for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, mod))) {
+			for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, modFolder))) {
 				fs.ensureDirSync(path.join(paths.dataRoot, "staging", chunkFolder))
 
 				fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
 
-				for (const contentFile of fs.readdirSync(path.join(config.modsPath, mod, chunkFolder))) {
-					if (
-						invalidatedData.some((a) => a.filePath === path.join(config.modsPath, mod, chunkFolder, contentFile)) || // must redeploy, invalid cache
-						!(await copyFromCache(mod, path.join(chunkFolder, contentFile), path.join(paths.dataRoot, "temp"))) // cache is not available
-					) {
-						await callRPKGFunction(`-extract_from_rpkg "${path.join(config.modsPath, mod, chunkFolder, contentFile)}" -output_path "${path.join(paths.dataRoot, "temp")}"`)
-						await copyToCache(mod, path.join(paths.dataRoot, "temp"), path.join(chunkFolder, contentFile))
+				for (const contentFile of fs.readdirSync(path.join(config.modsPath, modFolder, chunkFolder))) {
+					if (!(await copyFromCache(modFolder, path.join(chunkFolder, contentFile), path.join(paths.dataRoot, "temp")))) {
+						await callRPKGFunction(`-extract_from_rpkg "${path.join(config.modsPath, modFolder, chunkFolder, contentFile)}" -output_path "${path.join(paths.dataRoot, "temp")}"`)
+						await copyToCache(modFolder, path.join(paths.dataRoot, "temp"), path.join(chunkFolder, contentFile))
 					}
 				}
 
@@ -207,37 +181,18 @@ export default async function deploy(
 
 			sentryModTransaction.finish()
 		} else {
-			const manifest: Manifest = json5.parse(fs.readFileSync(path.join(config.modsPath, mod, "manifest.json"), "utf8"))
-
 			const sentryModTransaction = sentryModsTransaction.startChild({
 				op: "analyse",
-				description: manifest.id
+				description: mod
 			})
 			configureSentryScope(sentryModTransaction)
 
-			// Analysis (disk walk, manifest/option resolution, analysis script) is cached per-mod in
-			// analyseMod.ts, keyed by (mod id, manifest hash, resolved-options hash). Prefer that cache
-			// so deploy() doesn't re-walk/re-parse every mod on every run - only the options hash is
-			// re-checked here (cheap, no disk I/O); verifying the manifest hash would require the same
-			// walk this is meant to avoid, so that's left to whatever calls `Deploy --analyseMod <id>`
-			// (meant to run whenever the mod manager sees a mod added/updated or its options change).
-			// If there's no valid cache entry yet, fall back to analysing inline right now - exactly
-			// what this code path always did before - and cache the result for next time.
-			const cached = loadAnalysisCache(manifest.id)
-			const optionsHash = computeOptionsHash(manifest)
-
-			let deployInstruction: DeployInstruction | undefined
-
-			if (cached && cached.frameworkVersion === FrameworkVersion && cached.optionsHash === optionsHash) {
-				await logger.info(`Using cached analysis for ${manifest.name}`)
-				deployInstruction = deserialiseDeployInstruction(cached.deployInstruction)
-			} else {
-				await logger.info(`No valid analysis cache for ${manifest.name} - analysing now (this will be cached for next time)`)
-				deployInstruction = await analyseMod(manifest.id)
-			}
+			const deployInstruction = loadReadyDeployInstruction(mod)
 
 			if (!deployInstruction) {
-				await logger.error(`Analysis of mod ${manifest.name} didn't produce a deploy instruction!`)
+				await logger.error(
+					`Mod ${mod} has no ready build in cache.db! This shouldn't happen if the queue-aware deploy gate is working - try "Rebuild cache" (Settings) to force a fresh build for every mod.`
+				)
 				return
 			}
 
@@ -370,7 +325,7 @@ export default async function deploy(
 		if (instruction.content.some((a) => a.type === "contract.json")) {
 			contractsORESChunk = await getRPKGOfHash("002B07020D21D727")
 
-			if (invalidatedData.some((a) => a.data.affected.includes("002B07020D21D727")) || !(await copyFromCache(instruction.cacheFolder, "contractsORES", path.join(paths.dataRoot, "temp2")))) {
+			if (!(await copyFromCache(instruction.cacheFolder, "contractsORES", path.join(paths.dataRoot, "temp2")))) {
 				contractsCacheInvalid = true
 
 				// we need to re-deploy the contracts ORES OR the contracts ORES couldn't be copied from cache
@@ -395,6 +350,77 @@ export default async function deploy(
 
 			contractsORESContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.JSON"), "utf8"))
 			contractsORESMetaContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp2", contractsORESChunk, "ORES", "002B07020D21D727.ORES.meta.JSON"), "utf8"))
+		}
+
+		// LEI-141: unlockables/repository now follow the same "extract once, accumulate every one of
+		// this mod's edits in memory, rebuild once" pattern the contracts ORES above (and blobs ORES,
+		// further down) already used - previously each individual unlockables.json/repository.json
+		// content file triggered its own independent extract+merge+rebuild round-trip through
+		// OREStool.exe, even when a single mod shipped several of them. This is a per-mod scope (like
+		// the entityPatches accumulator) rather than across the whole load order - see this file's
+		// git history/PR description for why a true once-per-resource-across-every-mod version was
+		// scoped out of this change (risk of changing what a `beforeDeploy` script sees mid-deploy,
+		// unverifiable without the real RPKG toolchain and a mod-script test corpus).
+		let unlockablesCacheInvalid = false
+		let unlockablesORESChunk: string | undefined
+		let unlockablesORESContent: Record<string, Record<string, unknown>> = {}
+
+		await logger.verbose("Check unlockables ORES necessary")
+
+		if (instruction.content.some((a) => a.type === "unlockables.json")) {
+			unlockablesORESChunk = await getRPKGOfHash("0057C2C3941115CA")
+
+			if (!(await copyFromCache(instruction.cacheFolder, "unlockablesORES", path.join(paths.dataRoot, "temp3")))) {
+				unlockablesCacheInvalid = true
+
+				fs.emptyDirSync(path.join(paths.dataRoot, "temp3"))
+
+				if (!fs.existsSync(path.join(paths.dataRoot, "staging", "chunk0", "0057C2C3941115CA.ORES"))) {
+					await callRPKGFunction(
+						`-extract_from_rpkg "${path.join(config.runtimePath, `${unlockablesORESChunk}.rpkg`)}" -filter "0057C2C3941115CA" -output_path "${path.join(paths.dataRoot, "temp3")}"`
+					)
+				} else {
+					fs.ensureDirSync(path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES"))
+					fs.copyFileSync(path.join(paths.dataRoot, "staging", "chunk0", "0057C2C3941115CA.ORES"), path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES")) // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
+					fs.copyFileSync(
+						path.join(paths.dataRoot, "staging", "chunk0", "0057C2C3941115CA.ORES.meta"),
+						path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES.meta")
+					)
+				}
+
+				execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES")}"`)
+			}
+
+			const rawUnlockablesContent: { Id: string }[] = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), "utf8"))
+			unlockablesORESContent = Object.fromEntries(rawUnlockablesContent.map((a) => [a.Id, a]))
+		}
+
+		let repositoryCacheInvalid = false
+		let repositoryRPKG: string | undefined
+		let repositoryContent: Record<string, Record<string, unknown>> = {}
+		const repositoryEditedItems = new Set<string>()
+
+		await logger.verbose("Check repository necessary")
+
+		if (instruction.content.some((a) => a.type === "repository.json")) {
+			repositoryRPKG = await getRPKGOfHash("00204D1AFD76AB13")
+
+			if (!(await copyFromCache(instruction.cacheFolder, "repositoryREPO", path.join(paths.dataRoot, "temp4")))) {
+				repositoryCacheInvalid = true
+
+				fs.emptyDirSync(path.join(paths.dataRoot, "temp4"))
+				await extractOrCopyToTemp(repositoryRPKG, "00204D1AFD76AB13", "REPO", "chunk0") // Extract the REPO to temp4's own subfolder structure below
+
+				// extractOrCopyToTemp always targets `temp/`, not an arbitrary folder - move its
+				// output into temp4 so it isn't clobbered by unrelated content-type handlers that
+				// reuse `temp/` as scratch space for the rest of this mod's content loop.
+				fs.ensureDirSync(path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO"))
+				fs.copySync(path.join(paths.dataRoot, "temp", repositoryRPKG, "REPO"), path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO"))
+				fs.emptyDirSync(path.join(paths.dataRoot, "temp"))
+			}
+
+			const rawRepositoryContent: { [x: string]: unknown }[] = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO", "00204D1AFD76AB13.REPO"), "utf8"))
+			repositoryContent = Object.fromEntries(rawRepositoryContent.map((a) => [a["ID_"], a]))
 		}
 
 		for (const content of instruction.content) {
@@ -591,7 +617,6 @@ export default async function deploy(
 
 					await logger.verbose("Cache check")
 					if (
-						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
@@ -819,115 +844,28 @@ export default async function deploy(
 					break
 				}
 				case "unlockables.json": {
+					// LEI-141: accumulate into unlockablesORESContent (declared above the content
+					// loop) instead of extracting/rebuilding the ORES on every single unlockables.json
+					// this mod has - see this section's own doc comment above.
 					await logger.debug(`Applying unlockable patch ${contentIdentifier}`)
 
 					entityContent = content.source === "disk" ? JSON.parse(fs.readFileSync(content.path, "utf8")) : JSON.parse(await content.content.text())
 
-					const oresChunk = await getRPKGOfHash("0057C2C3941115CA")
+					deepMerge(unlockablesORESContent, entityContent)
 
-					if (
-						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
-						!(await copyFromCache(
-							instruction.cacheFolder,
-							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
-							path.join(paths.dataRoot, "temp", oresChunk)
-						)) // cache is not available
-					) {
-						await extractOrCopyToTemp(oresChunk, "0057C2C3941115CA", "ORES") // Extract the ORES to temp
-
-						execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES")}"`)
-						const oresContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), "utf8"))
-
-						await logger.verbose("Deep merge")
-						const oresToPatch = Object.fromEntries(oresContent.map((a: { Id: string }) => [a.Id, a]))
-						deepMerge(oresToPatch, entityContent)
-						const oresToWrite = Object.entries(oresToPatch).map((a) => ({ ...a[1], Id: a[1].Id || a[0] }))
-
-						fs.writeFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), JSON.stringify(oresToWrite))
-						fs.rmSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES"))
-						execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.json")}"`)
-
-						await copyToCache(
-							instruction.cacheFolder,
-							path.join(paths.dataRoot, "temp", oresChunk),
-							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`)
-						)
-					}
-
-					execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES")}"`)
-					lastServerSideStates["unlockables"] = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), "utf8"))
-
-					fs.copyFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES"), path.join(paths.dataRoot, "staging", "chunk0", "0057C2C3941115CA.ORES"))
-					fs.copyFileSync(path.join(paths.dataRoot, "temp", oresChunk, "ORES", "0057C2C3941115CA.ORES.meta"), path.join(paths.dataRoot, "staging", "chunk0", "0057C2C3941115CA.ORES.meta"))
 					break
 				}
 				case "repository.json": {
+					// LEI-141: accumulate into repositoryContent/repositoryEditedItems (declared above
+					// the content loop) instead of extracting/rebuilding the REPO on every single
+					// repository.json this mod has - see this section's own doc comment above.
 					await logger.debug(`Applying repository patch ${contentIdentifier}`)
 
 					entityContent = content.source === "disk" ? JSON.parse(fs.readFileSync(content.path, "utf8")) : JSON.parse(await content.content.text())
 
-					const repoRPKG = await getRPKGOfHash("00204D1AFD76AB13")
+					deepMerge(repositoryContent, entityContent)
+					for (const key of Object.keys(entityContent)) repositoryEditedItems.add(key)
 
-					if (
-						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
-						!(await copyFromCache(
-							instruction.cacheFolder,
-							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
-							path.join(paths.dataRoot, "temp", repoRPKG)
-						)) // cache is not available
-					) {
-						await extractOrCopyToTemp(repoRPKG, "00204D1AFD76AB13", "REPO") // Extract the REPO to temp
-
-						const repoContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO"), "utf8"))
-
-						const repoToPatch = Object.fromEntries(repoContent.map((a: { [x: string]: unknown }) => [a["ID_"], a]))
-						deepMerge(repoToPatch, entityContent)
-						const repoToWrite = Object.entries(repoToPatch).map((a) => ({ ...a[1], ID_: a[1].ID_ || a[0] }))
-
-						const editedItems = new Set(Object.keys(entityContent))
-
-						await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta")}"`)
-						const metaContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON"), "utf8"))
-						for (const repoItem of repoToWrite) {
-							if (editedItems.has(repoItem.ID_)) {
-								if (repoItem.Runtime) {
-									if (!metaContent["hash_reference_data"].find((a: { hash: string }) => a.hash === parseInt(repoItem.Runtime).toString(16).toUpperCase())) {
-										metaContent["hash_reference_data"].push({
-											hash: parseInt(repoItem.Runtime).toString(16).toUpperCase(),
-											flag: "9F"
-										}) // Add Runtime of any items to REPO depends if not already there
-									}
-								}
-
-								if (repoItem.Image) {
-									if (
-										!metaContent["hash_reference_data"].find(
-											(a: { hash: string }) => a.hash === `00${md5(`[assembly:/_pro/online/default/cloudstorage/resources/${repoItem.Image}].pc_gfx`.toLowerCase()).slice(2, 16).toUpperCase()}`
-										)
-									) {
-										metaContent["hash_reference_data"].push({
-											hash: `00${md5(`[assembly:/_pro/online/default/cloudstorage/resources/${repoItem.Image}].pc_gfx`.toLowerCase()).slice(2, 16).toUpperCase()}`,
-											flag: "9F"
-										}) // Add Image of any items to REPO depends if not already there
-									}
-								}
-							}
-						}
-						fs.writeFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON"), JSON.stringify(metaContent))
-						fs.rmSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta"))
-						await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON")}"`) // Add all runtimes to REPO depends
-
-						fs.writeFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO"), JSON.stringify(repoToWrite))
-
-						await copyToCache(
-							instruction.cacheFolder,
-							path.join(paths.dataRoot, "temp", repoRPKG),
-							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`)
-						)
-					}
-
-					fs.copyFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO"), path.join(paths.dataRoot, "staging", "chunk0", "00204D1AFD76AB13.REPO"))
-					fs.copyFileSync(path.join(paths.dataRoot, "temp", repoRPKG, "REPO", "00204D1AFD76AB13.REPO.meta"), path.join(paths.dataRoot, "staging", "chunk0", "00204D1AFD76AB13.REPO.meta"))
 					break
 				}
 				case "contract.json": {
@@ -1018,7 +956,6 @@ export default async function deploy(
 					const fileType = entityContent.type || "JSON"
 
 					if (
-						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
@@ -1102,7 +1039,6 @@ export default async function deploy(
 					const materialTempDir = path.join(paths.dataRoot, "temp", "material", `chunk${content.chunk}`, materialHash)
 
 					if (
-						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
 						!(await copyFromCache(instruction.cacheFolder, materialCacheKey, materialTempDir)) // cache is not available
 					) {
 						fs.emptyDirSync(materialTempDir)
@@ -1138,7 +1074,6 @@ export default async function deploy(
 					await logger.debug(`Converting texture ${contentIdentifier}`)
 
 					if (
-						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
@@ -1387,7 +1322,6 @@ export default async function deploy(
 					const fileType = content.source === "disk" ? path.basename(content.path).split(".")[0].split("~")[1] : content.extraInformation.fileType!
 
 					if (
-						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
 						!(await copyFromCache(
 							instruction.cacheFolder,
 							path.join(`chunk${content.chunk}`, `${path.basename(contentIdentifier).slice(0, 15)}-${await xxhash3(contentIdentifier)}`),
@@ -1466,7 +1400,6 @@ export default async function deploy(
 					const hash = normaliseToHash(entityContent["hash"])
 
 					if (
-						invalidatedData.some((a) => a.filePath === contentIdentifier) || // must redeploy, invalid cache
 						!(await copyFromCache(instruction.cacheFolder, path.join(`chunk${content.chunk}`, await xxhash3(contentIdentifier)), path.join(paths.dataRoot, "temp", `chunk${content.chunk}`))) // cache is not available
 					) {
 						fs.ensureDirSync(path.join(paths.dataRoot, "temp", `chunk${content.chunk}`))
@@ -1548,6 +1481,76 @@ export default async function deploy(
 			fs.removeSync(path.join(paths.dataRoot, "temp2"))
 		}
 
+		// LEI-141: finalize this mod's accumulated unlockables ORES edits - one rebuild for however
+		// many unlockables.json files this mod had, not one per file (see this section's setup above
+		// the content loop).
+		if (unlockablesORESChunk) {
+			unlockablesORESChunk = unlockablesORESChunk as string
+
+			if (unlockablesCacheInvalid) {
+				const unlockablesToWrite = Object.entries(unlockablesORESContent).map(([id, entry]) => ({ ...entry, Id: (entry as { Id?: string }).Id || id }))
+
+				fs.writeFileSync(path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), JSON.stringify(unlockablesToWrite))
+				fs.rmSync(path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES"))
+				execCommand(`"${thirdParty("OREStool.exe")}" "${path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES.json")}"`) // Rebuild the ORES
+
+				await copyToCache(instruction.cacheFolder, path.join(paths.dataRoot, "temp3"), "unlockablesORES")
+			}
+
+			lastServerSideStates["unlockables"] = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES.JSON"), "utf8"))
+
+			fs.copyFileSync(path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES"), path.join(paths.dataRoot, "staging", "chunk0", "0057C2C3941115CA.ORES"))
+			fs.copyFileSync(path.join(paths.dataRoot, "temp3", unlockablesORESChunk, "ORES", "0057C2C3941115CA.ORES.meta"), path.join(paths.dataRoot, "staging", "chunk0", "0057C2C3941115CA.ORES.meta"))
+
+			fs.removeSync(path.join(paths.dataRoot, "temp3"))
+		}
+
+		// LEI-141: finalize this mod's accumulated repository edits - one rebuild for however many
+		// repository.json files this mod had, not one per file.
+		if (repositoryRPKG) {
+			repositoryRPKG = repositoryRPKG as string
+
+			if (repositoryCacheInvalid) {
+				const repositoryToWrite = Object.entries(repositoryContent).map(([id, entry]) => ({ ...entry, ID_: (entry as { ID_?: string }).ID_ || id }))
+
+				await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO", "00204D1AFD76AB13.REPO.meta")}"`)
+				const metaContent = JSON.parse(fs.readFileSync(path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON"), "utf8"))
+
+				for (const repoItem of repositoryToWrite as { ID_: string; Runtime?: string; Image?: string }[]) {
+					if (!repositoryEditedItems.has(repoItem.ID_)) continue
+
+					if (repoItem.Runtime) {
+						if (!metaContent["hash_reference_data"].find((a: { hash: string }) => a.hash === parseInt(repoItem.Runtime!).toString(16).toUpperCase())) {
+							metaContent["hash_reference_data"].push({
+								hash: parseInt(repoItem.Runtime).toString(16).toUpperCase(),
+								flag: "9F"
+							}) // Add Runtime of any items to REPO depends if not already there
+						}
+					}
+
+					if (repoItem.Image) {
+						const imageHash = `00${md5(`[assembly:/_pro/online/default/cloudstorage/resources/${repoItem.Image}].pc_gfx`.toLowerCase()).slice(2, 16).toUpperCase()}`
+						if (!metaContent["hash_reference_data"].find((a: { hash: string }) => a.hash === imageHash)) {
+							metaContent["hash_reference_data"].push({ hash: imageHash, flag: "9F" }) // Add Image of any items to REPO depends if not already there
+						}
+					}
+				}
+
+				fs.writeFileSync(path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON"), JSON.stringify(metaContent))
+				fs.rmSync(path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO", "00204D1AFD76AB13.REPO.meta"))
+				await callRPKGFunction(`-json_to_hash_meta "${path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO", "00204D1AFD76AB13.REPO.meta.JSON")}"`) // Add all runtimes to REPO depends
+
+				fs.writeFileSync(path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO", "00204D1AFD76AB13.REPO"), JSON.stringify(repositoryToWrite))
+
+				await copyToCache(instruction.cacheFolder, path.join(paths.dataRoot, "temp4"), "repositoryREPO")
+			}
+
+			fs.copyFileSync(path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO", "00204D1AFD76AB13.REPO"), path.join(paths.dataRoot, "staging", "chunk0", "00204D1AFD76AB13.REPO"))
+			fs.copyFileSync(path.join(paths.dataRoot, "temp4", repositoryRPKG, "REPO", "00204D1AFD76AB13.REPO.meta"), path.join(paths.dataRoot, "staging", "chunk0", "00204D1AFD76AB13.REPO.meta"))
+
+			fs.removeSync(path.join(paths.dataRoot, "temp4"))
+		}
+
 		/* ------------------------------ Copy chunk meta to staging folder ----------------------------- */
 		for (const [rpkg, data] of Object.entries(instruction.rpkgTypes)) {
 			if (data.type === "base") {
@@ -1597,7 +1600,6 @@ export default async function deploy(
 					chunkFolder,
 					patches,
 					assignedTemporaryDirectory: `patchWorker${index}`,
-					invalidatedData,
 					cacheFolder: instruction.cacheFolder,
 					// Worker threads are separate module realms with no access to this thread's
 					// in-memory core - explicitly hand over the config/logging setup so the
@@ -1841,7 +1843,6 @@ export default async function deploy(
 				fs.ensureDirSync(path.join(paths.dataRoot, "staging", "chunk0"))
 
 				if (
-					invalidatedData.some((a) => a.data.affected.includes(lineHash)) ||
 					!(await copyFromCache(instruction.cacheFolder, path.join("localisedLines", lineHash), path.join(paths.dataRoot, "temp")))
 				) {
 					fs.writeFileSync(
@@ -1970,9 +1971,9 @@ export default async function deploy(
 		})
 		configureSentryScope(sentryContractDestinations)
 
-		// Content-addressed, not invalidatedData-driven: nothing in discover.ts's fileMap tracks the
-		// Destinations registry hash (004F4B738474CEAD) at all, so there's no per-file invalidation
-		// signal to gate on here the way the Content-phase cases do. What's cacheable instead is the
+		// Content-addressed rather than event-invalidated: there's no natural single "this changed"
+		// signal for the Destinations registry hash (004F4B738474CEAD) the way a specific mod's own
+		// content file has. What's cacheable instead is the
 		// *result* - contractsToAddToDestinations is already fully assembled in memory by this point
 		// from every enabled mod's contract.json content, so hashing it directly and keying the cache
 		// on that hash is exact: same set of contracts (regardless of which mods or in what order they
@@ -2067,7 +2068,7 @@ export default async function deploy(
 
 		const rpkgOfWWEV = await getRPKGOfHash(WWEVhash)
 
-		if (invalidatedData.some((a) => a.data.affected.includes(WWEVhash)) || !(await copyFromCache("global", path.join("WWEV", WWEVhash), path.join(paths.dataRoot, "temp")))) {
+		if (!(await copyFromCache("global", path.join("WWEV", WWEVhash), path.join(paths.dataRoot, "temp")))) {
 			// we need to re-deploy WWEV OR WWEV data couldn't be copied from cache
 
 			await callRPKGFunction(
@@ -2147,7 +2148,7 @@ export default async function deploy(
 
 		const localisationFileRPKG = await getRPKGOfHash("00F5817876E691F1")
 
-		if (invalidatedData.some((a) => a.data.affected.includes("00F5817876E691F1")) || !(await copyFromCache("global", path.join("LOCR", "manifest"), path.join(paths.dataRoot, "temp")))) {
+		if (!(await copyFromCache("global", path.join("LOCR", "manifest"), path.join(paths.dataRoot, "temp")))) {
 			// we need to re-deploy the localisation files OR the localisation files couldn't be copied from cache
 			fs.ensureDirSync(path.join(paths.dataRoot, "temp", "LOCR", `${localisationFileRPKG}.rpkg`))
 
@@ -2241,7 +2242,7 @@ export default async function deploy(
 
 			fs.ensureDirSync(path.join(paths.dataRoot, "staging", localisationFileRPKG.replace(/patch[0-9]*/gi, "")))
 
-			if (invalidatedData.some((a) => a.data.affected.includes(locrHash)) || !(await copyFromCache("global", path.join("LOCR", locrHash), path.join(paths.dataRoot, "temp")))) {
+			if (!(await copyFromCache("global", path.join("LOCR", locrHash), path.join(paths.dataRoot, "temp")))) {
 				// we need to re-deploy the localisation files OR the localisation files couldn't be copied from cache
 				await extractOrCopyToTemp(localisationFileRPKG, locrHash, "LOCR", localisationFileRPKG.replace(/patch[0-9]*/gi, ""))
 				await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.meta`)}"`)

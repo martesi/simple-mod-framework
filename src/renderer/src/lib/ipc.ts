@@ -63,7 +63,14 @@ export interface ModTaskUpdate {
   modId?: string
 }
 
-export type DeployStage = "sorting" | "extracting" | "patching" | "finalizing"
+/**
+ * `"waiting-for-cache-build"` is LEI-141's queue-aware deploy gate (`deployManager.ts`) - the deploy
+ * button is always clickable, and if any mod in the load order doesn't have a ready eager build yet,
+ * this stage shows while that catches up (triggering/waiting on builds) before the real deploy
+ * (`sorting` onward) ever starts. There's no more inline fallback rebuild silently absorbed into
+ * `patching` the way there used to be.
+ */
+export type DeployStage = "waiting-for-cache-build" | "sorting" | "extracting" | "patching" | "finalizing"
 
 export interface DeployProgress {
   stage: DeployStage
@@ -84,6 +91,13 @@ export interface DeploySnapshot {
   /** epoch ms, so the UI can render "deploying against config frozen at 3:42pm" */
   snapshotTime: number
   loadOrder: string[]
+}
+
+/** LEI-141's per-mod eager-build status, straight from `cache.db`'s `mod_build` table - `undefined`/absent for a mod that's never been built (or is RPKG-only and has nothing to build). */
+export interface ModBuildInfo {
+  modId: string
+  status: "building" | "ready" | "failed"
+  error?: string
 }
 
 export type Unsubscribe = () => void
@@ -149,6 +163,15 @@ export interface SmfApi {
     /** Rejected while a deploy is active - real handler must enforce this independently of the UI. */
     remove(modId: string): Promise<{ ok: boolean; reason?: string }>
     updateOutdated(modId: string): Promise<ModEntry>
+    /** Every mod's current eager-build status (LEI-141) - poll after actions that could change one (add/update/options-change/explicit rebuild) or on an interval while any mod shows "building". */
+    buildStatuses(): Promise<ModBuildInfo[]>
+    /**
+     * Deletes and rebuilds `cache.db` entirely from `Mods/`'s actual contents, `Mods/config.json`,
+     * and the current game path - the "something's wrong with the cache, start clean" escape hatch
+     * (LEI-141's rebuild-from-scratch path). Rejected while a deploy is active. Broadcasts
+     * `mods:cacheProgress` while the mod list re-scans, same as `rebuildIndex()`.
+     */
+    rebuildCacheDb(): Promise<{ ok: boolean; reason?: string }>
   }
 
   deploy: {

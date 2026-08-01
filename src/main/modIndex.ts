@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { basename, dirname, join, resolve } from "node:path"
+import { basename, join, resolve } from "node:path"
 import { Worker } from "node:worker_threads"
 import JSON5 from "json5"
 import type { ModEntry, Manifest } from "../renderer/src/lib/manifest-types"
@@ -7,6 +7,7 @@ import type { DiskManifest } from "./diskManifest"
 import { isRpkgOnlyModFolder, validateModFolder } from "./validateMod"
 import { rewriteManifestImages } from "./modImages"
 import type { IndexWorkerMessage, IndexWorkerRequest, SerializedIndexEntry } from "./indexWorker"
+import { deleteMod, getMeta, type DbModRow, listMods, replaceModsIndex, setMeta } from "./db"
 
 /**
  * Resolves the on-disk path to indexWorker.cjs bundled next to this file - mirrors
@@ -93,9 +94,14 @@ function toUiManifest(m: DiskManifest): Manifest {
 }
 
 /**
- * Holds the mod list in memory for the lifetime of the main process, and now also mirrors it to a
- * single JSON file on disk (`<dataRoot>/cache/modIndex.json`) so a normal launch doesn't have to
- * re-walk `Mods/` at all.
+ * Holds the mod list in memory for the lifetime of the main process, and mirrors it to `cache.db`'s
+ * `mods` table (`db.ts`) so a normal launch doesn't have to re-walk `Mods/` at all.
+ *
+ * LEI-141 moved this off a standalone `<dataRoot>/cache/modIndex.json` file and onto the shared
+ * `cache.db` - one consolidated store instead of five, and the mod ID→folder/manifest mapping this
+ * class already maintained is exactly what `discover`/`analyseMod`/`deploy`'s three independent,
+ * per-deploy `fs.readdirSync` + re-`JSON5.parse`-every-manifest resolutions (see `resolveModFolder.ts`)
+ * now read from instead of re-deriving themselves every run.
  *
  * The old `Mod Manager/src/lib/utils.ts` MOD_INDEX_CACHE_FILE was removed (LEI-96/LEI-134) because
  * the renderer back then had no way to keep it in sync - it just re-derived everything from disk
@@ -103,35 +109,37 @@ function toUiManifest(m: DiskManifest): Manifest {
  * path back to correctness short of deleting it by hand. That risk doesn't apply the same way here:
  * every mutation this app makes to `Mods/` already goes through one of a small number of write-through
  * methods on this class (`addFolders()`, `remove()`, `writeManifest()`, `reindexOne()`, plus a full
- * `rebuildChunked()`/`rebuildInWorker()`), and every one of them now re-persists the cache file as
- * part of the same call. The only way the on-disk index can drift from reality is a change made to
+ * `rebuildChunked()`/`rebuildInWorker()`), and every one of them now re-persists to the db as
+ * part of the same call. The only way the index can drift from reality is a change made to
  * `Mods/` from *outside* this app entirely (hand-copying a folder in, editing a manifest with a text
  * editor) - which is exactly what the explicit "Rebuild cache" action (`mods:rebuildIndex`) exists
  * to fix, same as it always did.
  *
- * `loadOrRebuild()` is what a normal launch calls: read the persisted file (a handful of
+ * `loadOrRebuild()` is what a normal launch calls: read the persisted rows (a handful of
  * milliseconds, no directory walk) and only fall back to a full `rebuildInWorker()` scan if there
- * isn't one yet (first-ever launch) or it fails to parse.
+ * isn't a persisted index yet (first-ever launch, or right after a `cache.db` rebuild-from-scratch)
+ * or it fails to parse.
  */
 export class ModIndex {
   private byId = new Map<string, IndexedMod>()
   private built = false
 
-  constructor(
-    private getModsDir: () => string,
-    private dataRoot: string
-  ) {}
+  constructor(private getModsDir: () => string) {}
 
-  private cachePath(): string {
-    return join(this.dataRoot, "cache", "modIndex.json")
-  }
-
-  /** Best-effort load of the persisted index - returns false (and leaves `byId` untouched) if there's no cache file yet or it's unreadable/malformed. */
+  /** Best-effort load of the persisted index - returns false (and leaves `byId` untouched) if the db has never been populated by a scan yet. */
   private tryLoadPersistedCache(): boolean {
     try {
-      const raw = readFileSync(this.cachePath(), "utf8")
-      const entries = JSON.parse(raw) as SerializedIndexEntry[]
-      if (!Array.isArray(entries)) return false
+      if (getMeta("modIndexBuilt") !== "1") return false
+
+      const entries: SerializedIndexEntry[] = listMods().map((row: DbModRow) => ({
+        folder: row.folder,
+        id: row.id,
+        isFrameworkMod: row.isFrameworkMod,
+        manifest: row.manifest,
+        valid: row.valid,
+        validationError: row.validationError,
+        outdated: row.outdated
+      }))
       this.loadFromEntries(entries)
       return true
     } catch {
@@ -140,15 +148,26 @@ export class ModIndex {
   }
 
   /**
-   * Write-through: mirrors the current in-memory index to disk. Called at the end of every method
-   * that mutates `byId`, so the persisted cache is never more than one IPC call stale. Best-effort -
-   * a failed write (e.g. disk full) shouldn't take down mod management; worst case the next launch
-   * just falls back to a full rescan.
+   * Write-through: mirrors the current in-memory index to `cache.db`'s `mods` table (a full
+   * replace, not a per-entry upsert - `byId` is always the complete, current set at the moment this
+   * runs, same as the old modIndex.json's "overwrite the whole file" semantics). Called at the end
+   * of every method that mutates `byId`, so the persisted index is never more than one IPC call
+   * stale. Best-effort - a failed write shouldn't take down mod management; worst case the next
+   * launch just falls back to a full rescan.
    */
   private persistCache(): void {
     try {
-      mkdirSync(dirname(this.cachePath()), { recursive: true })
-      writeFileSync(this.cachePath(), JSON.stringify([...this.byId.values()]))
+      const rows: DbModRow[] = [...this.byId.values()].map((entry) => ({
+        id: entry.id,
+        folder: entry.folder,
+        isFrameworkMod: entry.isFrameworkMod,
+        manifest: entry.manifest,
+        valid: entry.valid,
+        validationError: entry.validationError,
+        outdated: entry.outdated
+      }))
+      replaceModsIndex(rows)
+      setMeta("modIndexBuilt", "1")
     } catch {
       // Best-effort - see doc comment above.
     }
@@ -157,6 +176,12 @@ export class ModIndex {
   /** True once a scan (sync or chunked) has populated the index at least once this launch. */
   get isBuilt(): boolean {
     return this.built
+  }
+
+  /** Forces the in-memory index to forget it's "built" so the next access re-reads from `cache.db` instead of trusting whatever's still sitting in `byId` - used right after something rewrote `cache.db`'s `mods` table out from under this instance (`mods:rebuildCacheDb`'s full rebuild-from-scratch), where the persisted rows genuinely are newer than the in-memory copy despite nothing having gone through this class's own write-through methods. */
+  forceReload(): void {
+    this.built = false
+    this.byId.clear()
   }
 
   private ensureBuilt(): void {
@@ -365,6 +390,10 @@ export class ModIndex {
     this.ensureBuilt()
     this.byId.delete(id)
     this.persistCache()
+    // Also drop this mod's eager-build status/output and cached content blobs (db.ts's deleteMod) -
+    // a removed mod has no folder left to rebuild from, so a stale "ready" row would otherwise
+    // linger in cache.db forever pointing at content that no longer exists on disk.
+    deleteMod(id)
   }
 
   folderFor(id: string): string | undefined {

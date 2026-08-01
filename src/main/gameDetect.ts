@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import { accessSync, constants as fsConstants, copyFileSync, existsSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import type { AppPaths } from "./paths"
+import { getStoredGameInfo, setStoredGameInfo, type StoredGameInfo } from "./db"
 
 export type GamePlatform = "steam" | "epic" | "microsoft"
 
@@ -38,25 +39,51 @@ export interface GamePathInfo {
 export type GamePathDetection = ({ ok: true } & GamePathInfo) | { ok: false; error: string }
 
 /**
- * Validate a game path (normally the "Retail" folder itself, though a one-level-too-high pick
- * self-heals - see below) and derive `runtimePath`/`platform` from it.
+ * LEI-141: game/distributor detection is now one-shot. `deriveGamePathInfoUncached()` below (the
+ * validate-and-derive step LEI-133 introduced) still does the real filesystem/hash work, but it's
+ * now only ever actually invoked when `gamePath` is set or changed - not "every time
+ * retailPath/runtimePath/platform are needed" as LEI-133 originally had it (deploy start, analyseMod,
+ * the picker - all used to redundantly re-derive, and `deriveGamePathInfo`/`computeGameHash` in the
+ * pre-LEI-141 version of this file both independently MD5-hashed the same exe every single deploy).
  *
- * This relocates two pieces of logic that used to run reactively, after the fact, once a deploy
- * was already underway:
- *   - `src/core.ts`'s post-hoc `runtimePath` self-heal (detects a Microsoft-Store-shaped layout,
- *     rewrites config.json on disk, copies a different clean-thumbs file)
- *   - `src/main.ts`'s MD5-hash platform detection (hashes `MicrosoftGame.Config`/`HITMAN3.exe`
- *     against a table of known Steam/Epic/Microsoft hashes)
- *
- * into a single validate-and-derive step - see LEI-133's description. Unlike that first version,
- * though, this is *not* a "compute once at pick-time" step: only `gamePath` itself is persisted
- * (see settings.ts), so this runs fresh every time `retailPath`/`runtimePath`/`platform` are
- * actually needed (the directory picker, for immediate feedback; `config:merge`, implicitly, by
- * virtue of nothing being cached; deploy start and analyseMod, to build the embedded `Config` -
- * see ipcHandlers.ts/deployManager.ts/deployPipeline.ts) rather than once, reused, and left to go
- * stale if the game updates or moves.
+ * The *result* is persisted to `cache.db`'s `game_info` row (`db.ts`) instead - `deriveGamePathInfo()`
+ * below is the cached entry point everything else should call: it returns the stored result
+ * immediately if one exists for the current `gamePath`, and only falls through to a real re-derive
+ * (updating the stored row) if `gamePath` doesn't match what was last detected, or nothing's stored
+ * yet. Once detected, a result is **never rechecked** just because time passed or the game updated
+ * underneath it - the framework only cares about distributor (Steam/Epic/Microsoft), and mods only
+ * ever declare `supportedPlatforms` in that sense, not a version. (Caveat, unconfirmed and out of
+ * scope for this change: some mods may in practice not be as distributor-agnostic as the manifest
+ * schema assumes. Also unconfirmed/out of scope: an unrecognised-hash pick silently defaults to
+ * `"steam"` - see `GAME_HASHES` below - and with detection now one-shot, a wrong guess at pick-time
+ * persists for the life of this cache.db instead of being re-derived fresh next deploy.)
  */
 export function deriveGamePathInfo(pickedPath: string, paths: AppPaths): GamePathDetection {
+	const stored = getStoredGameInfo()
+	if (stored && stored.gamePath === pickedPath) {
+		return { ok: true, retailPath: stored.retailPath, runtimePath: stored.runtimePath, platform: stored.platform, unrecognisedBuild: stored.unrecognisedBuild }
+	}
+
+	const detection = deriveGamePathInfoUncached(pickedPath, paths)
+	if (detection.ok) {
+		const { ok: _ok, ...info } = detection
+		setStoredGameInfo(pickedPath, info)
+	}
+
+	return detection
+}
+
+/** Whatever was last detected and persisted, with no attempt to re-derive or validate it's still current - for callers (e.g. a rebuild-from-scratch check) that just want to know "do we already have a game pick recorded" without paying for a re-derive. */
+export function getCachedGameInfo(): StoredGameInfo | undefined {
+	return getStoredGameInfo()
+}
+
+/**
+ * The real validate-and-derive step (LEI-133's original `deriveGamePathInfo`, unchanged) - does the
+ * actual filesystem checks and MD5 hash lookup. Called at most once per distinct `gamePath` (see
+ * {@link deriveGamePathInfo} above) instead of on every deploy/analyseMod/picker call.
+ */
+export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths): GamePathDetection {
 	let retailPath = resolve(pickedPath)
 
 	// Easy mistake: picking the game's root folder (e.g. ".../common/HITMAN3") instead of the
@@ -119,14 +146,4 @@ export function deriveGamePathInfo(pickedPath: string, paths: AppPaths): GamePat
 	}
 
 	return { ok: true, retailPath, runtimePath, platform, unrecognisedBuild: !recognisedPlatform }
-}
-
-/**
- * The same "which game build is this" hash `deriveGamePathInfo` computes, recomputed at deploy
- * time purely to invalidate the discover/difference cache when the game updates underneath an
- * already-picked, already-valid `retailPath`/`runtimePath` (mirrors `src/main.ts`'s cache-version
- * check) - not for platform detection, which only ever happens once, at pick-time, above.
- */
-export function computeGameHash(retailPath: string, runtimePath: string): string {
-	return existsSync(join(retailPath, "Runtime", "chunk0.rpkg")) ? md5File(join(retailPath, "..", "MicrosoftGame.Config")) : md5File(join(runtimePath, "..", "Retail", "HITMAN3.exe"))
 }

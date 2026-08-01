@@ -48,10 +48,6 @@ type PatchTaskData = {
 	chunkFolder: string
 	assignedTemporaryDirectory: string
 	patches: any[]
-	invalidatedData: {
-		filePath: string
-		data: { hash: string; dependencies: string[]; affected: string[] }
-	}[]
 	cacheFolder: string
 	config: Config
 	coreOptions: ResolvedCoreOptions
@@ -71,7 +67,6 @@ async function processPatch({
 	chunkFolder,
 	assignedTemporaryDirectory,
 	patches,
-	invalidatedData,
 	cacheFolder,
 	config: workerConfig,
 	coreOptions,
@@ -81,12 +76,7 @@ async function processPatch({
 
 	fs.ensureDirSync(path.join(paths.dataRoot, assignedTemporaryDirectory))
 
-	if (
-		!(
-			patches.every((patch) => !invalidatedData.some((a) => a.filePath === patch.path)) &&
-			(await copyFromCache(cacheFolder, path.join(chunkFolder, await xxhash3(patches[patches.length - 1].path)), path.join(paths.dataRoot, assignedTemporaryDirectory)))
-		)
-	) {
+	if (!(await copyFromCache(cacheFolder, path.join(chunkFolder, await xxhash3(patches[patches.length - 1].path)), path.join(paths.dataRoot, assignedTemporaryDirectory)))) {
 		const rpkgInstance = new RPKGInstance(path.join(paths.toolsRoot, "Third-Party", "rpkg-cli"))
 
 		await rpkgInstance.waitForInitialised()

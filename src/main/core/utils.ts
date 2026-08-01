@@ -1,5 +1,6 @@
 import { config, logger, paths, rpkgInstance } from "./core-singleton"
 
+import { hasContentCache, restoreContentCache, storeContentCache } from "../db"
 import { freeDiskSpace } from "./smf-rust"
 import fs from "fs-extra"
 import md5 from "md5"
@@ -87,12 +88,17 @@ export async function extractOrCopyToTemp(rpkgOfFile: string, file: string, type
 	}
 }
 
+/**
+ * LEI-141: backed by `cache.db`'s `content_blob_cache` table instead of loose files under
+ * `cache/<mod>/<relativePath>` - one suit-replacement mod alone put ~7k loose files under that old
+ * scheme. Same signature/call sites as before (every caller in `deploy.ts` is unchanged) - only the
+ * storage underneath moved. `winPathEscape(mod)` is no longer needed for the storage key itself
+ * (SQLite doesn't care what characters are in a TEXT primary key the way a filesystem path does),
+ * but callers still pass whatever mod id/cacheFolder they always did.
+ */
 export async function copyFromCache(mod: string, cachePath: string, outputPath: string) {
-	if (fs.existsSync(path.join(paths.dataRoot, "cache", winPathEscape(mod), cachePath))) {
+	if (restoreContentCache(mod, cachePath, outputPath)) {
 		await logger.verbose(`Cache hit: ${mod} ${cachePath} ${outputPath}`)
-
-		fs.ensureDirSync(outputPath)
-		fs.copySync(path.join(paths.dataRoot, "cache", winPathEscape(mod), cachePath), outputPath)
 		return true
 	}
 
@@ -102,18 +108,23 @@ export async function copyFromCache(mod: string, cachePath: string, outputPath: 
 }
 
 export async function copyToCache(mod: string, originalPath: string, cachePath: string) {
-	// do not cache if less than 5 GB remaining on disk
+	// do not cache if less than 5 GB remaining on disk - cache.db's blobs still consume real disk
+	// space even though there's no longer a separate loose-file tree to fill up.
 	if (fs.existsSync(originalPath) && (await freeDiskSpace(paths.dataRoot)) / 1024 / 1024 / 1024 > 5) {
 		await logger.verbose(`Copy to cache: ${mod} ${originalPath} ${cachePath}`)
 
-		fs.emptyDirSync(path.join(paths.dataRoot, "cache", winPathEscape(mod), cachePath))
-		fs.copySync(originalPath, path.join(paths.dataRoot, "cache", winPathEscape(mod), cachePath))
+		storeContentCache(mod, cachePath, originalPath)
 		return true
 	}
 
 	await logger.verbose(`Not enough space/nonexistent path: ${mod} ${originalPath} ${cachePath}`)
 
 	return false
+}
+
+/** Whether {@link copyFromCache} would hit, without actually restoring anything - not currently used outside this module but kept alongside the two functions above for symmetry with `db.ts`'s `hasContentCache()`. */
+export function contentCacheExists(mod: string, cachePath: string): boolean {
+	return hasContentCache(mod, cachePath)
 }
 
 export function winPathEscape(str: string) {
