@@ -117,8 +117,8 @@ export async function extractOrCopyToTemp(rpkgOfFile: string, file: string, type
  */
 export async function copyFromCache(mod: string, cachePath: string, outputPath: string) {
 	const slotDir = contentCacheSlotDir(mod, cachePath)
-	if (fs.existsSync(slotDir)) {
-		fs.copySync(slotDir, outputPath)
+	if (await fs.pathExists(slotDir)) {
+		await fs.copy(slotDir, outputPath)
 		await logger.verbose(`Cache hit: ${mod} ${cachePath} ${outputPath}`)
 		return true
 	}
@@ -129,12 +129,12 @@ export async function copyFromCache(mod: string, cachePath: string, outputPath: 
 }
 
 export async function copyToCache(mod: string, originalPath: string, cachePath: string) {
-	if (fs.existsSync(originalPath) && (await freeDiskSpace(paths.dataRoot)) / 1024 / 1024 / 1024 > 5) {
+	if ((await fs.pathExists(originalPath)) && (await freeDiskSpace(paths.dataRoot)) / 1024 / 1024 / 1024 > 5) {
 		await logger.verbose(`Copy to cache: ${mod} ${originalPath} ${cachePath}`)
 
 		const slotDir = contentCacheSlotDir(mod, cachePath)
-		fs.removeSync(slotDir) // clear old slot before overwriting (single-slot, no accumulation)
-		fs.copySync(originalPath, slotDir)
+		await fs.remove(slotDir) // clear old slot before overwriting (single-slot, no accumulation)
+		await fs.copy(originalPath, slotDir)
 		return true
 	}
 
@@ -144,8 +144,8 @@ export async function copyToCache(mod: string, originalPath: string, cachePath: 
 }
 
 /** Whether {@link copyFromCache} would hit, without actually restoring anything. */
-export function contentCacheExists(mod: string, cachePath: string): boolean {
-	return fs.existsSync(contentCacheSlotDir(mod, cachePath))
+export async function contentCacheExists(mod: string, cachePath: string): Promise<boolean> {
+	return fs.pathExists(contentCacheSlotDir(mod, cachePath))
 }
 
 export function winPathEscape(str: string) {
