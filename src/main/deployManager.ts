@@ -7,7 +7,7 @@ import { loadSettings, resolveModsDir } from "./settings"
 import type { ModsConfig } from "./modsConfig"
 import { loadModsConfig } from "./modsConfig"
 import { deriveGamePathInfo } from "./gameDetect"
-import { getMod, getModBuild } from "./db"
+import { finishModBuildFailed, getMod, getModBuild } from "./db"
 import type { DeployWorkerMessage, DeployWorkerRequest } from "./deployWorker"
 import type { DeployProgress, DeploySnapshot } from "../renderer/src/lib/ipc"
 import type { DeployPipelineLogLine } from "./deployPipeline"
@@ -179,9 +179,18 @@ export class DeployManager {
       }
 
       for (const modId of notReady) {
-        const build = getModBuild(modId)
-        if (build?.status === "building") continue
-        if (triggered.has(modId) && build?.status === "failed") continue // already tried once this wait cycle, don't hammer a genuinely broken mod
+        // A `'building'` row on disk only means something *this instance* can trust once it's the
+        // one that put the mod in `triggered` - per mod_build's doc comment in db.ts, that status
+        // exists purely for crash-safety, not as a staleness signal. A row left `'building'` by a
+        // now-dead process (app restart, killed worker, previous crash) looks identical on disk to
+        // one this run's own worker is still working through, so trusting the status alone here
+        // means a stale row is never retried - the mod just sits `notReady` until the deploy times
+        // out. Only skip when *we* already triggered this mod this wait cycle.
+        if (triggered.has(modId)) {
+          const build = getModBuild(modId)
+          if (build?.status === "building") continue // our own trigger for this mod is still in flight
+          if (build?.status === "failed") continue // already tried once this wait cycle, don't hammer a genuinely broken mod
+        }
         triggered.add(modId)
         this.triggerBuild(modId).catch(() => {
           // Best-effort - a failed trigger just means this mod stays in `notReady` until the
@@ -312,9 +321,12 @@ export class DeployManager {
     }
 
     return new Promise<{ ok: boolean; error?: string }>((resolvePromise, reject) => {
+      let settled = false
+
       worker.on("message", (msg: DeployWorkerMessage) => {
         if (msg.id !== taskId) return
         if (msg.type === "done") {
+          settled = true
           void worker.terminate()
           resolvePromise(msg.ok ? { ok: true } : { ok: false, error: msg.error })
         }
@@ -322,9 +334,28 @@ export class DeployManager {
         // event.sender.send("deploy:analyseModLog") wiring in ipcHandlers.ts is unchanged.
       })
 
+      // A worker that crashes outright (uncaught exception/unhandled rejection in framework core
+      // code, rather than the graceful try/catch in deployPipeline.ts) never sends a "done" message.
+      // Without marking the row 'failed' here, beginModBuild()'s 'building' row for this mod would
+      // stay 'building' forever - the queue-aware gate in waitForBuildsThenDeploy() only stops
+      // retriggering a mod once it sees 'failed', so an orphaned 'building' row just silently waits
+      // out the full BUILD_WAIT_TIMEOUT_MS instead of surfacing the failure.
       worker.on("error", (err) => {
+        if (settled) return
+        settled = true
+        finishModBuildFailed(modId, err.message)
         void worker.terminate()
         reject(err)
+      })
+
+      worker.on("exit", (code) => {
+        if (settled) return
+        if (code !== 0) {
+          settled = true
+          const message = `Build worker exited unexpectedly (code ${code})`
+          finishModBuildFailed(modId, message)
+          reject(new Error(message))
+        }
       })
 
       worker.postMessage(req)

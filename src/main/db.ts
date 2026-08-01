@@ -116,6 +116,12 @@ export function openDb(dbPath: string): DatabaseSync {
 
 	const db = new DatabaseSync(dbPath)
 	db.exec("PRAGMA journal_mode = WAL")
+	// Eager per-mod builds run one DatabaseSync connection per worker thread, all against this same
+	// file (see deployPipeline.ts's openDb() calls) - WAL lets readers and one writer overlap, but
+	// concurrent writers still serialize on SQLite's write lock. Without a busy_timeout, a writer that
+	// loses that race gets SQLITE_BUSY ("database is locked") immediately instead of waiting for its
+	// turn, which is exactly the failure mode multiple simultaneous per-mod builds hit in practice.
+	db.exec("PRAGMA busy_timeout = 5000")
 	db.exec("PRAGMA foreign_keys = ON")
 	migrate(db)
 
