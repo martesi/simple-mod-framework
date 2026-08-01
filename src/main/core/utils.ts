@@ -1,6 +1,5 @@
 import { config, logger, paths, rpkgInstance } from "./core-singleton"
 
-import { hasContentCache, restoreContentCache, storeContentCache } from "../db"
 import { freeDiskSpace } from "./smf-rust"
 import fs from "fs-extra"
 import md5 from "md5"
@@ -71,6 +70,25 @@ export function hexflip(input: string) {
 	return output
 }
 
+/**
+ * LEI-142: derives the directory path for a single content cache slot. Must use identical
+ * sanitization to `db.ts`'s `clearContentCacheForMod` (which uses the same `replace(/[<>:"/\\|?*]/g, "")`).
+ *
+ * Layout: `{paths.dataRoot}/content_cache/{safeModId}/{...cachePath segments}/`
+ *   - `safeModId`: modId with NTFS-unsafe chars stripped (same as `winPathEscape` but inline to
+ *     avoid circular dep: this module is imported by patchWorker threads where `../db` isn't open).
+ *   - `cachePath`: already path-safe at every real call site (xxhash3 hex values, alphanumeric
+ *     ORES/REPO labels). Path separators (\ and /) become real directory levels via `path.join`.
+ *
+ * Using `paths.dataRoot` directly (rather than a module var set by `openDb()`) means patchWorker
+ * threads pick up the correct root from the core-singleton that `ensureWorkerCore()` initializes -
+ * no `openDb()` call needed in the worker.
+ */
+function contentCacheSlotDir(modId: string, cachePath: string): string {
+	const safeModId = modId.replace(/[<>:"/\\|?*]/g, "")
+	return path.join(paths.dataRoot, "content_cache", safeModId, ...cachePath.split(/[/\\]/))
+}
+
 export async function extractOrCopyToTemp(rpkgOfFile: string, file: string, type: string, stagingChunk = "chunk0") {
 	await logger.verbose(`Extract or copy to temp: ${rpkgOfFile} ${file} ${type} ${stagingChunk}`)
 
@@ -89,15 +107,18 @@ export async function extractOrCopyToTemp(rpkgOfFile: string, file: string, type
 }
 
 /**
- * LEI-141: backed by `cache.db`'s `content_blob_cache` table instead of loose files under
- * `cache/<mod>/<relativePath>` - one suit-replacement mod alone put ~7k loose files under that old
- * scheme. Same signature/call sites as before (every caller in `deploy.ts` is unchanged) - only the
- * storage underneath moved. `winPathEscape(mod)` is no longer needed for the storage key itself
- * (SQLite doesn't care what characters are in a TEXT primary key the way a filesystem path does),
- * but callers still pass whatever mod id/cacheFolder they always did.
+ * LEI-142: content artifacts are stored as loose files under `{paths.dataRoot}/content_cache/`
+ * (content-addressed by mod id + cache path) rather than as SQLite BLOBs. Restores the cached
+ * directory tree to `outputPath` via `fs.copySync`, which creates `outputPath` if missing and
+ * merges if it exists - same "merge contents into dest" semantics as the old SQLite restore.
+ *
+ * Works in patchWorker threads without `openDb()` because it reads `paths.dataRoot` from the
+ * core-singleton (set by `ensureWorkerCore()`) rather than from a module-level var in `db.ts`.
  */
 export async function copyFromCache(mod: string, cachePath: string, outputPath: string) {
-	if (restoreContentCache(mod, cachePath, outputPath)) {
+	const slotDir = contentCacheSlotDir(mod, cachePath)
+	if (await fs.pathExists(slotDir)) {
+		await fs.copy(slotDir, outputPath)
 		await logger.verbose(`Cache hit: ${mod} ${cachePath} ${outputPath}`)
 		return true
 	}
@@ -108,12 +129,12 @@ export async function copyFromCache(mod: string, cachePath: string, outputPath: 
 }
 
 export async function copyToCache(mod: string, originalPath: string, cachePath: string) {
-	// do not cache if less than 5 GB remaining on disk - cache.db's blobs still consume real disk
-	// space even though there's no longer a separate loose-file tree to fill up.
-	if (fs.existsSync(originalPath) && (await freeDiskSpace(paths.dataRoot)) / 1024 / 1024 / 1024 > 5) {
+	if ((await fs.pathExists(originalPath)) && (await freeDiskSpace(paths.dataRoot)) / 1024 / 1024 / 1024 > 5) {
 		await logger.verbose(`Copy to cache: ${mod} ${originalPath} ${cachePath}`)
 
-		storeContentCache(mod, cachePath, originalPath)
+		const slotDir = contentCacheSlotDir(mod, cachePath)
+		await fs.remove(slotDir) // clear old slot before overwriting (single-slot, no accumulation)
+		await fs.copy(originalPath, slotDir)
 		return true
 	}
 
@@ -122,9 +143,9 @@ export async function copyToCache(mod: string, originalPath: string, cachePath: 
 	return false
 }
 
-/** Whether {@link copyFromCache} would hit, without actually restoring anything - not currently used outside this module but kept alongside the two functions above for symmetry with `db.ts`'s `hasContentCache()`. */
-export function contentCacheExists(mod: string, cachePath: string): boolean {
-	return hasContentCache(mod, cachePath)
+/** Whether {@link copyFromCache} would hit, without actually restoring anything. */
+export async function contentCacheExists(mod: string, cachePath: string): Promise<boolean> {
+	return fs.pathExists(contentCacheSlotDir(mod, cachePath))
 }
 
 export function winPathEscape(str: string) {

@@ -9,7 +9,7 @@ import { ModIndex } from "./modIndex"
 import { setModImageRoot } from "./modImages"
 import { removeModFolder, runAddModTask, type TaskEmit } from "./modOps"
 import { DeployManager } from "./deployManager"
-import { closeDb, openDb, listModBuilds } from "./db"
+import { clearAllContentCache, closeDb, openDb, listModBuilds } from "./db"
 import { existsSync, rmSync } from "node:fs"
 import type { Config, DefaultPaths } from "../renderer/src/lib/manifest-types"
 import type { ModBuildInfo } from "../renderer/src/lib/ipc"
@@ -318,7 +318,11 @@ export function registerIpcHandlers(paths: AppPaths): void {
 			// CREATE TABLE IF NOT EXISTS can't already fix, which is nothing in the vast majority of
 			// real corruption scenarios.
 		}
+		// LEI-142: also wipe the loose content_cache/ tree so the rebuilt DB starts with a
+		// genuinely clean state rather than potentially stale artifact files from the previous run.
+		// openDb() sets contentCacheRoot, so clearAllContentCache() must be called after it.
 		openDb(dbPath)
+		clearAllContentCache()
 
 		if (settings.gamePath) deriveGamePathInfo(settings.gamePath, paths)
 
