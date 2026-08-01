@@ -307,6 +307,11 @@ export function registerIpcHandlers(paths: AppPaths): void {
 		const modsDir = getModsDir()
 		const dbPath = join(resolveTempDir(paths, settings), "cache.db")
 
+		// LEI-145: drain in-flight build workers before closing the DB. Without this, a worker mid-
+		// write on Windows keeps the SQLite file handle open, rmSync() below fails silently, and the
+		// "rebuild" does nothing - cache.db is never actually deleted or reset.
+		await deployManager.waitForAllBuilds()
+
 		closeDb()
 		try {
 			if (existsSync(dbPath)) rmSync(dbPath)

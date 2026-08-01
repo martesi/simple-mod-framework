@@ -44,7 +44,7 @@ export const getRPKGOfHash = async function (hash: string): Promise<string> {
 	} else {
 		try {
 			const x = await rpkgInstance.getRPKGOfHash(config.runtimePath, hash)
-			RPKGHashCache[hash] = [x, false]
+			RPKGHashCache[hash] = [x, true] // true = newly discovered this session, not yet persisted
 			return x
 		} catch {
 			const message = `Couldn't find ${hash} in the game files! Make sure your game is up-to-date and you've installed the framework in the right place.`
@@ -63,9 +63,24 @@ export function loadRPKGHashCache() {
 	Object.assign(RPKGHashCache, Object.fromEntries(Object.entries(getRpkgHashCacheEntries()).map((a) => [a[0], [a[1], false]])))
 }
 
-/** Persist {@link RPKGHashCache} back to `cache.db`. Call once at the end of the process. */
+/**
+ * Persist newly-discovered entries in {@link RPKGHashCache} back to `cache.db`. Only saves entries
+ * marked as new (the boolean second element, set `true` by {@link getRPKGOfHash} on discovery) -
+ * entries loaded from DB via {@link loadRPKGHashCache} are `false` and are never written back.
+ *
+ * LEI-147: full-snapshot saves caused last-writer-wins data loss with concurrent build workers:
+ * each worker loaded a snapshot at T0, discovered different new hashes, then saved its entire
+ * in-memory object back - overwriting whatever the other workers wrote after T0. Writing only the
+ * delta makes concurrent saves compose correctly (INSERT OR UPDATE on individual rows).
+ */
 export function saveRPKGHashCache() {
-	setRpkgHashCacheEntries(Object.fromEntries(Object.entries(RPKGHashCache).map((a) => [a[0], a[1][0]])))
+	const newEntries: Record<string, string> = {}
+	for (const [hash, [rpkgName, isNew]] of Object.entries(RPKGHashCache)) {
+		if (isNew) newEntries[hash] = rpkgName
+	}
+	if (Object.keys(newEntries).length > 0) {
+		setRpkgHashCacheEntries(newEntries)
+	}
 }
 
 const deepMerge = function (x: any, y: any) {

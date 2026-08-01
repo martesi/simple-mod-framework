@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { cpus } from "node:os"
 import { resolve } from "node:path"
 import { Worker } from "node:worker_threads"
 import type { AppPaths } from "./paths"
@@ -51,6 +52,9 @@ const STAGE_TOTAL = 5
 const BUILD_WAIT_TIMEOUT_MS = 10 * 60 * 1000
 const BUILD_POLL_INTERVAL_MS = 500
 
+/** LEI-143: a `status='building'` row older than this without a live build in `buildInFlight` is treated as orphaned (left by a crashed process) and re-triggered. */
+const STALE_BUILD_TIMEOUT_MS = 5 * 60 * 1000
+
 /**
  * Offloads each deploy/analyseMod run to a dedicated `node:worker_threads` Worker so the Electron
  * main process event loop is never blocked while the framework core is running (dynamic TypeScript
@@ -69,6 +73,27 @@ export class DeployManager {
   private active: DeploySnapshot | null = null
   private nextTaskId = 0
 
+  /**
+   * LEI-144: in-process dedup registry. `triggerBuild()` stores each mod's in-flight Promise here
+   * and returns the existing one to any subsequent caller for the same modId, so concurrent trigger
+   * points (the deploy wait-loop and `triggerEagerBuild` from ipcHandlers.ts) never spawn two
+   * workers for the same mod simultaneously. Removed when the build settles (success or failure).
+   */
+  private readonly buildInFlight = new Map<string, Promise<{ ok: boolean; error?: string }>>()
+
+  /** LEI-145: number of build workers currently running (not queued). */
+  private buildActiveCount = 0
+
+  /**
+   * LEI-145: at most this many build workers run at once. Same formula as deploy.ts's patchWorker
+   * pool - generous enough to use available cores, conservative enough not to OOM on a big
+   * collection rebuild.
+   */
+  private readonly BUILD_CONCURRENCY_CAP = Math.max(2, Math.ceil(cpus().length / 4))
+
+  /** LEI-145: resolve callbacks waiting for a semaphore slot in the build concurrency cap. */
+  private readonly buildWaiters: Array<() => void> = []
+
   constructor(
     private paths: AppPaths,
     private emit: DeployProgressEmit
@@ -80,6 +105,15 @@ export class DeployManager {
 
   isActive(): boolean {
     return this.active !== null
+  }
+
+  /**
+   * LEI-145: wait for all currently in-flight build workers to settle before the caller does
+   * something that requires the DB to be quiescent (e.g. `mods:rebuildCacheDb` closing and
+   * deleting cache.db). Returns immediately if no builds are running.
+   */
+  waitForAllBuilds(): Promise<void> {
+    return Promise.allSettled([...this.buildInFlight.values()]).then(() => undefined)
   }
 
   /**
@@ -147,9 +181,14 @@ export class DeployManager {
    * The queue-aware gate: waits (triggering builds as needed) until every mod in the snapshot's
    * load order is `ready`, then spawns the real deploy worker. Runs entirely in the background -
    * `start()` has already returned the snapshot synchronously, same as before this existed.
+   *
+   * LEI-143/144: uses `buildInFlight` (in-process set of currently running builds) instead of a
+   * `triggered` Set so the loop correctly distinguishes "our worker is still running" from "stale
+   * row from a crashed previous process". A local `attempted` Set replaces `triggered`'s secondary
+   * role of "don't re-trigger a mod that already failed this deploy cycle."
    */
   private async waitForBuildsThenDeploy(snapshot: DeploySnapshot, settings: AppSettings, modsConfig: ModsConfig): Promise<void> {
-    const triggered = new Set<string>()
+    const attempted = new Set<string>()
     const deadline = Date.now() + BUILD_WAIT_TIMEOUT_MS
 
     let notReady = this.findNotReadyMods(snapshot.loadOrder)
@@ -179,19 +218,28 @@ export class DeployManager {
       }
 
       for (const modId of notReady) {
-        // A `'building'` row on disk only means something *this instance* can trust once it's the
-        // one that put the mod in `triggered` - per mod_build's doc comment in db.ts, that status
-        // exists purely for crash-safety, not as a staleness signal. A row left `'building'` by a
-        // now-dead process (app restart, killed worker, previous crash) looks identical on disk to
-        // one this run's own worker is still working through, so trusting the status alone here
-        // means a stale row is never retried - the mod just sits `notReady` until the deploy times
-        // out. Only skip when *we* already triggered this mod this wait cycle.
-        if (triggered.has(modId)) {
-          const build = getModBuild(modId)
-          if (build?.status === "building") continue // our own trigger for this mod is still in flight
-          if (build?.status === "failed") continue // already tried once this wait cycle, don't hammer a genuinely broken mod
+        // LEI-144: if our build is already in flight (tracked in-process, not via DB), skip.
+        // This correctly handles the window between triggerBuild() and beginModBuild() writing its
+        // row, which the old `triggered`+DB-status check treated as "needs retrigger" → spawn storm.
+        if (this.buildInFlight.has(modId)) continue
+
+        const build = getModBuild(modId)
+
+        // LEI-143: a 'building' row with no live build in buildInFlight is orphaned (left by a
+        // crashed process). Give it a grace period before retriggering - a cold start with a very
+        // slow tsc import could legitimately look like this for a few seconds, and we don't want to
+        // double-trigger a build that's actually running in a worker we just don't know about.
+        if (build?.status === "building") {
+          if (Date.now() - build.startedAt < STALE_BUILD_TIMEOUT_MS) continue
+          // Older than timeout with no in-flight entry - treat as orphaned, fall through to retrigger.
         }
-        triggered.add(modId)
+
+        // Don't re-trigger a mod that already failed during this deploy's wait cycle. A mod that
+        // failed in a previous session (before this deploy started) gets one retry; `attempted` is
+        // only set below, not carried across deploys.
+        if (attempted.has(modId) && build?.status === "failed") continue
+
+        attempted.add(modId)
         this.triggerBuild(modId).catch(() => {
           // Best-effort - a failed trigger just means this mod stays in `notReady` until the
           // deadline above, which reports it explicitly.
@@ -227,12 +275,18 @@ export class DeployManager {
 
     let stage: DeployProgress["stage"] = "sorting"
 
+    // LEI-146: track whether any handler has already emitted a terminal event, so the `exit`
+    // handler doesn't leave the toast spinning when the worker dies without sending "done" or
+    // firing "error" (e.g. OOM kill).
+    let settled = false
+
     worker.on("message", (msg: DeployWorkerMessage) => {
       if (msg.id !== taskId) return // stray message from a previous run - ignore
 
       if (msg.type === "log") {
         stage = this.handleLine(snapshot, msg.line, stage)
       } else if (msg.type === "done") {
+        settled = true
         this.emit({
           stage: "finalizing",
           stageIndex: STAGE_INDEX.finalizing,
@@ -247,6 +301,8 @@ export class DeployManager {
     })
 
     worker.on("error", (err) => {
+      if (settled) return
+      settled = true
       this.emit({
         stage: "finalizing",
         stageIndex: STAGE_INDEX.finalizing,
@@ -260,11 +316,21 @@ export class DeployManager {
     })
 
     worker.on("exit", (code) => {
-      // If the worker exits non-zero without having sent a "done" message (e.g. OOM), make sure we
-      // don't leave `active` set forever - the emit above from the "error" handler covers the crash
-      // message, so here we only need to ensure the snapshot is cleared.
-      if (code !== 0 && this.active?.snapshotId === snapshot.snapshotId) {
+      // LEI-146: if neither "done" nor "error" fired (e.g. OOM, uncaught exception that didn't
+      // surface as an error event), emit a terminal progress event so the deploy toast resolves
+      // instead of spinning forever.
+      if (settled) return
+      if (code !== 0) {
+        settled = true
         this.active = null
+        this.emit({
+          stage: "finalizing",
+          stageIndex: STAGE_INDEX.finalizing,
+          stageTotal: STAGE_TOTAL,
+          logLine: `Deploy worker exited unexpectedly (code ${code})`,
+          done: true,
+          ok: false
+        })
       }
     })
 
@@ -296,8 +362,53 @@ export class DeployManager {
     return this.triggerBuild(modId)
   }
 
-  /** The actual build-trigger primitive - spawns a worker to run `analyseMod(modId)`, writing `cache.db`'s `mod_build` row. Used both by the public, active-deploy-guarded `runAnalyseMod()` and internally by the queue-aware deploy gate (which legitimately runs *during* an active deploy's own wait phase). */
+  /**
+   * The build-trigger primitive - spawns a worker to run `analyseMod(modId)`, writing `cache.db`'s
+   * `mod_build` row. Used both by the public `runAnalyseMod()` and the queue-aware deploy gate.
+   *
+   * LEI-144: deduplicates concurrent triggers for the same modId by storing the in-flight Promise
+   * and returning it to all callers while it's still running. A second call for the same mod before
+   * the first finishes gets the existing Promise, not a new worker.
+   *
+   * LEI-145: enforces a concurrency cap (`BUILD_CONCURRENCY_CAP`) so a batch rebuild of a large
+   * collection doesn't saturate CPU with simultaneous tsc imports. Excess triggers queue and run as
+   * slots free up.
+   */
   private triggerBuild(modId: string): Promise<{ ok: boolean; error?: string }> {
+    // LEI-144: return existing promise if already in flight
+    const existing = this.buildInFlight.get(modId)
+    if (existing) return existing
+
+    const promise = new Promise<{ ok: boolean; error?: string }>((resolve, reject) => {
+      const start = (): void => {
+        this.buildActiveCount++
+        this._runBuildWorker(modId)
+          .then(resolve, reject)
+          .finally(() => {
+            // Release semaphore slot and wake the next queued build, if any.
+            this.buildInFlight.delete(modId)
+            this.buildActiveCount--
+            this.buildWaiters.shift()?.()
+          })
+      }
+
+      // LEI-145: concurrency cap - queue if at capacity.
+      if (this.buildActiveCount < this.BUILD_CONCURRENCY_CAP) {
+        start()
+      } else {
+        this.buildWaiters.push(start)
+      }
+    })
+
+    this.buildInFlight.set(modId, promise)
+    return promise
+  }
+
+  /**
+   * Actual build worker spawn logic, separated from `triggerBuild` to keep dedup/semaphore
+   * bookkeeping clean. The outer `triggerBuild` already holds the semaphore slot when this runs.
+   */
+  private _runBuildWorker(modId: string): Promise<{ ok: boolean; error?: string }> {
     const settings: AppSettings = loadSettings(this.paths)
     const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths) : ({ ok: false, error: "" } as const)
     if (!detection.ok) {

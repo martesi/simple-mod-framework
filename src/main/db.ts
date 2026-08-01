@@ -17,8 +17,8 @@ import type { GamePathInfo } from "./gameDetect"
  *
  * Must be fully rebuildable from three untouched sources: the `Mods/` folder's actual contents, the
  * portable `Mods/config.json` (load order + options - see `modsConfig.ts`), and `AppSettings.gamePath`
- * (for one-shot game detection). Deleting this file and calling {@link rebuildFromScratch} is a real,
- * exercised recovery path, not an assumption - see `dbRebuild.ts`.
+ * (for one-shot game detection). Deleting this file and running the `mods:rebuildCacheDb` handler
+ * (see `ipcHandlers.ts`) is a real, exercised recovery path, not an assumption.
  */
 
 let currentDb: DatabaseSync | undefined
@@ -33,8 +33,6 @@ let currentDbPath: string | undefined
  * exclusively from main-process code where `openDb()` has already run.
  */
 let contentCacheRoot: string | undefined
-
-const SCHEMA_VERSION = 1
 
 function migrate(db: DatabaseSync): void {
 	db.exec(`
@@ -96,10 +94,6 @@ function migrate(db: DatabaseSync): void {
 		DROP TABLE IF EXISTS content_blob_cache;
 	`)
 
-	const row = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get() as unknown as { value: string } | undefined
-	if (!row) {
-		db.prepare("INSERT INTO meta (key, value) VALUES ('schemaVersion', ?)").run(String(SCHEMA_VERSION))
-	}
 }
 
 /** Open (creating if needed) the cache.db at `dbPath` and cache the handle - safe to call repeatedly, only opens once per path per process. Also sets the content-cache root to `{dirname(dbPath)}/content_cache/`. */
@@ -273,10 +267,12 @@ export function replaceModsIndex(rows: DbModRow[]): void {
 	db.exec("BEGIN")
 	try {
 		db.exec("DELETE FROM mods")
+		// LEI-148: hoist prepare() outside the loop - re-preparing on every iteration is wasteful.
+		const stmt = db.prepare(
+			`INSERT INTO mods (id, folder, isFrameworkMod, manifestJson, valid, validationError, outdated, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		)
 		for (const row of rows) {
-			db.prepare(
-				`INSERT INTO mods (id, folder, isFrameworkMod, manifestJson, valid, validationError, outdated, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-			).run(
+			stmt.run(
 				row.id,
 				row.folder,
 				row.isFrameworkMod ? 1 : 0,
@@ -289,7 +285,8 @@ export function replaceModsIndex(rows: DbModRow[]): void {
 		}
 		db.exec("COMMIT")
 	} catch (err) {
-		db.exec("ROLLBACK")
+		// LEI-147: guard against masking the original error when BEGIN itself threw (no active txn).
+		if (db.inTransaction) db.exec("ROLLBACK")
 		throw err
 	}
 }
@@ -368,7 +365,14 @@ export function finishModBuildReady(modId: string, frameworkVersion: string, dep
 }
 
 export function finishModBuildFailed(modId: string, error: string): void {
-	getDb().prepare("UPDATE mod_build SET status = 'failed', error = ?, finishedAt = ? WHERE modId = ?").run(error, Date.now(), modId)
+	// LEI-143: upsert so a worker that crashed before beginModBuild() (no existing row) still leaves a
+	// 'failed' row - without this, the poll loop's DB check found nothing and kept retriggering.
+	getDb()
+		.prepare(
+			`INSERT INTO mod_build (modId, status, error, startedAt, finishedAt) VALUES (?, 'failed', ?, ?, ?)
+			 ON CONFLICT(modId) DO UPDATE SET status = 'failed', error = excluded.error, finishedAt = excluded.finishedAt`
+		)
+		.run(modId, error, Date.now(), Date.now())
 }
 
 export function deleteModBuild(modId: string): void {
@@ -396,7 +400,8 @@ export function setRpkgHashCacheEntries(entries: Record<string, string>): void {
 		for (const [hash, rpkgName] of Object.entries(entries)) stmt.run(hash, rpkgName)
 		db.exec("COMMIT")
 	} catch (err) {
-		db.exec("ROLLBACK")
+		// LEI-147: guard against masking the original error when BEGIN itself threw (no active txn).
+		if (db.inTransaction) db.exec("ROLLBACK")
 		throw err
 	}
 }
