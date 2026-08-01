@@ -1,24 +1,19 @@
 import { DatabaseSync } from "node:sqlite"
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { dirname, join, relative } from "node:path"
+import { existsSync, mkdirSync, rmSync } from "node:fs"
+import { dirname, join } from "node:path"
 import type { DiskManifest } from "./diskManifest"
 import type { GamePathInfo } from "./gameDetect"
 
 /**
  * LEI-141's single consolidated cache store, replacing `cache/map.json`, `cache/analysis/<id>.json`,
- * `cache/rpkgHashCache.json`, `cache/modIndex.json`, and the loose per-mod content-file cache
- * (`cache/<mod>/<relativePath>`) with one SQLite database (`cache.db`, under the temp dir - see
- * `settings.ts`'s `resolveTempDir()`).
+ * `cache/rpkgHashCache.json`, and `cache/modIndex.json` with one SQLite database (`cache.db`, under
+ * the temp dir - see `settings.ts`'s `resolveTempDir()`). Content artifacts (the expensive binary
+ * output of per-mod tool invocations) live alongside it as content-addressed loose files under
+ * `content_cache/` (see LEI-142) rather than in this DB.
  *
  * Uses `node:sqlite` (Node's built-in synchronous SQLite driver, stable in the Node version this
  * Electron build bundles) rather than a third-party native module - no `npm install` needed, no
  * separate native-module rebuild step for Electron, nothing to vendor.
- *
- * Why one file instead of the previous five: build-status and blob content need to commit
- * atomically (a "ready" flag lying because the blobs didn't finish writing is worse than no cache
- * at all - see `mod_build`'s doc comment below), and point-lookup/partial-update/concurrent-access
- * all beat both live fs walks and flat JSON arrays at the scale a large mod collection reaches (one
- * suit-replacement mod alone puts ~7k loose files under the old per-mod content cache).
  *
  * Must be fully rebuildable from three untouched sources: the `Mods/` folder's actual contents, the
  * portable `Mods/config.json` (load order + options - see `modsConfig.ts`), and `AppSettings.gamePath`
@@ -28,6 +23,16 @@ import type { GamePathInfo } from "./gameDetect"
 
 let currentDb: DatabaseSync | undefined
 let currentDbPath: string | undefined
+
+/**
+ * Root directory for content-addressed loose artifact files (LEI-142). Set by {@link openDb} to
+ * `{dirname(dbPath)}/content_cache/`. Functions in `core/utils.ts` (`copyFromCache`/`copyToCache`)
+ * derive the same path independently from `paths.dataRoot` via the core-singleton, so worker
+ * threads that never call `openDb()` can still read/write cache slots. This copy is used only by
+ * {@link clearContentCacheForMod} and {@link clearAllContentCache}, both of which are called
+ * exclusively from main-process code where `openDb()` has already run.
+ */
+let contentCacheRoot: string | undefined
 
 const SCHEMA_VERSION = 1
 
@@ -80,22 +85,15 @@ function migrate(db: DatabaseSync): void {
 			hash TEXT PRIMARY KEY,
 			rpkgName TEXT NOT NULL
 		);
+	`)
 
-		-- Replaces the loose cache/<mod>/<relativePath> tree. Every copyToCache() call in
-		-- deploy.ts/utils.ts always caches a directory's worth of content (confirmed by inspection -
-		-- every call site passes a directory, even when it logically holds a single file), so this
-		-- flattens that tree into (modId, cachePath, relPath) rows - relPath is "" for a cached slot
-		-- that turned out to hold exactly one file at its root, matching fs-extra's own
-		-- copy(srcDir, destDir) "merge contents into dest" semantics on restore.
-		CREATE TABLE IF NOT EXISTS content_blob_cache (
-			modId TEXT NOT NULL,
-			cachePath TEXT NOT NULL,
-			relPath TEXT NOT NULL,
-			data BLOB NOT NULL,
-			PRIMARY KEY (modId, cachePath, relPath)
-		);
-
-		CREATE INDEX IF NOT EXISTS content_blob_cache_slot_idx ON content_blob_cache(modId, cachePath);
+	// LEI-142: drop the old blob-cache table and its index if they're still present from a
+	// LEI-141 database. Content artifacts now live as loose files under content_cache/ next to
+	// cache.db (see core/utils.ts's copyFromCache/copyToCache). This runs on every openDb() call
+	// but is a fast no-op once the table no longer exists.
+	db.exec(`
+		DROP INDEX IF EXISTS content_blob_cache_slot_idx;
+		DROP TABLE IF EXISTS content_blob_cache;
 	`)
 
 	const row = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get() as unknown as { value: string } | undefined
@@ -104,7 +102,7 @@ function migrate(db: DatabaseSync): void {
 	}
 }
 
-/** Open (creating if needed) the cache.db at `dbPath` and cache the handle - safe to call repeatedly, only opens once per path per process. */
+/** Open (creating if needed) the cache.db at `dbPath` and cache the handle - safe to call repeatedly, only opens once per path per process. Also sets the content-cache root to `{dirname(dbPath)}/content_cache/`. */
 export function openDb(dbPath: string): DatabaseSync {
 	if (currentDb && currentDbPath === dbPath) return currentDb
 
@@ -113,6 +111,7 @@ export function openDb(dbPath: string): DatabaseSync {
 	}
 
 	mkdirSync(dirname(dbPath), { recursive: true })
+	contentCacheRoot = join(dirname(dbPath), "content_cache")
 
 	const db = new DatabaseSync(dbPath)
 	db.exec("PRAGMA journal_mode = WAL")
@@ -141,6 +140,7 @@ export function closeDb(): void {
 	currentDb?.close()
 	currentDb = undefined
 	currentDbPath = undefined
+	contentCacheRoot = undefined
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -263,11 +263,10 @@ export function upsertMod(mod: DbModRow): void {
 /**
  * Wholesale replace of the `mods` table only - used by `ModIndex`'s write-through, which always has
  * the complete, current set of mods in memory at the moment it persists (mirrors the old
- * modIndex.json's "overwrite the whole file" semantics). Deliberately doesn't touch `mod_build`/
- * `content_blob_cache` - those are keyed by mod id and outlive a mod dropping out of one particular
- * index snapshot for reasons unrelated to the mod itself being removed (e.g. a scan glitch); actual
- * mod removal goes through {@link deleteMod} instead, which does clear a specific mod's build/cache
- * rows.
+ * modIndex.json's "overwrite the whole file" semantics). Deliberately doesn't touch `mod_build` -
+ * build rows are keyed by mod id and outlive a mod dropping out of one particular index snapshot for
+ * reasons unrelated to the mod itself being removed (e.g. a scan glitch); actual mod removal goes
+ * through {@link deleteMod} instead, which does clear a specific mod's build row and content cache.
  */
 export function replaceModsIndex(rows: DbModRow[]): void {
 	const db = getDb()
@@ -299,14 +298,14 @@ export function deleteMod(id: string): void {
 	const db = getDb()
 	db.prepare("DELETE FROM mods WHERE id = ?").run(id)
 	db.prepare("DELETE FROM mod_build WHERE modId = ?").run(id)
-	db.prepare("DELETE FROM content_blob_cache WHERE modId = ?").run(id)
+	clearContentCacheForMod(id)
 }
 
 export function clearAllMods(): void {
 	const db = getDb()
 	db.exec("DELETE FROM mods")
 	db.exec("DELETE FROM mod_build")
-	db.exec("DELETE FROM content_blob_cache")
+	clearAllContentCache()
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -403,73 +402,33 @@ export function setRpkgHashCacheEntries(entries: Record<string, string>): void {
 }
 
 /* ---------------------------------------------------------------------------------------------- */
-/*                                     Content blob cache                                          */
+/*                                     Content cache (loose files)                                 */
 /* ---------------------------------------------------------------------------------------------- */
 
-function walkFilesSync(dir: string): string[] {
-	const out: string[] = []
-	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		const full = join(dir, entry.name)
-		if (entry.isDirectory()) out.push(...walkFilesSync(full))
-		else if (entry.isFile()) out.push(full)
-	}
-	return out
-}
+/**
+ * LEI-142: content artifacts now live as content-addressed loose files next to cache.db rather than
+ * as SQLite BLOBs. The primary cache read/write path (`copyFromCache`/`copyToCache` in
+ * `core/utils.ts`) works directly from `paths.dataRoot` via the core-singleton, so patchWorker
+ * threads never need to call `openDb()` just to access cached content. The functions below handle
+ * the "clear a mod's content" side (called from `deleteMod` / `clearAllMods`), where the main
+ * process always has `contentCacheRoot` set via `openDb()`.
+ *
+ * Path sanitization: `winPathEscape`-equivalent inline (not imported from `core/utils.ts` to avoid
+ * a circular dep). The same sanitization must be used in `core/utils.ts`'s `contentCacheSlotDir()`.
+ */
 
-/** True if this (modId, cachePath) slot has at least one cached blob - i.e. a cache hit is possible. */
-export function hasContentCache(modId: string, cachePath: string): boolean {
-	const row = getDb().prepare("SELECT 1 FROM content_blob_cache WHERE modId = ? AND cachePath = ? LIMIT 1").get(modId, cachePath)
-	return row !== undefined
-}
-
-/** Restores a previously-cached directory tree to `outputDir` (created if missing) - mirrors fs-extra's old `copySync(cacheDir, outputDir)` "merge contents into dest" behaviour. Returns false (no-op) if nothing is cached at this slot. */
-export function restoreContentCache(modId: string, cachePath: string, outputDir: string): boolean {
-	const rows = getDb().prepare("SELECT relPath, data FROM content_blob_cache WHERE modId = ? AND cachePath = ?").all(modId, cachePath) as unknown as { relPath: string; data: Uint8Array }[]
-	if (!rows.length) return false
-
-	mkdirSync(outputDir, { recursive: true })
-	for (const row of rows) {
-		// relPath === "" means the cached slot's source was a single file at its own root (see
-		// storeContentCache) - fs-extra's old copySync(file, existingDir) would place it *inside*
-		// that directory keyed by the source's own basename, but every real caller here caches a
-		// directory's worth of content (confirmed by inspection), so this branch is a defensive
-		// fallback rather than something the real call sites hit.
-		const finalPath = row.relPath ? join(outputDir, row.relPath) : join(outputDir, "content")
-		mkdirSync(dirname(finalPath), { recursive: true })
-		writeFileSync(finalPath, Buffer.from(row.data))
-	}
-	return true
-}
-
-/** Caches `sourceDir` (a directory - every real call site passes one, even for a logically-single-file slot) under (modId, cachePath), replacing whatever was cached there before (single-slot, matching the rest of this store's "no accumulation" model). */
-export function storeContentCache(modId: string, cachePath: string, sourceDir: string): void {
-	const db = getDb()
-
-	db.exec("BEGIN")
-	try {
-		db.prepare("DELETE FROM content_blob_cache WHERE modId = ? AND cachePath = ?").run(modId, cachePath)
-
-		const stat = statSync(sourceDir)
-		const insert = db.prepare("INSERT INTO content_blob_cache (modId, cachePath, relPath, data) VALUES (?, ?, ?, ?)")
-
-		if (stat.isDirectory()) {
-			for (const file of walkFilesSync(sourceDir)) {
-				const rel = relative(sourceDir, file).split("\\").join("/")
-				insert.run(modId, cachePath, rel, readFileSync(file))
-			}
-		} else {
-			insert.run(modId, cachePath, "", readFileSync(sourceDir))
-		}
-
-		db.exec("COMMIT")
-	} catch (err) {
-		db.exec("ROLLBACK")
-		throw err
-	}
-}
-
+/** Removes all cached content artifacts for `modId`. No-op if `contentCacheRoot` hasn't been set (shouldn't happen in the main process, but safe to call from any context). */
 export function clearContentCacheForMod(modId: string): void {
-	getDb().prepare("DELETE FROM content_blob_cache WHERE modId = ?").run(modId)
+	if (!contentCacheRoot) return
+	const safeModId = modId.replace(/[<>:"/\\|?*]/g, "")
+	if (!safeModId) return
+	rmSync(join(contentCacheRoot, safeModId), { recursive: true, force: true })
+}
+
+/** Removes the entire content cache directory (all mods). Called by `clearAllMods` and by `mods:rebuildCacheDb`. */
+export function clearAllContentCache(): void {
+	if (!contentCacheRoot) return
+	rmSync(contentCacheRoot, { recursive: true, force: true })
 }
 
 /** Whether `dbPath` already exists and has data worth treating as "not a fresh install" - used by {@link resolveTempDirLegacyCheck}-style callers and diagnostics. Not the same check as `settings.ts`'s `legacyTempDirHasData()` (that one looks for the *pre-LEI-141* JSON cache files, this one is about cache.db itself). */
