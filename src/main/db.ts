@@ -286,7 +286,7 @@ export function replaceModsIndex(rows: DbModRow[]): void {
 		db.exec("COMMIT")
 	} catch (err) {
 		// LEI-147: guard against masking the original error when BEGIN itself threw (no active txn).
-		if (db.inTransaction) db.exec("ROLLBACK")
+		if (db.isTransaction) db.exec("ROLLBACK")
 		throw err
 	}
 }
@@ -401,7 +401,7 @@ export function setRpkgHashCacheEntries(entries: Record<string, string>): void {
 		db.exec("COMMIT")
 	} catch (err) {
 		// LEI-147: guard against masking the original error when BEGIN itself threw (no active txn).
-		if (db.inTransaction) db.exec("ROLLBACK")
+		if (db.isTransaction) db.exec("ROLLBACK")
 		throw err
 	}
 }

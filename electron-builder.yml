@@ -61,3 +61,10 @@ protocols:
       - simple-mod-framework
 win:
   executableName: Mod Manager
+  # Skips electron-builder's rcedit/signtool pass (icon + version-info embedding), which
+  # otherwise shells out to `wine` when cross-building this Windows target from a Linux/WSL
+  # host - see flake.nix's dev shell doc comment for why wine isn't just added as a default
+  # dependency instead. Real icon/version-info embedding still works: run
+  # `nix shell nixpkgs#wine64 -c npm run build:win` (temporarily dropping this line, or
+  # passing --win.signAndEditExecutable=true to override it) if you need that.
+  signAndEditExecutable: false

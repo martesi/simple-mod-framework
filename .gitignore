@@ -10,6 +10,9 @@ hash_list.txt
 *.local
 /ui
 
+# scripts/fetch-win-electron.js's extraction target - see npm run dev:win.
+/.win-electron-dev
+
 # extra/Third-Party/ ships the tools the embedded framework core needs at
 # runtime and is tracked in git as regular (in a couple of cases multi-MB)
 # blobs - this repo is managed with jj, which as of writing doesn't support

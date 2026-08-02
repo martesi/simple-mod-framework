@@ -12,6 +12,8 @@
     "setup": "node scripts/setup.js",
     "fetch:hashes": "node scripts/fetch-hashes.js",
     "dev": "electron-vite dev",
+    "fetch:win-electron": "node scripts/fetch-win-electron.js",
+    "dev:win": "node scripts/fetch-win-electron.js && WSLENV=\"${WSLENV:+$WSLENV:}ELECTRON_RENDERER_URL\" NO_SANDBOX=1 ELECTRON_EXEC_PATH=.win-electron-dev/electron.exe electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "build:win": "npm run typecheck && electron-vite build && electron-builder --win --dir",
     "preview": "electron-vite preview",
