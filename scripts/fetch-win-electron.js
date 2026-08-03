@@ -34,9 +34,25 @@ const destDir = path.join(root, ".win-electron-dev")
 const versionMarker = path.join(destDir, ".version")
 const exePath = path.join(destDir, "electron.exe")
 
-if (fs.existsSync(versionMarker) && fs.readFileSync(versionMarker, "utf-8").trim() === version && fs.existsSync(exePath)) {
+const markerExists = fs.existsSync(versionMarker)
+const markerVersion = markerExists ? fs.readFileSync(versionMarker, "utf-8").trim() : undefined
+const exeExists = fs.existsSync(exePath)
+
+if (markerExists && markerVersion === version && exeExists) {
 	console.log(`.win-electron-dev/ already has Electron v${version}, skipping.`)
 	process.exit(0)
+} else if (markerExists || exeExists) {
+	// Only one of the two survived (or the version moved on) since the last run - print exactly
+	// what's missing/mismatched rather than silently falling through to a full redownload, since
+	// that's otherwise indistinguishable from "cache never worked at all". A common cause on a
+	// WSL-interop setup: Windows Defender/AV quarantines or deletes a freshly-extracted unsigned
+	// .exe sitting under a WSL-backed folder (visible to Windows over \\wsl.localhost\) shortly
+	// after it's written - check Windows Security's "Protection history" for a detection around
+	// the time of the previous run if this keeps happening, and add an exclusion for this repo
+	// (or just .win-electron-dev/) if so.
+	console.log(
+		`.win-electron-dev/ cache miss: version marker ${markerExists ? `present (v${markerVersion})` : "missing"}, electron.exe ${exeExists ? "present" : "missing"}, need v${version}. Re-fetching.`
+	)
 }
 
 function download(url, destPath, redirectsLeft = 5) {

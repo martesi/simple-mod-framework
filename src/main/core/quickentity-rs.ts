@@ -10,7 +10,10 @@ const qnExe = () => path.join(paths.toolsRoot, "Third-Party", "quickentity-rs.ex
 
 const execCommand = function (command: string) {
 	void logger.verbose(`Executing QN 3.1 command ${command}`)
-	child_process.execSync(command, { stdio: [ "pipe", "inherit", "inherit" ] })
+	// See analyseMod.ts's execCommand for why cwd is pinned to dataRoot rather than left to
+	// process.cwd() - cmd.exe (which execSync shells out through on Windows) refuses to start at
+	// all with a UNC cwd.
+	child_process.execSync(command, { stdio: [ "pipe", "inherit", "inherit" ], cwd: paths.dataRoot })
 }
 
 export async function convert(_game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) {

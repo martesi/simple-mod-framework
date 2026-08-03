@@ -25,7 +25,13 @@ export const thirdParty = (exe: string) => path.join(paths.toolsRoot, "Third-Par
 
 export const execCommand = function (command: string) {
 	void logger.verbose(`Executing command ${command}`)
-	child_process.execSync(command, { stdio: ["pipe", "pipe", "inherit"] })
+	// cwd is pinned to dataRoot rather than left to default to process.cwd() - on Windows,
+	// execSync shells out through cmd.exe, which refuses to start at all if its cwd is a UNC path
+	// (e.g. \\wsl.localhost\... when this app/repo is running from a WSL-hosted checkout).
+	// dataRoot is never UNC in normal operation (userData, or a folder next to the game install -
+	// see settings.ts's resolveTempDir()), so pinning it here sidesteps that regardless of where
+	// the process itself was launched from.
+	child_process.execSync(command, { stdio: ["pipe", "pipe", "inherit"], cwd: paths.dataRoot })
 }
 
 export const callRPKGFunction = async function (command: string) {
