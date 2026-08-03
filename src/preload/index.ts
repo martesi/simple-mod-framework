@@ -18,8 +18,9 @@ const smf = {
   config: {
     get: () => ipcRenderer.invoke("config:get"),
     merge: (patch: unknown) => ipcRenderer.invoke("config:merge", patch),
-    pickGameDirectory: () => ipcRenderer.invoke("config:pickGameDirectory"),
-    getDefaultPaths: () => ipcRenderer.invoke("config:getDefaultPaths")
+    pickGameDirectory: (persist?: boolean) => ipcRenderer.invoke("config:pickGameDirectory", persist),
+    getDefaultPaths: () => ipcRenderer.invoke("config:getDefaultPaths"),
+    previewPaths: (gamePath: string) => ipcRenderer.invoke("config:previewPaths", gamePath)
   },
 
   system: {
@@ -29,6 +30,7 @@ const smf = {
   mods: {
     list: () => ipcRenderer.invoke("mods:list"),
     rebuildIndex: () => ipcRenderer.invoke("mods:rebuildIndex"),
+    previewFolder: (dir: string) => ipcRenderer.invoke("mods:previewFolder", dir),
 
     beginAdd: (file: { name: string; size: number; path: string }): string => {
       // No node:crypto here on purpose - Electron's sandboxed preload loader

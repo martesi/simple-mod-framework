@@ -47,6 +47,12 @@ async function refreshModsAndConfig(fetchMods: () => Promise<ModEntry[]>): Promi
   return { mods, config }
 }
 
+/**
+ * Debounce handle for setModPath()'s backend round trip - see that function's doc comment. Module-
+ * scoped rather than in AppState since it's pure plumbing, not state any component should read.
+ */
+let modPathDebounceTimer: ReturnType<typeof setTimeout> | undefined
+
 interface AppState {
   loaded: boolean
   config: Config | null
@@ -122,6 +128,8 @@ interface AppState {
   closeWizard(): void
   wizardBack(): void
   wizardNext(): void
+  /** Batches every field the wizard staged into one commit - see the implementation's doc comment. */
+  commitWizard(draft: { gamePath: string; cachePath: string; modPath: string; language: string }): Promise<void>
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -447,10 +455,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     getSmfApi().config.merge({ cachePath })
   },
 
+  /**
+   * `modsLoading` flips true immediately (synchronously, before the debounce below) so ModsScreen's
+   * "Building mod cache" banner - and SetupWizard's own mod-discovery status line - show *something*
+   * the instant the user starts typing, instead of going quiet until a scan happens to be in flight.
+   * Without this, changing the mod path manually (as opposed to Browse) gave no indication a scan
+   * was even happening, let alone whether it found anything - the field just sat there.
+   *
+   * PathInputRow has no debounce of its own - it calls onChange on every keystroke - so without the
+   * debounce here, each keystroke would kick off its own full `config:merge` + on-disk mod rescan
+   * (ipcHandlers.ts's config:merge modsDir-changed branch awaits a whole `index.rebuildInWorker()`),
+   * each racing the next keystroke's rescan for no benefit. `clearTimeout` below means only the
+   * *last* keystroke in a burst ever reaches the backend - `config.modPath` itself (read by the
+   * input's `value`) is still updated synchronously above, so the field stays fully responsive.
+   */
   async setModPath(modPath) {
     const { config } = get()
     if (!config) return
-    set({ config: { ...config, modPath } })
+    set({ config: { ...config, modPath }, modsLoading: true })
+
+    if (modPathDebounceTimer) clearTimeout(modPathDebounceTimer)
+    await new Promise<void>((resolve) => {
+      modPathDebounceTimer = setTimeout(resolve, 400)
+    })
+
     await getSmfApi().config.merge({ modPath })
     // Pointing at a different folder means a genuinely different set of mods live there - the main
     // process just force-rebuilt its index against it (see ipcHandlers.ts's config:merge). See
@@ -458,7 +486,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // `mods` - without it this is the exact "picked a mod path with existing mods in it, now can't
     // enable any of them" bug.
     const { mods, config: freshConfig } = await refreshModsAndConfig(() => getSmfApi().mods.list())
-    set({ mods, config: freshConfig })
+    set({ mods, config: freshConfig, modsLoading: false })
   },
 
   setLanguage(language) {
@@ -485,7 +513,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async browseModPath() {
     const picked = await getSmfApi().system.pickDirectory({ title: "Select a mod folder" })
-    if (picked) await get().setModPath(picked)
+    if (!picked) return
+    // A folder pick is one deliberate action, not a burst of keystrokes - skip setModPath()'s
+    // debounce (and cancel one it may have queued) so Browse rescans immediately.
+    if (modPathDebounceTimer) clearTimeout(modPathDebounceTimer)
+    const { config } = get()
+    if (!config) return
+    set({ config: { ...config, modPath: picked }, modsLoading: true })
+    await getSmfApi().config.merge({ modPath: picked })
+    const { mods, config: freshConfig } = await refreshModsAndConfig(() => getSmfApi().mods.list())
+    set({ mods, config: freshConfig, modsLoading: false })
   },
 
   openWizard() {
@@ -505,5 +542,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (s.wizard.step >= WIZARD_STEPS.length - 1) return { wizard: { ...s.wizard, open: false } }
       return { wizard: { ...s.wizard, step: s.wizard.step + 1 } }
     })
+  },
+
+  /**
+   * The one point every field the wizard stages actually reaches settings.json - SetupWizard.tsx
+   * keeps its own local draft (gamePath/cachePath/modPath/language) as the user moves through the
+   * steps, exactly like ModSettingsDrawer's own local-draft-until-commit pattern (see
+   * commitModOptions()'s doc comment above), and calls this once at "Save & finish" instead of every
+   * step's field committing to disk (and, for modPath, triggering a real index rebuild) as soon as
+   * it's typed - which used to mean backing out of the wizard partway through left whatever had been
+   * typed so far already saved. A single batched config:merge also means modPath's real rescan
+   * (ipcHandlers.ts's config:merge modsDir-changed branch) only ever runs once here, not once per
+   * step the way it would if this fell through to setGamePath()/setCachePath()/setModPath() instead.
+   */
+  async commitWizard(draft) {
+    set({ modsLoading: true })
+    // See refreshModsAndConfig()'s doc comment for why `config` is re-fetched afterward instead of
+    // just using config:merge's own return value - a modPath change's forced rebuild can register
+    // mods this call's own response wouldn't know about yet.
+    await getSmfApi().config.merge(draft)
+    const { mods, config } = await refreshModsAndConfig(() => getSmfApi().mods.list())
+    set({ mods, config, modsLoading: false })
   }
 }))

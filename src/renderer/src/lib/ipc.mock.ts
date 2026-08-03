@@ -13,6 +13,12 @@ import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate, SmfAp
 const CONFIG_KEY = "smf-mock:config"
 const MODS_KEY = "smf-mock:mods"
 
+/** Mirrors settings.ts's guessGameRoot() + resolveTempDir()'s "SMF Data"-under-game-root default, just enough to look plausible in the mock. */
+function previewCachePath(gamePath: string): string {
+  const root = gamePath.replace(/\\Retail$/i, "")
+  return `${root}\\SMF Data`
+}
+
 function uuid() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
 }
@@ -193,11 +199,16 @@ class MockSmfApi implements SmfApi {
     },
 
     // No real filesystem/dialog outside a real Electron shell - just simulate a successful pick
-    // after a beat, same "believable" spirit as the rest of this mock.
-    pickGameDirectory: async (): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
+    // after a beat, same "believable" spirit as the rest of this mock. `persist: false` (the setup
+    // wizard - see ipc.ts's doc comment) skips the write and hands back a preview instead, mirroring
+    // the real backend's toUiConfig-against-a-hypothetical-gamePath trick.
+    pickGameDirectory: async (persist = true): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
       await delay(300)
       const gamePath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN 3"
-      this.cfg = { ...this.cfg, gamePath }
+      if (!persist) {
+        return { ok: true, config: { ...structuredClone(this.cfg), gamePath, cachePath: previewCachePath(gamePath) } }
+      }
+      this.cfg = { ...this.cfg, gamePath, cachePath: previewCachePath(gamePath) }
       saveConfig(this.cfg)
       return { ok: true, config: structuredClone(this.cfg) }
     },
@@ -212,6 +223,14 @@ class MockSmfApi implements SmfApi {
         cachePath: "C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\cache",
         modPath: "C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\Mods"
       }
+    },
+
+    // Mirrors the real backend's config:previewPaths - modPath is intentionally left untouched
+    // (see settings.ts's resolveModsDir() doc comment, it's never gamePath-derived), only cachePath
+    // moves with the hypothetical gamePath.
+    previewPaths: async (gamePath: string): Promise<{ cachePath: string; modPath: string }> => {
+      await delay(50)
+      return { cachePath: previewCachePath(gamePath), modPath: this.cfg.modPath }
     }
   }
 
@@ -224,6 +243,14 @@ class MockSmfApi implements SmfApi {
 
   mods = {
     list: async (): Promise<ModEntry[]> => structuredClone(this.modsData),
+
+    // No real disk to check outside a real Electron shell - the wizard's mod-path step just gets
+    // whatever's already in memory, same "believable" spirit as the rest of this mock, regardless
+    // of what path was actually typed.
+    previewFolder: async (dir: string): Promise<{ exists: boolean; count: number }> => {
+      await delay(300)
+      return { exists: dir.length > 0, count: this.modsData.length }
+    },
 
     // No real disk to re-walk outside a real Electron shell - just simulate the "please wait,
     // re-scanning" beat the real handler's chunked fs walk (modIndex.ts's rebuildChunked()) incurs,

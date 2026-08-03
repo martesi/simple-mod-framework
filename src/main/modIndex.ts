@@ -45,7 +45,8 @@ function resolveIndexWorkerPath(): string {
  */
 export const CURRENT_FRAMEWORK_VERSION = "3.0.0"
 
-const MANAGED_FOLDER = "Managed by SMF, do not touch"
+/** Exported for ipcHandlers.ts's mods:previewFolder - a candidate mod folder is never itself a mod. */
+export const MANAGED_FOLDER = "Managed by SMF, do not touch"
 
 /** Exported so indexWorker.ts can use the same shape and main can load the result directly. */
 export interface IndexedMod {

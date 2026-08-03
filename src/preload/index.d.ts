@@ -10,14 +10,16 @@ export interface SmfBridge {
   config: {
     get(): Promise<unknown>
     merge(patch: unknown): Promise<unknown>
-    pickGameDirectory(): Promise<unknown>
+    pickGameDirectory(persist?: boolean): Promise<unknown>
     getDefaultPaths(): Promise<unknown>
+    previewPaths(gamePath: string): Promise<unknown>
   }
   system: {
     pickDirectory(options?: { title?: string }): Promise<string | null>
   }
   mods: {
     list(): Promise<unknown>
+    previewFolder(dir: string): Promise<unknown>
     rebuildIndex(): Promise<unknown>
     beginAdd(file: { name: string; size: number; path: string }): string
     onTaskUpdate(callback: (update: unknown) => void): () => void

@@ -110,13 +110,19 @@ export interface SmfApi {
     /**
      * Opens a native `dialog.showOpenDialog` folder picker for the game's Retail folder, validates
      * the pick the same way `src/main.ts` always has (chunk0.rpkg/HITMAN3.exe), derives
-     * runtimePath/platform from it, and persists all of it server-side in one step (LEI-133) -
-     * `config.get()`'s next call reflects the result. `error` is `""` (not surfaced) if the user
-     * just canceled the dialog.
+     * runtimePath/platform from it, and - when `persist` is true (the default, Settings' own Browse
+     * button) - persists `gamePath` server-side in one step (LEI-133), reflected on `config.get()`'s
+     * next call. `persist: false` (the setup wizard, which stages every field locally and only
+     * actually saves at "Save & finish" - see SetupWizard.tsx) skips that write and instead returns
+     * a `Config` computed against the picked path *as if* it were already saved, so the wizard can
+     * read `.config.cachePath`/`.config.modPath` off it for a live preview without anything hitting
+     * disk yet. `error` is `""` (not surfaced) if the user just canceled the dialog.
      */
-    pickGameDirectory(): Promise<{ ok: true; config: Config } | { ok: false; error: string }>
+    pickGameDirectory(persist?: boolean): Promise<{ ok: true; config: Config } | { ok: false; error: string }>
     /** Example paths for the Settings/wizard placeholder text - see settings.ts's `resolveDefaultUiPaths()` doc comment for why these come from main rather than being hardcoded in the renderer. */
     getDefaultPaths(): Promise<DefaultPaths>
+    /** What cachePath/modPath would resolve to for a hypothetical (not-yet-saved) `gamePath` - see settings.ts's `resolveTempDir()`. The setup wizard's game-root step uses this to preview the cache step's game-root-relative default without persisting anything. */
+    previewPaths(gamePath: string): Promise<{ cachePath: string; modPath: string }>
   }
 
   /** Plain OS-level helpers with no config/validation semantics of their own. */
@@ -127,6 +133,16 @@ export interface SmfApi {
 
   mods: {
     list(): Promise<ModEntry[]>
+    /**
+     * Read-only "does this folder look like it has mods in it" check for a candidate path that
+     * hasn't been committed as the real `modPath` yet - counts top-level subfolders the same way
+     * the real index would (see modIndex.ts's doc comment), but never touches the index, cache.db,
+     * or any config file. The setup wizard's mod-path step uses this for its discovery-status line
+     * instead of `list()`, since staging a folder that's still being previewed shouldn't write
+     * through to it (see SetupWizard.tsx's doc comment). `exists: false` covers both "doesn't exist
+     * yet" and an unreadable path - the wizard shows the same neutral message either way.
+     */
+    previewFolder(dir: string): Promise<{ exists: boolean; count: number }>
     /**
      * Forces a full re-derive of the mod list straight from disk, bypassing whatever's already
      * sitting in the main process's in-memory index (see modIndex.ts's ModIndex - built lazily

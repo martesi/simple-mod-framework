@@ -5,12 +5,12 @@ import { loadSettings, mergeSettings, readLegacyModListFields, resolveDefaultUiP
 import { addNewlyKnownMods, invalidateModsConfigCache, loadModsConfig, mergeModsConfig, migrateFromLegacySettings } from "./modsConfig"
 import { fromUiPatch, toUiConfig } from "./configMapping"
 import { deriveGamePathInfo } from "./gameDetect"
-import { ModIndex } from "./modIndex"
+import { ModIndex, MANAGED_FOLDER } from "./modIndex"
 import { setModImageRoot } from "./modImages"
 import { removeModFolder, runAddModTask, type TaskEmit } from "./modOps"
 import { DeployManager } from "./deployManager"
 import { clearAllContentCache, closeDb, openDb, listModBuilds } from "./db"
-import { existsSync, rmSync } from "node:fs"
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs"
 import type { Config, DefaultPaths } from "../renderer/src/lib/manifest-types"
 import type { ModBuildInfo } from "../renderer/src/lib/ipc"
 
@@ -75,6 +75,19 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
 	ipcMain.handle("config:getDefaultPaths", (): DefaultPaths => resolveDefaultUiPaths(paths, loadSettings(paths)))
 
+	/**
+	 * "What would cachePath/modPath resolve to if gamePath were this?" - without writing anything.
+	 * The setup wizard stages every field locally and only actually calls config:merge once, at
+	 * "Save & finish" (see SetupWizard.tsx's doc comment) - it still needs to preview cachePath's
+	 * game-root-relative default (resolveTempDir()) as the user types/picks a game path on the step
+	 * before it, which this gives it via the same resolver `config:get`/`config:merge` already use,
+	 * just fed a hypothetical `gamePath` instead of whatever's on disk.
+	 */
+	ipcMain.handle("config:previewPaths", (_event, gamePath: string): { cachePath: string; modPath: string } => {
+		const preview = resolveDefaultUiPaths(paths, { ...loadSettings(paths), gamePath })
+		return { cachePath: preview.cachePath, modPath: preview.modPath }
+	})
+
 	ipcMain.handle("config:merge", async (_event, patch: Partial<Config>): Promise<Config> => {
 		const modsDirBefore = patch.modPath !== undefined ? getModsDir() : undefined
 		const gamePathBefore = loadSettings(paths).gamePath
@@ -132,7 +145,14 @@ export function registerIpcHandlers(paths: AppPaths): void {
 	// src/main.ts:76-90 always has (see gameDetect.ts's deriveGamePathInfo) purely for immediate
 	// feedback in the picker; only `gamePath` itself gets persisted; retailPath/runtimePath/platform
 	// are re-derived (one-shot, cache.db-persisted) from it on demand wherever they're actually needed.
-	ipcMain.handle("config:pickGameDirectory", async (event): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
+	//
+	// `persist` (default true, Settings' own Browse button) writes `gamePath` to settings.json
+	// immediately, same as it always has. The setup wizard passes `false`: it stages every field
+	// locally and only actually persists once, at "Save & finish" (see SetupWizard.tsx's doc
+	// comment) - `deriveGamePathInfo`'s own cache.db write still runs either way (it's a validation
+	// cache keyed on the picked path, not a settings.json field - harmless even if the user goes on
+	// to pick a different path before finishing).
+	ipcMain.handle("config:pickGameDirectory", async (event, persist: boolean = true): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
 		const win = BrowserWindow.fromWebContents(event.sender)
 		const result = await dialog.showOpenDialog(win ?? undefined!, {
 			title: "Select your game's Retail folder",
@@ -147,6 +167,13 @@ export function registerIpcHandlers(paths: AppPaths): void {
 		const detection = deriveGamePathInfo(result.filePaths[0], paths)
 		if (!detection.ok) {
 			return { ok: false, error: detection.error }
+		}
+
+		if (!persist) {
+			// A preview, same shape as the persisted path below (toUiConfig against a hypothetical
+			// gamePath) so the wizard can read `.config.cachePath`/`.config.modPath` off it exactly the
+			// same way it would the real thing.
+			return { ok: true, config: toUiConfig({ ...loadSettings(paths), gamePath: result.filePaths[0] }, getModsConfig(), paths) }
 		}
 
 		const settings = mergeSettings(paths, { gamePath: result.filePaths[0] })
@@ -166,6 +193,26 @@ export function registerIpcHandlers(paths: AppPaths): void {
 		})
 
 		return result.canceled || !result.filePaths[0] ? null : result.filePaths[0]
+	})
+
+	/**
+	 * Read-only "does this look like a mod folder" check for a candidate path that hasn't been
+	 * committed as the real `modPath` yet - the setup wizard's mod-path step (SetupWizard.tsx) uses
+	 * this instead of `mods:list`/`config:merge`'s modsDir-changed branch, since either of those
+	 * would write through to `Mods/config.json`/cache.db against a folder the user might still back
+	 * out of or change before finishing. Counts top-level subfolders the same way ModIndex actually
+	 * would (see modIndex.ts's scanSync()/rebuildChunked() - any directory other than
+	 * `MANAGED_FOLDER` counts as a mod, manifest.json or not) without touching the index, cache.db,
+	 * or any config file.
+	 */
+	ipcMain.handle("mods:previewFolder", (_event, dir: string): { exists: boolean; count: number } => {
+		if (!dir || !existsSync(dir)) return { exists: false, count: 0 }
+		try {
+			const count = readdirSync(dir).filter((f) => f !== MANAGED_FOLDER && statSync(join(dir, f)).isDirectory()).length
+			return { exists: true, count }
+		} catch {
+			return { exists: false, count: 0 }
+		}
 	})
 
 	ipcMain.handle("mods:list", async (event) => {

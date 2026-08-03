@@ -15,8 +15,9 @@ export function createElectronSmfApi(): SmfApi {
     config: {
       get: () => bridge.config.get() as Promise<Config>,
       merge: (patch) => bridge.config.merge(patch) as Promise<Config>,
-      pickGameDirectory: () => bridge.config.pickGameDirectory() as Promise<{ ok: true; config: Config } | { ok: false; error: string }>,
-      getDefaultPaths: () => bridge.config.getDefaultPaths() as Promise<DefaultPaths>
+      pickGameDirectory: (persist) => bridge.config.pickGameDirectory(persist) as Promise<{ ok: true; config: Config } | { ok: false; error: string }>,
+      getDefaultPaths: () => bridge.config.getDefaultPaths() as Promise<DefaultPaths>,
+      previewPaths: (gamePath) => bridge.config.previewPaths(gamePath) as Promise<{ cachePath: string; modPath: string }>
     },
 
     system: {
@@ -25,6 +26,8 @@ export function createElectronSmfApi(): SmfApi {
 
     mods: {
       list: () => bridge.mods.list() as Promise<ModEntry[]>,
+
+      previewFolder: (dir) => bridge.mods.previewFolder(dir) as Promise<{ exists: boolean; count: number }>,
 
       rebuildIndex: () => bridge.mods.rebuildIndex() as Promise<ModEntry[]>,
 
