@@ -122,7 +122,17 @@ export function SetupWizard() {
   // directly during render on the open/closed transition (React's documented alternative to an
   // effect for "reset state when a prop changes" - see its own "You Might Not Need An Effect" guide)
   // rather than a `useEffect([wizard.open])`, which would set state synchronously in the effect body.
-  const [prevWizardOpen, setPrevWizardOpen] = useState(wizard.open)
+  //
+  // `prevWizardOpen` deliberately always starts `false` rather than `useState(wizard.open)`: this
+  // component only mounts once `loaded`/`config` are truthy (see App.tsx's `!loaded || !config`
+  // gate), and init() sets `wizard.open` in that very same store update for a fresh install (empty
+  // gamePath) - so on this component's first render, `wizard.open` can already be `true` with no
+  // prior `false` render to transition from. Seeding `prevWizardOpen` from `wizard.open` itself would
+  // make that initial state its own baseline, so the `!==` check below never fires and `draft` never
+  // gets populated - the wizard silently never appears (`!draft` early-returns null) despite
+  // `wizard.open` being genuinely true. Starting at `false` unconditionally guarantees a real mount
+  // with `wizard.open` already true still reads as an open transition.
+  const [prevWizardOpen, setPrevWizardOpen] = useState(false)
   if (wizard.open !== prevWizardOpen) {
     setPrevWizardOpen(wizard.open)
     if (wizard.open && config) {
