@@ -37,7 +37,6 @@ export interface ModRowProps {
   onToggle(id: string): void
   onOpenSettings(id: string): void
   onRemove(mod: ModEntry): void
-  onUpdateOutdated(id: string): void
   /** LEI-141's per-mod eager-build status - `undefined` for a mod that's never had a build recorded (RPKG-only mods, or one whose first build hasn't run yet). */
   buildStatus?: ModBuildInfo["status"]
   buildError?: string
@@ -46,7 +45,7 @@ export interface ModRowProps {
   setNodeRef?: (node: HTMLElement | null) => void
 }
 
-function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggle, onOpenSettings, onRemove, onUpdateOutdated, buildStatus, buildError, dragHandleProps, style, setNodeRef }: ModRowProps) {
+function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggle, onOpenSettings, onRemove, buildStatus, buildError, dragHandleProps, style, setNodeRef }: ModRowProps) {
   const name = mod.isFrameworkMod ? mod.manifest!.name : mod.rpkgModName!
   const description = mod.isFrameworkMod ? mod.manifest!.description : "RPKG-only mod"
   const author = mod.isFrameworkMod ? mod.manifest!.authors.join(", ") : ""
@@ -73,19 +72,6 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
           <div className={cn("truncate text-[14px] font-semibold", enabled ? "text-text" : "text-text-2")}>{name}</div>
           <Badge>{mod.isFrameworkMod ? "Framework" : "RPKG"}</Badge>
           {hasOptions && <Badge>Options</Badge>}
-          {mod.outdated && (
-            <Tooltip>
-              {/* Base UI's Trigger already renders a <button> by default, so
-                  the Badge just becomes its (clickable) content - no need to
-                  nest another real <button> inside it. */}
-              <TooltipTrigger onClick={() => onUpdateOutdated(mod.id)} className="appearance-none border-0 bg-transparent p-0">
-                <Badge variant="warning" className="cursor-pointer gap-1">
-                  <TriangleAlert className="h-3 w-3" /> Outdated · Update
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>Built for an older framework version — click to update it</TooltipContent>
-            </Tooltip>
-          )}
           {buildStatus === "building" && (
             <Badge variant="accent" className="gap-1">
               <Loader2 className="h-2.5 w-2.5 animate-spin" /> Building…

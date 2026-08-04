@@ -39,7 +39,6 @@ export function ModsScreen() {
   const toggleMod = useAppStore((s) => s.toggleMod)
   const reorderMods = useAppStore((s) => s.reorderMods)
   const removeMod = useAppStore((s) => s.removeMod)
-  const updateOutdated = useAppStore((s) => s.updateOutdated)
   const rebuildIndex = useAppStore((s) => s.rebuildIndex)
   const rebuildingIndex = useAppStore((s) => s.rebuildingIndex)
   const startDeploy = useAppStore((s) => s.startDeploy)
@@ -166,7 +165,6 @@ export function ModsScreen() {
                     onToggle={toggleMod}
                     onOpenSettings={setSettingsModId}
                     onRemove={setRemoveCandidate}
-                    onUpdateOutdated={updateOutdated}
                   />
                 )
               })}

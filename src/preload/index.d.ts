@@ -25,7 +25,6 @@ export interface SmfBridge {
     onTaskUpdate(callback: (update: unknown) => void): () => void
     onCacheProgress(callback: (progress: unknown) => void): () => void
     remove(modId: string): Promise<unknown>
-    updateOutdated(modId: string): Promise<unknown>
     buildStatuses(): Promise<unknown>
     rebuildCacheDb(): Promise<unknown>
   }

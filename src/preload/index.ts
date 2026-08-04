@@ -59,7 +59,6 @@ const smf = {
     },
 
     remove: (modId: string) => ipcRenderer.invoke("mods:remove", modId),
-    updateOutdated: (modId: string) => ipcRenderer.invoke("mods:updateOutdated", modId),
 
     buildStatuses: () => ipcRenderer.invoke("mods:buildStatuses"),
     rebuildCacheDb: () => ipcRenderer.invoke("mods:rebuildCacheDb")

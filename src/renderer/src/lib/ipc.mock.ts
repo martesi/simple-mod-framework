@@ -343,13 +343,6 @@ class MockSmfApi implements SmfApi {
       return { ok: true }
     },
 
-    updateOutdated: async (modId: string): Promise<ModEntry> => {
-      await delay(150)
-      this.modsData = this.modsData.map((m) => (m.id === modId ? { ...m, outdated: false, manifest: m.manifest && { ...m.manifest, frameworkVersion: "3.0.0" } } : m))
-      saveMods(this.modsData)
-      return structuredClone(this.modsData.find((m) => m.id === modId)!)
-    },
-
     // No real cache.db outside a real Electron shell - every mod just reports "ready" immediately,
     // since this mock has nothing that could ever be "building".
     buildStatuses: async (): Promise<ModBuildInfo[]> => {

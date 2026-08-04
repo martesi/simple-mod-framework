@@ -40,8 +40,6 @@ export function createElectronSmfApi(): SmfApi {
 
       remove: (modId) => bridge.mods.remove(modId) as Promise<{ ok: boolean; reason?: string }>,
 
-      updateOutdated: (modId) => bridge.mods.updateOutdated(modId) as Promise<ModEntry>,
-
       buildStatuses: () => bridge.mods.buildStatuses() as Promise<ModBuildInfo[]>,
 
       rebuildCacheDb: () => bridge.mods.rebuildCacheDb() as Promise<{ ok: boolean; reason?: string }>

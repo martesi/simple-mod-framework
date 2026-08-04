@@ -67,7 +67,7 @@ interface AppState {
    * LEI-141's per-mod eager-build status, keyed by mod id - absent entries mean "never built"
    * (RPKG-only mods, or a framework mod whose build hasn't run yet). Kept fresh by a short poll in
    * initListeners() rather than threaded through every single call site that can kick off a
-   * background build (add/options-change/outdated-update/rebuild all do) - a build finishing is an
+   * background build (add/options-change/rebuild all do) - a build finishing is an
    * async main-process event this store doesn't otherwise get pushed, so polling is simpler and more
    * robust than trying to enumerate every trigger.
    */
@@ -96,7 +96,6 @@ interface AppState {
   openAddDialog(): void
   closeAddDialog(): void
   removeMod(modId: string): Promise<{ ok: boolean; reason?: string }>
-  updateOutdated(modId: string): Promise<void>
   /** Whether a rebuildIndex() call is in flight - lets the "Rebuild cache" button show a spinner and disable itself, mirroring the old Mod Manager's "please wait" modal for the same (synchronous, on the main-process side) full-disk-walk operation. */
   rebuildingIndex: boolean
   rebuildIndex(): Promise<void>
@@ -342,18 +341,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ config, mods })
     }
     return result
-  },
-
-  async updateOutdated(modId) {
-    const updated = await getSmfApi().mods.updateOutdated(modId)
-    set((s) => ({ mods: s.mods.map((m) => (m.id === modId ? updated : m)) }))
-    // There's no real auto-updater yet (LEI-98) - this call only re-reads whatever's on disk right
-    // now. If it's still flagged outdated, clicking the badge genuinely did nothing visible, which
-    // reads as broken rather than as "there's nothing to fetch here yet" - say so explicitly instead
-    // of leaving the badge sitting there unchanged with no explanation.
-    if (updated.outdated) {
-      toast.info("Still on an older framework version - install the updated mod files yourself (Add a mod), then this badge will clear.")
-    }
   },
 
   async rebuildIndex() {

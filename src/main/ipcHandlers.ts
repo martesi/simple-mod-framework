@@ -290,22 +290,6 @@ export function registerIpcHandlers(paths: AppPaths): void {
 		return { ok: true }
 	})
 
-	// Real auto-update (the URL/GitHub/ModWorkshop system) is LEI-98's v3
-	// "URL system" breaking change, not this issue's scope - for now this just
-	// re-validates the mod in place so the UI's "outdated" badge at least
-	// reflects the manager's own current CURRENT_FRAMEWORK_VERSION check
-	// after the user re-installs the mod themselves via Add a Mod.
-	ipcMain.handle("mods:updateOutdated", (_event, modId: string) => {
-		ensureDb()
-		const entry = index.reindexOne(modId)
-		if (!entry) throw new Error(`"${modId}" isn't installed.`)
-		// LEI-141 eager-build trigger: the mod's on-disk content may have changed as part of
-		// whatever "update" the user just did (re-running Add a Mod over the same folder) - rebuild
-		// its cache.db entry rather than leaving the old one to go stale.
-		triggerEagerBuild(modId)
-		return entry
-	})
-
 	ipcMain.handle("deploy:start", () => {
 		ensureDb()
 		const modsConfig = getModsConfig()
@@ -317,9 +301,8 @@ export function registerIpcHandlers(paths: AppPaths): void {
 	// LEI-108/LEI-141's "background analyseMod, off the deploy critical path" - also the explicit
 	// "rebuild this mod's cache" trigger point the design calls for, wired up to the options-change
 	// path automatically (see config:merge above) as well as being callable directly (e.g. a
-	// per-mod "Rebuild" action in the UI, or after mods:updateOutdated - both already call
-	// triggerEagerBuild() themselves, this handler is for anything else, including manual retries
-	// of a mod whose last build failed).
+	// per-mod "Rebuild" action in the UI, which already calls triggerEagerBuild() itself - this
+	// handler is for anything else, including manual retries of a mod whose last build failed).
 	ipcMain.handle("deploy:analyseMod", async (_event, modId: string): Promise<{ ok: boolean; error?: string }> => {
 		ensureDb()
 		return deployManager.runAnalyseMod(modId)

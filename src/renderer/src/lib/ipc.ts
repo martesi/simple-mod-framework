@@ -178,7 +178,6 @@ export interface SmfApi {
     onCacheProgress(cb: (progress: { scanned: number; total: number }) => void): Unsubscribe
     /** Rejected while a deploy is active - real handler must enforce this independently of the UI. */
     remove(modId: string): Promise<{ ok: boolean; reason?: string }>
-    updateOutdated(modId: string): Promise<ModEntry>
     /** Every mod's current eager-build status (LEI-141) - poll after actions that could change one (add/update/options-change/explicit rebuild) or on an interval while any mod shows "building". */
     buildStatuses(): Promise<ModBuildInfo[]>
     /**

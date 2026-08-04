@@ -109,7 +109,7 @@ function toUiManifest(m: DiskManifest): Manifest {
  * on every navigation reload, so a stale cache file could silently diverge from reality with no
  * path back to correctness short of deleting it by hand. That risk doesn't apply the same way here:
  * every mutation this app makes to `Mods/` already goes through one of a small number of write-through
- * methods on this class (`addFolders()`, `remove()`, `writeManifest()`, `reindexOne()`, plus a full
+ * methods on this class (`addFolders()`, `remove()`, `writeManifest()`, plus a full
  * `rebuildChunked()`/`rebuildInWorker()`), and every one of them now re-persists to the db as
  * part of the same call. The only way the index can drift from reality is a change made to
  * `Mods/` from *outside* this app entirely (hand-copying a folder in, editing a manifest with a text
@@ -365,26 +365,6 @@ export class ModIndex {
       this.indexFolder(modsDir, folder)
     }
     this.persistCache()
-  }
-
-  /**
-   * Re-reads one already-known mod's manifest.json fresh from disk and updates just that entry -
-   * `mods:updateOutdated`'s narrow case (LEI-98 stopgap: no real auto-updater yet, this just
-   * reflects whatever's on disk right now). A mod's outdated/validation status can only ever change
-   * by editing *that mod's own* manifest.json, so there's no reason clicking "Update" on one mod
-   * should pay for a full `rebuildChunked()` walk of every other mod too - with a large collection,
-   * that full rebuild is exactly what made clicking the outdated badge feel like it froze the app,
-   * for a re-check that only ever needed one folder's worth of disk I/O. Returns `undefined` if the
-   * id isn't (or is no longer) in the index at all.
-   */
-  reindexOne(id: string): ModEntry | undefined {
-    this.ensureBuilt()
-    const entry = this.byId.get(id)
-    if (!entry) return undefined
-
-    this.indexFolder(this.getModsDir(), entry.folder)
-    this.persistCache()
-    return this.list().find((m) => m.id === id)
   }
 
   remove(id: string): void {
