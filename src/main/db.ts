@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite"
-import { existsSync, mkdirSync, rmSync } from "node:fs"
+import { mkdirSync, rmSync } from "node:fs"
 import { dirname, join } from "node:path"
 import type { DiskManifest } from "./diskManifest"
 import type { GamePathInfo } from "./gameDetect"
@@ -436,7 +436,3 @@ export function clearAllContentCache(): void {
 	rmSync(contentCacheRoot, { recursive: true, force: true })
 }
 
-/** Whether `dbPath` already exists and has data worth treating as "not a fresh install" - used by {@link resolveTempDirLegacyCheck}-style callers and diagnostics. Not the same check as `settings.ts`'s `legacyTempDirHasData()` (that one looks for the *pre-LEI-141* JSON cache files, this one is about cache.db itself). */
-export function dbFileExists(dbPath: string): boolean {
-	return existsSync(dbPath)
-}

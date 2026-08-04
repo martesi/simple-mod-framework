@@ -30,13 +30,12 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
 	/**
 	 * cache.db lives under the resolved temp dir (LEI-141 - see settings.ts's `resolveTempDir()`),
-	 * not necessarily `paths.dataRoot` anymore. Opened lazily here, on the first IPC call that
-	 * touches mod management, rather than eagerly at app startup - a genuinely fresh install with no
-	 * `gamePath` picked yet would otherwise force the "no game known" fallback location (`dataRoot`)
-	 * to become permanent (once `cache.db` exists anywhere, `legacyTempDirHasData()` finds it and
-	 * pins the temp dir there forever - see that function's doc comment). Calling this again after
-	 * `gamePath` changes (see `config:merge`/`config:pickGameDirectory` below) is a cheap no-op if
-	 * the resolved location hasn't actually changed, and cleanly reopens at the new location if it has.
+	 * not necessarily `paths.dataRoot` anymore. Calling this again after `gamePath` changes (see
+	 * `config:merge`/`config:pickGameDirectory` below) is a cheap no-op if the resolved location
+	 * hasn't actually changed, and cleanly reopens at the new location if it has - once a game path
+	 * is picked, `resolveTempDir()` always resolves under that root, so a stale `dataRoot`-based
+	 * db from before the wizard ran is never mistaken for the effective default (no more
+	 * `legacyTempDirHasData()` check to pin it in place).
 	 */
 	function ensureDb(): void {
 		const settings = loadSettings(paths)
@@ -126,9 +125,8 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
 		// gamePath just changed: one-shot re-derive (deriveGamePathInfo() itself notices the mismatch
 		// against whatever's stored in cache.db and only actually re-hashes/re-persists in that case -
-		// see gameDetect.ts). Also re-checks whether the temp dir's *default* location should move
-		// (only takes effect for a genuinely fresh install with no data at the legacy location yet -
-		// see resolveTempDir()'s doc comment).
+		// see gameDetect.ts). Also re-resolves the temp dir's *default* location against the new game
+		// root (no-op if `tempPath` is explicitly set - see resolveTempDir()'s doc comment).
 		if (settingsPatch.gamePath !== undefined && settingsPatch.gamePath !== gamePathBefore) {
 			if (settings.gamePath) deriveGamePathInfo(settings.gamePath, paths)
 			ensureDb()

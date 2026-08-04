@@ -25,8 +25,8 @@ export interface AppSettings {
 	/**
 	 * Explicit override for the temp dir (cache.db + staging/ + Output/ + the ephemeral working
 	 * folders - see `resolveTempDir()`'s doc comment). Unset means "use the computed default" -
-	 * under the game root for a genuinely fresh install, or `dataRoot` itself if a legacy
-	 * pre-LEI-141 cache is already sitting there (existing installs are never silently relocated).
+	 * under the game root once one's picked, or `dataRoot` itself before that (no game path is
+	 * expected pre-wizard).
 	 */
 	tempPath?: string
 
@@ -113,16 +113,6 @@ export function resolveModsDir(paths: AppPaths, settings: AppSettings): string {
 	return isAbsolute(settings.modsPath) ? settings.modsPath : resolve(paths.dataRoot, settings.modsPath)
 }
 
-/**
- * True if a pre-LEI-141 install already has real data sitting in the legacy AppData cache location
- * (`dataRoot/cache/...`) - the signal `resolveTempDir()` uses to decide "this is an existing install,
- * keep using `dataRoot` as the temp dir" rather than silently relocating it to the new game-root
- * default. A completely fresh install has none of these.
- */
-export function legacyTempDirHasData(paths: AppPaths): boolean {
-	return existsSync(join(paths.dataRoot, "cache.db")) || existsSync(join(paths.dataRoot, "cache", "modIndex.json")) || existsSync(join(paths.dataRoot, "cache", "analysis")) || existsSync(join(paths.dataRoot, "cache", "map.json"))
-}
-
 /** Best-effort guess at the game's root folder (the one containing "Retail" and "Runtime") from the raw, possibly-unvalidated `gamePath` string - used only for the temp dir's default location, computed without touching the filesystem beyond a basename check, since a full validated derivation (`gameDetect.ts`'s `deriveGamePathInfo()`) needs the db this very function helps place. */
 function guessGameRoot(gamePath: string): string {
 	const resolved = resolve(gamePath)
@@ -132,22 +122,19 @@ function guessGameRoot(gamePath: string): string {
 /**
  * Where the temp dir (cache.db, staging/, Output/, temp/, temp2/, qn-update/, tmp/) actually is.
  *
- * Default resolution (LEI-141's config split): a genuinely fresh install defaults to a folder under
- * the game's root (more disk headroom near the game itself, and the whole modded setup - Mods/ +
- * this - can be moved as one unit more easily than when part of it lives buried in AppData). An
- * existing install is never silently relocated: if the legacy AppData location already has real
- * cache data (`legacyTempDirHasData()`), that stays the effective default. A user's own explicit
- * `tempPath` override always wins over either default.
+ * Default resolution: always derived from the game root once one's picked (more disk headroom near
+ * the game itself, and the whole modded setup - Mods/ + this - can be moved as one unit more easily
+ * than when part of it lives buried in AppData). No path is expected to exist in AppData by default -
+ * that's what the setup wizard is for, so there's nothing here to check for and preserve. A user's
+ * own explicit `tempPath` override always wins over the computed default.
  */
 export function resolveTempDir(paths: AppPaths, settings: AppSettings): string {
 	if (settings.tempPath) return isAbsolute(settings.tempPath) ? settings.tempPath : resolve(paths.dataRoot, settings.tempPath)
 
-	if (legacyTempDirHasData(paths)) return paths.dataRoot
-
 	if (settings.gamePath) return join(guessGameRoot(settings.gamePath), "SMF Data")
 
-	// No game picked yet (first-ever launch, before the setup wizard) and no legacy data either -
-	// dataRoot is the only folder guaranteed to exist/be writable at this point.
+	// No game picked yet (first-ever launch, before the setup wizard) - dataRoot is the only folder
+	// guaranteed to exist/be writable at this point.
 	return paths.dataRoot
 }
 
