@@ -5,6 +5,7 @@ import { Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAppStore } from "@/store/app-store"
 import { getSmfApi } from "@/lib/ipc"
 import { cn } from "@/lib/utils"
@@ -293,17 +294,18 @@ export function SetupWizard() {
         <>
           <div className="mb-1.5 text-[22px] font-bold text-text">Language</div>
           <div className="mb-[18px] text-[14px] leading-[1.55] text-text-2">Sets the in-game text language mods will target.</div>
-          <select
-            value={draft.language}
-            onChange={(e) => setDraft((d) => d && { ...d, language: e.target.value })}
-            className="w-full rounded-md border border-border bg-surface-2 px-3.5 py-3 text-[14px] text-text outline-none"
-          >
-            {LANGUAGES.map((lo) => (
-              <option key={lo.code} value={lo.code}>
-                {lo.label}
-              </option>
-            ))}
-          </select>
+          <Select value={draft.language} onValueChange={(language) => language && setDraft((d) => d && { ...d, language })}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGES.map((lo) => (
+                <SelectItem key={lo.code} value={lo.code}>
+                  {lo.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </>
       )
       break

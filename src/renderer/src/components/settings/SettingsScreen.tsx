@@ -3,6 +3,7 @@ import { ExternalLink, Loader2 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
 import { ACCENTS, ACCENT_LABELS, resolveDark, type Accent, type ThemeMode } from "@/lib/theme"
@@ -76,17 +77,18 @@ export function SettingsScreen() {
         </div>
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">Language</div>
-          <select
-            value={config.language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="w-full rounded-md border border-border bg-surface-2 px-3 py-[9px] text-[13px] text-text outline-none"
-          >
-            {LANGUAGES.map((lo) => (
-              <option key={lo.code} value={lo.code}>
-                {lo.label}
-              </option>
-            ))}
-          </select>
+          <Select value={config.language} onValueChange={(language) => language && setLanguage(language)}>
+            <SelectTrigger className="py-[9px] text-[13px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGES.map((lo) => (
+                <SelectItem key={lo.code} value={lo.code}>
+                  {lo.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
