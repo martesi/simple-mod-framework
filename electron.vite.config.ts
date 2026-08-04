@@ -3,6 +3,7 @@ import { defineConfig, type UserConfig } from "electron-vite"
 import type { ConfigEnv } from "vite"
 import react, { reactCompilerPreset } from "@vitejs/plugin-react"
 import babel from "@rolldown/plugin-babel"
+import linguiMacroPlugin from "@lingui/babel-plugin-lingui-macro"
 
 // This app replaces the old Svelte Mod Manager's Electron renderer (see
 // LEI-137 for the UI rebuild). fs/child_process access lives only in
@@ -211,7 +212,12 @@ export default defineConfig(async ({ command }: ConfigEnv): Promise<UserConfig> 
       // which of the sync/async/union overloads applies before it has contextually typed this
       // object literal, so properties like `format: "cjs"` widen to `string` instead of staying
       // literal, and the widened shape then fails to structurally match any overload.
-      await babel({ presets: [reactCompilerPreset()] })
+      // Lingui's t()/Trans macros (see lingui.config.js and main.tsx's I18nProvider setup) compile
+      // away at build time into plain @lingui/core calls - this plugin is what does that expansion,
+      // riding the same babel() pipeline already wired up for the React Compiler preset above rather
+      // than pulling in a second bundler-specific integration (e.g. @lingui/vite-plugin, which isn't
+      // verified compatible with Vite 8's Rolldown bundler the way this repo's own babel() call is).
+      await babel({ presets: [reactCompilerPreset()], plugins: [linguiMacroPlugin] })
     ]
   }
 }))

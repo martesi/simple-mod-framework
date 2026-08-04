@@ -14,12 +14,14 @@
     "dev": "electron-vite dev",
     "fetch:win-electron": "node scripts/fetch-win-electron.js",
     "dev:win": "node scripts/fetch-win-electron.js && WSLENV=\"${WSLENV:+$WSLENV:}ELECTRON_RENDERER_URL\" NO_SANDBOX=1 ELECTRON_EXEC_PATH=.win-electron-dev/electron.exe electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
-    "build:win": "npm run typecheck && electron-vite build && electron-builder --win --dir",
-    "dist:win": "npm run typecheck && electron-vite build && electron-builder --win",
+    "build": "npm run i18n:compile && npm run typecheck && electron-vite build",
+    "build:win": "npm run i18n:compile && npm run typecheck && electron-vite build && electron-builder --win --dir",
+    "dist:win": "npm run i18n:compile && npm run typecheck && electron-vite build && electron-builder --win",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "i18n:extract": "lingui extract",
+    "i18n:compile": "lingui compile"
   },
   "dependencies": {
     "esbuild": "^0.28.1"
@@ -34,6 +36,10 @@
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@electron-toolkit/utils": "^4.0.0",
     "@eslint/js": "^10.0.1",
+    "@lingui/babel-plugin-lingui-macro": "^6.6.0",
+    "@lingui/cli": "^6.6.0",
+    "@lingui/core": "^6.6.0",
+    "@lingui/react": "^6.6.0",
     "@rolldown/plugin-babel": "^0.2.3",
     "@types/fs-extra": "^9.0.13",
     "@types/klaw": "^3.0.7",

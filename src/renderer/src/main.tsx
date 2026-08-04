@@ -1,7 +1,9 @@
 import React from "react"
 import ReactDOM from "react-dom/client"
 import { HashRouter } from "react-router-dom"
+import { I18nProvider } from "@lingui/react"
 
+import { i18n } from "@/lib/i18n"
 import { setSmfApi } from "@/lib/ipc"
 import { createMockSmfApi } from "@/lib/ipc.mock"
 import { createElectronSmfApi } from "@/lib/ipc.electron"
@@ -20,10 +22,12 @@ setSmfApi(window.smf ? createElectronSmfApi() : createMockSmfApi())
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <HashRouter>
-      <TooltipProvider>
-        <App />
-      </TooltipProvider>
-    </HashRouter>
+    <I18nProvider i18n={i18n}>
+      <HashRouter>
+        <TooltipProvider>
+          <App />
+        </TooltipProvider>
+      </HashRouter>
+    </I18nProvider>
   </React.StrictMode>
 )

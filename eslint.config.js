@@ -9,7 +9,9 @@ export default defineConfig(
 	// that `ignores` alone in an object is ambiguous between "global ignore" and "local ignore
 	// scoped to everything else in this same object" until you reach for the explicit helper. See
 	// https://eslint.org/blog/2025/03/flat-config-extends-define-config-global-ignores/.
-	globalIgnores(["dist", "out"]),
+	// src/renderer/src/locales is Lingui's own generated output (npm run i18n:extract/i18n:compile)
+	// - linting messages.mjs/messages.po as if they were hand-written source is pure noise.
+	globalIgnores(["dist", "out", "src/renderer/src/locales"]),
 	{
 		// Every TS/TSX file in the repo (main, preload, and renderer alike) gets ESLint's own and
 		// typescript-eslint's recommended rules - these are equally meaningful for plain Node code
