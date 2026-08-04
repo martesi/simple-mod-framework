@@ -3,6 +3,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
 import { Loader2, Plus, RefreshCw, Rocket, Search } from "lucide-react"
 import { toast } from "sonner"
+import { Trans, useLingui } from "@lingui/react/macro"
 
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,7 @@ function modLabel(mod: ModEntry) {
 const OVERSCAN = 10
 
 export function ModsScreen() {
+  const { t } = useLingui()
   const mods = useAppStore((s) => s.mods)
   const modsLoading = useAppStore((s) => s.modsLoading)
   const cacheProgress = useAppStore((s) => s.cacheProgress)
@@ -97,7 +99,7 @@ export function ModsScreen() {
     if (!removeCandidate) return
     const result = await removeMod(removeCandidate.id)
     if (!result.ok) {
-      toast.error(result.reason ?? "Couldn't remove the mod.")
+      toast.error(result.reason ?? t`Couldn't remove the mod.`)
     }
     setRemoveCandidate(null)
   }
@@ -105,40 +107,52 @@ export function ModsScreen() {
   return (
     <div className="flex h-full flex-col">
       <div className="mb-1.5 flex items-center gap-4">
-        <h1 className="flex-1 text-2xl font-bold">Mods</h1>
+        <h1 className="flex-1 text-2xl font-bold">
+          <Trans>Mods</Trans>
+        </h1>
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter mods…" className="w-60 pl-8" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t`Filter mods…`} className="w-60 pl-8" />
         </div>
         {config?.developerMode && (
-          <Button variant="outline" title="Re-scan the Mods folder and re-read every manifest from disk" disabled={rebuildingIndex} onClick={() => rebuildIndex()}>
+          <Button variant="outline" title={t`Re-scan the Mods folder and re-read every manifest from disk`} disabled={rebuildingIndex} onClick={() => rebuildIndex()}>
             {rebuildingIndex ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Rebuild cache
+            <Trans>Rebuild cache</Trans>
           </Button>
         )}
         <Button variant="outline" onClick={openAddDialog}>
-          <Plus className="h-4 w-4" /> Add a mod
+          <Plus className="h-4 w-4" /> <Trans>Add a mod</Trans>
         </Button>
         <Button onClick={startDeploy} disabled={deployActive}>
-          <Rocket className="h-4 w-4" /> Apply changes
+          <Rocket className="h-4 w-4" /> <Trans>Apply changes</Trans>
         </Button>
       </div>
 
       {modsLoading && (
         <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-text-2">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-          {cacheProgress
-            ? `Building mod cache — scanned ${cacheProgress.scanned} of ${cacheProgress.total} mods…`
-            : "Building mod cache — this can take a moment the first time, or after switching mod folders…"}
+          {cacheProgress ? (
+            <Trans>
+              Building mod cache — scanned {cacheProgress.scanned} of {cacheProgress.total} mods…
+            </Trans>
+          ) : (
+            <Trans>Building mod cache — this can take a moment the first time, or after switching mod folders…</Trans>
+          )}
         </div>
       )}
 
       <div className="mb-5 text-[13px] text-text-2">
-        {enabledIds.length} enabled · {mods.length} total
+        <Trans>
+          {enabledIds.length} enabled · {mods.length} total
+        </Trans>
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-surface shadow-sm">
-        {!modsLoading && filtered.length === 0 && q && <div className="px-[18px] py-10 text-center text-[13px] text-text-3">No mods match "{search.trim()}".</div>}
+        {!modsLoading && filtered.length === 0 && q && (
+          <div className="px-[18px] py-10 text-center text-[13px] text-text-3">
+            <Trans>No mods match "{search.trim()}".</Trans>
+          </div>
+        )}
 
         <div ref={listRef} className="h-full overflow-y-auto">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -180,18 +194,22 @@ export function ModsScreen() {
       <Dialog open={!!removeCandidate} onOpenChange={(open) => !open && setRemoveCandidate(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete mod</DialogTitle>
+            <DialogTitle>
+              <Trans>Delete mod</Trans>
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to permanently remove{" "}
-              <i>{removeCandidate?.isFrameworkMod ? removeCandidate.manifest?.name : removeCandidate?.rpkgModName}</i>? You can't undo this.
+              <Trans>
+                Are you sure you want to permanently remove{" "}
+                <i>{removeCandidate?.isFrameworkMod ? removeCandidate.manifest?.name : removeCandidate?.rpkgModName}</i>? You can't undo this.
+              </Trans>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setRemoveCandidate(null)}>
-              Cancel
+              <Trans>Cancel</Trans>
             </Button>
             <Button variant="destructive" onClick={confirmRemove}>
-              Delete the mod
+              <Trans>Delete the mod</Trans>
             </Button>
           </DialogFooter>
         </DialogContent>

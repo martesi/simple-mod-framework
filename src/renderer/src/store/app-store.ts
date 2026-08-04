@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { toast } from "sonner"
+import { t } from "@lingui/core/macro"
 import { getSmfApi } from "@/lib/ipc"
 import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate } from "@/lib/ipc"
 import type { Config, DefaultPaths, ModEntry } from "@/lib/manifest-types"
@@ -353,7 +354,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // afterward.
       const { mods, config } = await refreshModsAndConfig(() => getSmfApi().mods.rebuildIndex())
       set({ mods, config })
-      toast.success("Mod cache rebuilt.")
+      toast.success(t`Mod cache rebuilt.`)
     } finally {
       set({ rebuildingIndex: false, cacheProgress: null })
     }
@@ -370,13 +371,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const result = await getSmfApi().mods.rebuildCacheDb()
       if (!result.ok) {
-        toast.error(result.reason ?? "Couldn't rebuild the cache database.")
+        toast.error(result.reason ?? t`Couldn't rebuild the cache database.`)
         return
       }
       const { mods, config } = await refreshModsAndConfig(() => getSmfApi().mods.list())
       set({ mods, config })
       await get().refreshBuildStatuses()
-      toast.success("Cache database rebuilt from scratch.")
+      toast.success(t`Cache database rebuilt from scratch.`)
     } finally {
       set({ rebuildingCacheDb: false, cacheProgress: null })
     }

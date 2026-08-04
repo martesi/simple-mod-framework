@@ -1,13 +1,15 @@
 import { NavLink } from "react-router-dom"
 import { LayoutList, Settings2 } from "lucide-react"
+import { useLingui } from "@lingui/react/macro"
 import { cn } from "@/lib/utils"
 
-const items = [
-  { to: "/", label: "Mods", icon: LayoutList },
-  { to: "/settings", label: "Settings", icon: Settings2 }
-]
-
 export function NavRail() {
+  const { t } = useLingui()
+  const items = [
+    { to: "/", label: t`Mods`, icon: LayoutList },
+    { to: "/settings", label: t`Settings`, icon: Settings2 }
+  ]
+
   return (
     <div className="flex w-[68px] shrink-0 flex-col items-center gap-2 border-r border-border bg-surface py-4">
       <div className="mb-5 flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-[13px] font-bold text-accent-foreground">SMF</div>

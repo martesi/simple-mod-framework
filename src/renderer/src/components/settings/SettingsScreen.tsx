@@ -1,28 +1,18 @@
 import { useState } from "react"
 import { ExternalLink, Loader2 } from "lucide-react"
+import { Trans, useLingui } from "@lingui/react/macro"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
-import { ACCENTS, ACCENT_LABELS, resolveDark, type Accent, type ThemeMode } from "@/lib/theme"
+import { ACCENTS, resolveDark, type Accent, type ThemeMode } from "@/lib/theme"
 import { LANGUAGES } from "@/lib/languages"
 import { PathInputRow } from "./PathInputRow"
 
-const THEME_MODES: { key: ThemeMode; label: string }[] = [
-  { key: "light", label: "Light" },
-  { key: "dark", label: "Dark" },
-  { key: "system", label: "Auto" }
-]
-
-const ABOUT_LINKS = [
-  { label: "Documentation", href: "https://github.com/atampy25/simple-mod-framework" },
-  { label: "Report an issue", href: "https://github.com/atampy25/simple-mod-framework/issues" },
-  { label: "Discord community", href: "https://discord.gg/" }
-]
-
 export function SettingsScreen() {
+  const { t } = useLingui()
   const config = useAppStore((s) => s.config)
   const defaultPaths = useAppStore((s) => s.defaultPaths)
   const systemDark = useAppStore((s) => s.systemDark)
@@ -42,6 +32,26 @@ export function SettingsScreen() {
 
   const [confirmRebuildOpen, setConfirmRebuildOpen] = useState(false)
 
+  const THEME_MODES: { key: ThemeMode; label: string }[] = [
+    { key: "light", label: t`Light` },
+    { key: "dark", label: t`Dark` },
+    { key: "system", label: t`Auto` }
+  ]
+
+  const ACCENT_LABELS: Record<Accent, string> = {
+    neutral: t`Neutral`,
+    blue: t`Blue`,
+    violet: t`Violet`,
+    green: t`Green`,
+    red: t`Red`
+  }
+
+  const ABOUT_LINKS = [
+    { label: t`Documentation`, href: "https://github.com/atampy25/simple-mod-framework" },
+    { label: t`Report an issue`, href: "https://github.com/atampy25/simple-mod-framework/issues" },
+    { label: t`Discord community`, href: "https://discord.gg/" }
+  ]
+
   if (!config || !defaultPaths) return null
 
   const dark = resolveDark(config.themeMode, systemDark)
@@ -54,29 +64,41 @@ export function SettingsScreen() {
   return (
     <div className="max-w-[520px]">
       <div className="mb-1 flex items-start justify-between gap-4">
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <h1 className="text-2xl font-bold">
+          <Trans>Settings</Trans>
+        </h1>
         <Button variant="outline" size="sm" className="shrink-0" onClick={openWizard}>
-          Run setup wizard
+          <Trans>Run setup wizard</Trans>
         </Button>
       </div>
       <div className="mb-6 text-[13px] text-text-2">Simple Mod Framework · Mod Manager v3.0.0-preview</div>
 
-      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">Paths</div>
+      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">
+        <Trans>Paths</Trans>
+      </div>
       <div className="mb-6 flex flex-col gap-4 rounded-lg border border-border bg-surface p-[18px] shadow-sm">
         <div>
-          <div className="mb-2 text-[12px] font-semibold text-text-2">Game path</div>
+          <div className="mb-2 text-[12px] font-semibold text-text-2">
+            <Trans>Game path</Trans>
+          </div>
           <PathInputRow value={config.gamePath} placeholder={defaultPaths.gamePath} onChange={setGamePath} onBrowse={browseGamePath} />
         </div>
         <div>
-          <div className="mb-2 text-[12px] font-semibold text-text-2">Cache path</div>
+          <div className="mb-2 text-[12px] font-semibold text-text-2">
+            <Trans>Cache path</Trans>
+          </div>
           <PathInputRow value={config.cachePath} placeholder={defaultPaths.cachePath} onChange={setCachePath} onBrowse={browseCachePath} />
         </div>
         <div>
-          <div className="mb-2 text-[12px] font-semibold text-text-2">Mod path</div>
+          <div className="mb-2 text-[12px] font-semibold text-text-2">
+            <Trans>Mod path</Trans>
+          </div>
           <PathInputRow value={config.modPath} placeholder={defaultPaths.modPath} onChange={setModPath} onBrowse={browseModPath} />
         </div>
         <div>
-          <div className="mb-2 text-[12px] font-semibold text-text-2">Language</div>
+          <div className="mb-2 text-[12px] font-semibold text-text-2">
+            <Trans>Language</Trans>
+          </div>
           <Select value={config.language} onValueChange={(language) => language && setLanguage(language)}>
             <SelectTrigger className="py-[9px] text-[13px]">
               <SelectValue />
@@ -92,9 +114,13 @@ export function SettingsScreen() {
         </div>
       </div>
 
-      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">Appearance</div>
+      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">
+        <Trans>Appearance</Trans>
+      </div>
       <div className="mb-6 rounded-lg border border-border bg-surface p-[18px] shadow-sm">
-        <div className="mb-2 text-[12px] font-semibold text-text-2">Theme</div>
+        <div className="mb-2 text-[12px] font-semibold text-text-2">
+          <Trans>Theme</Trans>
+        </div>
         <div className="mb-5 flex max-w-[280px] gap-1 rounded-md border border-border bg-surface-2 p-[3px]">
           {THEME_MODES.map(({ key, label }) => (
             <button
@@ -110,7 +136,9 @@ export function SettingsScreen() {
           ))}
         </div>
 
-        <div className="mb-2.5 text-[12px] font-semibold text-text-2">Accent color</div>
+        <div className="mb-2.5 text-[12px] font-semibold text-text-2">
+          <Trans>Accent color</Trans>
+        </div>
         <div className="flex gap-3">
           {(Object.keys(ACCENTS) as Accent[]).map((key) => (
             <button
@@ -129,27 +157,37 @@ export function SettingsScreen() {
 
       <div className="mb-6 flex items-center justify-between rounded-lg border border-border bg-surface px-[18px] py-4 shadow-sm">
         <div>
-          <div className="text-[14px] font-semibold">Developer mode</div>
-          <div className="text-[12.5px] text-text-2">Shows the authoring tools and raw docs in the rail.</div>
+          <div className="text-[14px] font-semibold">
+            <Trans>Developer mode</Trans>
+          </div>
+          <div className="text-[12.5px] text-text-2">
+            <Trans>Shows the authoring tools and raw docs in the rail.</Trans>
+          </div>
         </div>
         <Switch checked={config.developerMode} onCheckedChange={toggleDevMode} />
       </div>
 
-      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">Advanced</div>
+      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">
+        <Trans>Advanced</Trans>
+      </div>
       <div className="mb-6 flex items-center justify-between rounded-lg border border-border bg-surface px-[18px] py-4 shadow-sm">
         <div>
-          <div className="text-[14px] font-semibold">Rebuild cache database</div>
+          <div className="text-[14px] font-semibold">
+            <Trans>Rebuild cache database</Trans>
+          </div>
           <div className="text-[12.5px] text-text-2">
-            Wipes and rebuilds cache.db from scratch (mods, manifests, per-mod builds) - the "something's wrong with the cache" recovery option. Doesn't touch your Mods folder or load order.
+            <Trans>Wipes and rebuilds cache.db from scratch (mods, manifests, per-mod builds) - the "something's wrong with the cache" recovery option. Doesn't touch your Mods folder or load order.</Trans>
           </div>
         </div>
         <Button variant="outline" disabled={rebuildingCacheDb} onClick={() => setConfirmRebuildOpen(true)}>
           {rebuildingCacheDb ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          Rebuild cache database
+          <Trans>Rebuild cache database</Trans>
         </Button>
       </div>
 
-      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">About</div>
+      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">
+        <Trans>About</Trans>
+      </div>
       <div className="rounded-lg border border-border bg-surface shadow-sm">
         {ABOUT_LINKS.map(({ label, href }, i) => (
           <a
@@ -168,17 +206,23 @@ export function SettingsScreen() {
       <Dialog open={confirmRebuildOpen} onOpenChange={setConfirmRebuildOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rebuild cache database</DialogTitle>
+            <DialogTitle>
+              <Trans>Rebuild cache database</Trans>
+            </DialogTitle>
             <DialogDescription>
-              This deletes cache.db and rebuilds every mod's cache from scratch - the same work as a first launch. It can take a while with a lot of mods installed, and any deploy is blocked until it
-              finishes. Your Mods folder and load order aren't touched.
+              <Trans>
+                This deletes cache.db and rebuilds every mod's cache from scratch - the same work as a first launch. It can take a while with a lot of mods installed, and any deploy is blocked until it
+                finishes. Your Mods folder and load order aren't touched.
+              </Trans>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setConfirmRebuildOpen(false)}>
-              Cancel
+              <Trans>Cancel</Trans>
             </Button>
-            <Button onClick={confirmRebuildCacheDb}>Rebuild</Button>
+            <Button onClick={confirmRebuildCacheDb}>
+              <Trans>Rebuild</Trans>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { memo } from "react"
 import { Loader2, Settings2, TriangleAlert, X } from "lucide-react"
+import { Trans, useLingui } from "@lingui/react/macro"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
@@ -46,8 +47,9 @@ export interface ModRowProps {
 }
 
 function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggle, onOpenSettings, onRemove, buildStatus, buildError, dragHandleProps, style, setNodeRef }: ModRowProps) {
+  const { t } = useLingui()
   const name = mod.isFrameworkMod ? mod.manifest!.name : mod.rpkgModName!
-  const description = mod.isFrameworkMod ? mod.manifest!.description : "RPKG-only mod"
+  const description = mod.isFrameworkMod ? mod.manifest!.description : t`RPKG-only mod`
   const author = mod.isFrameworkMod ? mod.manifest!.authors.join(", ") : ""
   const hasOptions = !!mod.manifest?.options?.some((o) => o.type !== OptionType.conditional)
 
@@ -70,21 +72,25 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className={cn("truncate text-[14px] font-semibold", enabled ? "text-text" : "text-text-2")}>{name}</div>
-          <Badge>{mod.isFrameworkMod ? "Framework" : "RPKG"}</Badge>
-          {hasOptions && <Badge>Options</Badge>}
+          <Badge>{mod.isFrameworkMod ? <Trans>Framework</Trans> : <Trans>RPKG</Trans>}</Badge>
+          {hasOptions && (
+            <Badge>
+              <Trans>Options</Trans>
+            </Badge>
+          )}
           {buildStatus === "building" && (
             <Badge variant="accent" className="gap-1">
-              <Loader2 className="h-2.5 w-2.5 animate-spin" /> Building…
+              <Loader2 className="h-2.5 w-2.5 animate-spin" /> <Trans>Building…</Trans>
             </Badge>
           )}
           {buildStatus === "failed" && (
             <Tooltip>
               <TooltipTrigger render={<span />}>
                 <Badge variant="warning" className="gap-1">
-                  <TriangleAlert className="h-3 w-3" /> Build failed
+                  <TriangleAlert className="h-3 w-3" /> <Trans>Build failed</Trans>
                 </Badge>
               </TooltipTrigger>
-              <TooltipContent>{buildError || "Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database."}</TooltipContent>
+              <TooltipContent>{buildError || t`Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database.`}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -92,7 +98,7 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
       </div>
 
       {hasOptions && (
-        <Button variant="ghost" size="icon" title="Mod settings" onClick={() => onOpenSettings(mod.id)}>
+        <Button variant="ghost" size="icon" title={t`Mod settings`} onClick={() => onOpenSettings(mod.id)}>
           <Settings2 className="h-[15px] w-[15px] text-text-2" />
         </Button>
       )}
@@ -103,11 +109,15 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
             (possibly disabled) Button in a span: a disabled real <button>
             can swallow the hover/focus events a tooltip trigger needs. */}
         <TooltipTrigger render={<span />}>
-          <Button variant="ghost" size="icon" disabled={removeBlocked} title={removeBlocked ? "Can't remove while a deploy is running" : "Remove mod"} onClick={() => onRemove(mod)}>
+          <Button variant="ghost" size="icon" disabled={removeBlocked} title={removeBlocked ? t`Can't remove while a deploy is running` : t`Remove mod`} onClick={() => onRemove(mod)}>
             <X className="h-[15px] w-[15px] text-text-2" />
           </Button>
         </TooltipTrigger>
-        {removeBlocked && <TooltipContent>A deploy is running — mods can't be removed until it finishes.</TooltipContent>}
+        {removeBlocked && (
+          <TooltipContent>
+            <Trans>A deploy is running — mods can't be removed until it finishes.</Trans>
+          </TooltipContent>
+        )}
       </Tooltip>
 
       <Switch checked={enabled} onCheckedChange={() => onToggle(mod.id)} />

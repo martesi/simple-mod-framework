@@ -1,4 +1,5 @@
 import { FolderOpen } from "lucide-react"
+import { useLingui } from "@lingui/react/macro"
 import { cn } from "@/lib/utils"
 
 /**
@@ -22,6 +23,7 @@ export function PathInputRow({
   onBrowse?: () => void
   size?: "default" | "lg"
 }) {
+  const { t } = useLingui()
   return (
     <div className="flex gap-2">
       <input
@@ -35,7 +37,7 @@ export function PathInputRow({
       />
       <button
         type="button"
-        title="Browse"
+        title={t`Browse`}
         onClick={() => onBrowse?.()}
         className={cn(
           "flex shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-text-2 hover:bg-surface-hover",

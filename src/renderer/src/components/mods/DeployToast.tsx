@@ -1,18 +1,9 @@
+import type { ReactNode } from "react"
 import { Check, ChevronDown, TriangleAlert, X } from "lucide-react"
+import { Trans, useLingui } from "@lingui/react/macro"
 import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
 import type { DeployStage } from "@/lib/ipc"
-
-// Matches deployManager.ts's STAGE_INDEX ordering exactly - "waiting-for-cache-build" (LEI-141's
-// queue-aware deploy gate) only ever actually shows when at least one mod in the load order isn't
-// eager-built yet; most deploys skip straight past it to "sorting", same as before this stage existed.
-const STAGES: { key: DeployStage; label: string }[] = [
-  { key: "waiting-for-cache-build", label: "Waiting for mods to finish building" },
-  { key: "sorting", label: "Sorting load order" },
-  { key: "extracting", label: "Extracting RPKG mods" },
-  { key: "patching", label: "Patching game files" },
-  { key: "finalizing", label: "Finalizing" }
-]
 
 /**
  * Non-blocking deploy status, bottom-right - no backdrop, the rest of the app
@@ -20,10 +11,22 @@ const STAGES: { key: DeployStage; label: string }[] = [
  * new-ui/Mod Manager.dc.html (this replaced an earlier centered modal design).
  */
 export function DeployToast() {
+  const { t } = useLingui()
   const deploy = useAppStore((s) => s.deploy)
   const closeDeploy = useAppStore((s) => s.closeDeploy)
   const toggleDeployExpanded = useAppStore((s) => s.toggleDeployExpanded)
   const toggleDeployLog = useAppStore((s) => s.toggleDeployLog)
+
+  // Matches deployManager.ts's STAGE_INDEX ordering exactly - "waiting-for-cache-build" (LEI-141's
+  // queue-aware deploy gate) only ever actually shows when at least one mod in the load order isn't
+  // eager-built yet; most deploys skip straight past it to "sorting", same as before this stage existed.
+  const STAGES: { key: DeployStage; label: string }[] = [
+    { key: "waiting-for-cache-build", label: t`Waiting for mods to finish building` },
+    { key: "sorting", label: t`Sorting load order` },
+    { key: "extracting", label: t`Extracting RPKG mods` },
+    { key: "patching", label: t`Patching game files` },
+    { key: "finalizing", label: t`Finalizing` }
+  ]
 
   if (!deploy.open || !deploy.snapshot) return null
 
@@ -35,17 +38,21 @@ export function DeployToast() {
   const failed = done && deploy.progress?.ok === false
   const progressPct = done ? 100 : Math.round(((Math.max(currentStageIndex, 0) + 0.5) / STAGES.length) * 100)
 
-  let statusLine = "This may take a moment…"
+  let statusLine: ReactNode = <Trans>This may take a moment…</Trans>
   if (failed) {
-    statusLine = deploy.progress?.logLine || "Deploy failed."
+    statusLine = deploy.progress?.logLine || <Trans>Deploy failed.</Trans>
   } else if (done) {
-    statusLine = "Deploy finished successfully."
+    statusLine = <Trans>Deploy finished successfully.</Trans>
   } else if (currentStageIndex >= 0) {
     const stage = STAGES[currentStageIndex]
     statusLine =
-      stage.key === "patching" && deploy.progress?.currentModId
-        ? `${stage.label} — ${deploy.progress.currentModId} (${(deploy.progress.modIndex ?? 0) + 1}/${deploy.progress.modTotal})`
-        : stage.label
+      stage.key === "patching" && deploy.progress?.currentModId ? (
+        <Trans>
+          {stage.label} — {deploy.progress.currentModId} ({(deploy.progress.modIndex ?? 0) + 1}/{deploy.progress.modTotal})
+        </Trans>
+      ) : (
+        stage.label
+      )
   }
 
   return (
@@ -66,7 +73,9 @@ export function DeployToast() {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-bold text-text">{failed ? "Deploy failed" : done ? "Mods applied" : "Applying your mods"}</div>
+          <div className="text-[13.5px] font-bold text-text">
+            {failed ? <Trans>Deploy failed</Trans> : done ? <Trans>Mods applied</Trans> : <Trans>Applying your mods</Trans>}
+          </div>
           <div className="truncate text-[12px] text-text-2">{statusLine}</div>
         </div>
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-text-3 transition-transform", deploy.expanded && "rotate-180")} />
@@ -75,7 +84,7 @@ export function DeployToast() {
             e.stopPropagation()
             closeDeploy()
           }}
-          title="Dismiss"
+          title={t`Dismiss`}
           className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-text-3 hover:bg-surface-hover"
         >
           <X className="h-3 w-3" />
@@ -110,7 +119,9 @@ export function DeployToast() {
                     {isActive && stage.key === "patching" && deploy.progress?.currentModId && (
                       <span className="text-text-2">
                         {" "}
-                        — {deploy.progress.currentModId} ({(deploy.progress.modIndex ?? 0) + 1}/{deploy.progress.modTotal})
+                        <Trans>
+                          — {deploy.progress.currentModId} ({(deploy.progress.modIndex ?? 0) + 1}/{deploy.progress.modTotal})
+                        </Trans>
                       </span>
                     )}
                   </div>
@@ -121,7 +132,7 @@ export function DeployToast() {
 
           <div className="border-t border-border">
             <button onClick={toggleDeployLog} className="flex w-full items-center gap-1.5 px-4 py-[10px] text-[12px] font-semibold text-text-2">
-              <ChevronDown className={cn("h-3 w-3 transition-transform", deploy.logExpanded && "rotate-180")} /> Show raw log
+              <ChevronDown className={cn("h-3 w-3 transition-transform", deploy.logExpanded && "rotate-180")} /> <Trans>Show raw log</Trans>
             </button>
             {deploy.logExpanded && (
               <pre className="m-0 max-h-[140px] overflow-y-auto whitespace-pre-wrap bg-surface-2 px-4 pb-3.5 pt-0 font-mono text-[11px] leading-relaxed text-text-2">

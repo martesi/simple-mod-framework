@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { Loader2, X } from "lucide-react"
 import { toast } from "sonner"
+import { Plural, Trans, useLingui } from "@lingui/react/macro"
 
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -63,18 +64,26 @@ function ModDiscoveryStatus({ preview, loading }: { preview: ModPreview | null; 
     return (
       <div className="mt-3 flex items-center gap-2.5 rounded-md border border-border bg-surface px-3.5 py-2.5 text-[13px] text-text-2">
         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-        Scanning this folder for mods…
+        <Trans>Scanning this folder for mods…</Trans>
       </div>
     )
   }
 
   if (!preview.exists) {
-    return <div className="mt-3 text-[13px] text-text-2">This folder doesn't exist yet - it'll be created when you finish setup.</div>
+    return (
+      <div className="mt-3 text-[13px] text-text-2">
+        <Trans>This folder doesn't exist yet - it'll be created when you finish setup.</Trans>
+      </div>
+    )
   }
 
   return (
     <div className="mt-3 text-[13px] text-text-2">
-      {preview.count > 0 ? `${preview.count} mod${preview.count === 1 ? "" : "s"} found in this folder.` : "No mods found in this folder yet - double-check the path if you expected some."}
+      {preview.count > 0 ? (
+        <Plural value={preview.count} one="# mod found in this folder." other="# mods found in this folder." />
+      ) : (
+        <Trans>No mods found in this folder yet - double-check the path if you expected some.</Trans>
+      )}
     </div>
   )
 }
@@ -99,6 +108,7 @@ function ModDiscoveryStatus({ preview, loading }: { preview: ModPreview | null; 
  * `mods.previewFolder()`) instead of the real persisting ones, so nothing hits disk until commit.
  */
 export function SetupWizard() {
+  const { t } = useLingui()
   const config = useAppStore((s) => s.config)
   const defaultPaths = useAppStore((s) => s.defaultPaths)
   const wizard = useAppStore((s) => s.wizard)
@@ -173,7 +183,7 @@ export function SetupWizard() {
   const step = WIZARD_STEPS[wizard.step] ?? "welcome"
   const isLast = wizard.step === WIZARD_STEPS.length - 1
   const isSecondLast = wizard.step === WIZARD_STEPS.length - 2
-  const nextLabel = isLast ? "Finish" : isSecondLast ? "Save & finish" : "Next"
+  const nextLabel = isLast ? t`Finish` : isSecondLast ? t`Save & finish` : t`Next`
 
   // Can't be dismissed until a game path is set - same "wizardDismissable:
   // !!s.gamePath" rule as the comp, so a fresh install can't skip straight
@@ -192,14 +202,14 @@ export function SetupWizard() {
   }
 
   async function handleBrowseCachePath() {
-    const picked = await getSmfApi().system.pickDirectory({ title: "Select a cache folder" })
+    const picked = await getSmfApi().system.pickDirectory({ title: t`Select a cache folder` })
     if (!picked) return
     setDraft((d) => d && { ...d, cachePath: picked })
     setCacheDirty(true)
   }
 
   async function handleBrowseModPath() {
-    const picked = await getSmfApi().system.pickDirectory({ title: "Select a mod folder" })
+    const picked = await getSmfApi().system.pickDirectory({ title: t`Select a mod folder` })
     if (!picked) return
     setDraft((d) => d && { ...d, modPath: picked })
     setModDirty(true)
@@ -237,9 +247,11 @@ export function SetupWizard() {
     case "welcome":
       body = (
         <>
-          <div className="mb-3 text-[30px] font-bold text-text">Welcome to Simple Mod Framework</div>
+          <div className="mb-3 text-[30px] font-bold text-text">
+            <Trans>Welcome to Simple Mod Framework</Trans>
+          </div>
           <div className="text-[15px] leading-[1.65] text-text-2">
-            This wizard walks you through pointing the mod manager at your game install and choosing where mods and cache files live. You can change any of this later in Settings.
+            <Trans>This wizard walks you through pointing the mod manager at your game install and choosing where mods and cache files live. You can change any of this later in Settings.</Trans>
           </div>
         </>
       )
@@ -247,8 +259,8 @@ export function SetupWizard() {
     case "game":
       body = (
         <WizardPathStep
-          title="Game path"
-          description="Point to the folder that contains the game's Retail executable."
+          title={t`Game path`}
+          description={t`Point to the folder that contains the game's Retail executable.`}
           value={draft.gamePath}
           placeholder={defaultPaths.gamePath}
           onChange={(gamePath) => setDraft((d) => d && { ...d, gamePath })}
@@ -259,8 +271,8 @@ export function SetupWizard() {
     case "cache":
       body = (
         <WizardPathStep
-          title="Cache path"
-          description="Where extracted RPKG data and intermediate build files are stored."
+          title={t`Cache path`}
+          description={t`Where extracted RPKG data and intermediate build files are stored.`}
           value={draft.cachePath}
           placeholder={defaultPaths.cachePath}
           onChange={(cachePath) => {
@@ -275,8 +287,8 @@ export function SetupWizard() {
       body = (
         <>
           <WizardPathStep
-            title="Mod path"
-            description="The folder the manager scans for mods to load."
+            title={t`Mod path`}
+            description={t`The folder the manager scans for mods to load.`}
             value={draft.modPath}
             placeholder={defaultPaths.modPath}
             onChange={(modPath) => {
@@ -292,8 +304,12 @@ export function SetupWizard() {
     case "language":
       body = (
         <>
-          <div className="mb-1.5 text-[22px] font-bold text-text">Language</div>
-          <div className="mb-[18px] text-[14px] leading-[1.55] text-text-2">Sets the in-game text language mods will target.</div>
+          <div className="mb-1.5 text-[22px] font-bold text-text">
+            <Trans>Language</Trans>
+          </div>
+          <div className="mb-[18px] text-[14px] leading-[1.55] text-text-2">
+            <Trans>Sets the in-game text language mods will target.</Trans>
+          </div>
           <Select value={draft.language} onValueChange={(language) => language && setDraft((d) => d && { ...d, language })}>
             <SelectTrigger>
               <SelectValue />
@@ -313,8 +329,12 @@ export function SetupWizard() {
       body = (
         <>
           <div className="mb-[18px] flex h-[52px] w-[52px] items-center justify-center rounded-full bg-success text-[24px] font-bold text-white">✓</div>
-          <div className="mb-2.5 text-[26px] font-bold text-text">You're all set</div>
-          <div className="text-[15px] leading-[1.65] text-text-2">Your paths and language are saved. You can revisit this wizard any time from Settings.</div>
+          <div className="mb-2.5 text-[26px] font-bold text-text">
+            <Trans>You're all set</Trans>
+          </div>
+          <div className="text-[15px] leading-[1.65] text-text-2">
+            <Trans>Your paths and language are saved. You can revisit this wizard any time from Settings.</Trans>
+          </div>
         </>
       )
       break
@@ -327,7 +347,9 @@ export function SetupWizard() {
           <div className="flex items-center justify-between px-10 py-6">
             <div className="flex items-center gap-2.5">
               <div className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent text-[11px] font-bold text-accent-foreground">SMF</div>
-              <DialogPrimitive.Title className="text-[14px] font-bold text-text">Setup wizard</DialogPrimitive.Title>
+              <DialogPrimitive.Title className="text-[14px] font-bold text-text">
+                <Trans>Setup wizard</Trans>
+              </DialogPrimitive.Title>
             </div>
             {dismissable && (
               <button onClick={closeWizard} className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md text-text-2 hover:bg-surface-hover">
@@ -348,10 +370,10 @@ export function SetupWizard() {
 
           <div className="mx-auto flex w-full max-w-[520px] items-center justify-between px-10 py-6">
             <button onClick={wizardBack} className={cn("text-[13.5px] font-semibold text-text-2", wizard.step === 0 && "invisible")}>
-              Back
+              <Trans>Back</Trans>
             </button>
             <Button onClick={handleNext} disabled={committing}>
-              {committing ? "Saving…" : nextLabel}
+              {committing ? t`Saving…` : nextLabel}
             </Button>
           </div>
         </DialogPrimitive.Popup>

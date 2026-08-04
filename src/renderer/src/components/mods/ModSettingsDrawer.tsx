@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { Trans, useLingui } from "@lingui/react/macro"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -22,10 +23,11 @@ const RADIO_ROW_HEIGHT = 48
 
 /** A small thumbnail button that opens the full-screen viewer (ImageViewerDialog) at this option's index - no click position/event needed at all, unlike the old floating-popover version this replaced. */
 function PreviewThumb({ image, active, onClick }: { image: string; active: boolean; onClick(): void }) {
+  const { t } = useLingui()
   return (
     <button
       type="button"
-      title="Click to preview"
+      title={t`Click to preview`}
       onClick={(e) => {
         e.stopPropagation()
         onClick()
@@ -198,13 +200,19 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
         <SheetContent>
           <SheetHeader>
             <div>
-              <div className="mb-0.5 text-[12px] font-semibold text-text-2">Mod settings</div>
+              <div className="mb-0.5 text-[12px] font-semibold text-text-2">
+                <Trans>Mod settings</Trans>
+              </div>
               <SheetTitle>{mod?.isFrameworkMod ? mod.manifest?.name : mod?.rpkgModName}</SheetTitle>
             </div>
           </SheetHeader>
 
           <div className="flex flex-1 flex-col gap-[18px] overflow-y-auto px-[22px] py-5">
-            {checkboxes.length === 0 && groups.length === 0 && <div className="text-[13px] text-text-3">This mod has no configurable options.</div>}
+            {checkboxes.length === 0 && groups.length === 0 && (
+              <div className="text-[13px] text-text-3">
+                <Trans>This mod has no configurable options.</Trans>
+              </div>
+            )}
 
             {checkboxes.length > 0 && (
               // Bounded + scrollable (mirrors the select groups' own box below) rather than free-
@@ -259,7 +267,7 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
 
           <SheetFooter>
             <Button className="w-full" onClick={close}>
-              Done
+              <Trans>Done</Trans>
             </Button>
           </SheetFooter>
         </SheetContent>

@@ -1,0 +1,480 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-08-04 16:53-0700\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en-US\n"
+
+#. placeholder {0}: deploy.progress.currentModId
+#. placeholder {1}: (deploy.progress.modIndex ?? 0) + 1
+#. placeholder {2}: deploy.progress.modTotal
+#: src/renderer/src/components/mods/DeployToast.tsx:122
+msgid "— {0} ({1}/{2})"
+msgstr "— {0} ({1}/{2})"
+
+#. placeholder {0}: index! + 1
+#. placeholder {1}: items.length
+#: src/renderer/src/components/mods/ImageViewerDialog.tsx:87
+msgid "· {0} / {1}"
+msgstr "· {0} / {1}"
+
+#. placeholder {0}: preview.count
+#: src/renderer/src/components/settings/SetupWizard.tsx:83
+msgid "{0, plural, one {# mod found in this folder.} other {# mods found in this folder.}}"
+msgstr "{0, plural, one {# mod found in this folder.} other {# mods found in this folder.}}"
+
+#. placeholder {0}: stage.label
+#. placeholder {1}: deploy.progress.currentModId
+#. placeholder {2}: (deploy.progress.modIndex ?? 0) + 1
+#. placeholder {3}: deploy.progress.modTotal
+#: src/renderer/src/components/mods/DeployToast.tsx:50
+msgid "{0} — {1} ({2}/{3})"
+msgstr "{0} — {1} ({2}/{3})"
+
+#. placeholder {0}: enabledIds.length
+#. placeholder {1}: mods.length
+#: src/renderer/src/components/mods/ModsScreen.tsx:145
+msgid "{0} enabled · {1} total"
+msgstr "{0} enabled · {1} total"
+
+#: src/renderer/src/components/mods/ModRow.tsx:118
+msgid "A deploy is running — mods can't be removed until it finishes."
+msgstr "A deploy is running — mods can't be removed until it finishes."
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:189
+msgid "About"
+msgstr "About"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:140
+msgid "Accent color"
+msgstr "Accent color"
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:37
+#: src/renderer/src/components/mods/ModsScreen.tsx:124
+msgid "Add a mod"
+msgstr "Add a mod"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:171
+msgid "Advanced"
+msgstr "Advanced"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:118
+msgid "Appearance"
+msgstr "Appearance"
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:127
+msgid "Apply changes"
+msgstr "Apply changes"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:77
+msgid "Applying your mods"
+msgstr "Applying your mods"
+
+#. placeholder {0}: removeCandidate?.isFrameworkMod ? removeCandidate.manifest?.name : removeCandidate?.rpkgModName
+#: src/renderer/src/components/mods/ModsScreen.tsx:201
+msgid "Are you sure you want to permanently remove <0>{0}</0>? You can't undo this."
+msgstr "Are you sure you want to permanently remove <0>{0}</0>? You can't undo this."
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:38
+msgid "Auto"
+msgstr "Auto"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:373
+msgid "Back"
+msgstr "Back"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:43
+msgid "Blue"
+msgstr "Blue"
+
+#: src/renderer/src/components/settings/PathInputRow.tsx:40
+msgid "Browse"
+msgstr "Browse"
+
+#: src/renderer/src/components/mods/ModRow.tsx:90
+msgid "Build failed"
+msgstr "Build failed"
+
+#. placeholder {0}: cacheProgress.scanned
+#. placeholder {1}: cacheProgress.total
+#: src/renderer/src/components/mods/ModsScreen.tsx:135
+msgid "Building mod cache — scanned {0} of {1} mods…"
+msgstr "Building mod cache — scanned {0} of {1} mods…"
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:139
+msgid "Building mod cache — this can take a moment the first time, or after switching mod folders…"
+msgstr "Building mod cache — this can take a moment the first time, or after switching mod folders…"
+
+#: src/renderer/src/components/mods/ModRow.tsx:83
+msgid "Building…"
+msgstr "Building…"
+
+#: src/renderer/src/store/app-store.ts:380
+msgid "Cache database rebuilt from scratch."
+msgstr "Cache database rebuilt from scratch."
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:88
+#: src/renderer/src/components/settings/SetupWizard.tsx:274
+msgid "Cache path"
+msgstr "Cache path"
+
+#: src/renderer/src/components/mods/ModRow.tsx:112
+msgid "Can't remove while a deploy is running"
+msgstr "Can't remove while a deploy is running"
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:209
+#: src/renderer/src/components/settings/SettingsScreen.tsx:221
+msgid "Cancel"
+msgstr "Cancel"
+
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:30
+msgid "Click to preview"
+msgstr "Click to preview"
+
+#: src/renderer/src/components/mods/ImageViewerDialog.tsx:55
+msgid "Close (Esc)"
+msgstr "Close (Esc)"
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:25
+msgid "Copying into Mods…"
+msgstr "Copying into Mods…"
+
+#: src/renderer/src/store/app-store.ts:374
+msgid "Couldn't rebuild the cache database."
+msgstr "Couldn't rebuild the cache database."
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:102
+msgid "Couldn't remove the mod."
+msgstr "Couldn't remove the mod."
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:37
+msgid "Dark"
+msgstr "Dark"
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:198
+msgid "Delete mod"
+msgstr "Delete mod"
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:212
+msgid "Delete the mod"
+msgstr "Delete the mod"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:77
+msgid "Deploy failed"
+msgstr "Deploy failed"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:43
+msgid "Deploy failed."
+msgstr "Deploy failed."
+
+#: src/renderer/src/components/mods/DeployToast.tsx:45
+msgid "Deploy finished successfully."
+msgstr "Deploy finished successfully."
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:161
+msgid "Developer mode"
+msgstr "Developer mode"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:52
+msgid "Discord community"
+msgstr "Discord community"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:87
+msgid "Dismiss"
+msgstr "Dismiss"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:50
+msgid "Documentation"
+msgstr "Documentation"
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:101
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:270
+msgid "Done"
+msgstr "Done"
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:64
+msgid "Drop mod files here, or click to browse"
+msgstr "Drop mod files here, or click to browse"
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:40
+msgid "Drop one or more mod archives (.zip, .7z, .rar) or raw .rpkg files. Each one installs independently."
+msgstr "Drop one or more mod archives (.zip, .7z, .rar) or raw .rpkg files. Each one installs independently."
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:23
+msgid "Extracting archive…"
+msgstr "Extracting archive…"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:26
+msgid "Extracting RPKG mods"
+msgstr "Extracting RPKG mods"
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:27
+msgid "Failed"
+msgstr "Failed"
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:115
+msgid "Filter mods…"
+msgstr "Filter mods…"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:28
+msgid "Finalizing"
+msgstr "Finalizing"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:186
+msgid "Finish"
+msgstr "Finish"
+
+#: src/renderer/src/components/mods/ModRow.tsx:75
+msgid "Framework"
+msgstr "Framework"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:82
+#: src/renderer/src/components/settings/SetupWizard.tsx:262
+msgid "Game path"
+msgstr "Game path"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:45
+msgid "Green"
+msgstr "Green"
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:26
+msgid "Installed"
+msgstr "Installed"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:100
+#: src/renderer/src/components/settings/SetupWizard.tsx:308
+msgid "Language"
+msgstr "Language"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:36
+msgid "Light"
+msgstr "Light"
+
+#: src/renderer/src/App.tsx:81
+msgid "Loading Mod Manager…"
+msgstr "Loading Mod Manager…"
+
+#: src/renderer/src/store/app-store.ts:357
+msgid "Mod cache rebuilt."
+msgstr "Mod cache rebuilt."
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:94
+#: src/renderer/src/components/settings/SetupWizard.tsx:290
+msgid "Mod path"
+msgstr "Mod path"
+
+#: src/renderer/src/components/mods/ModRow.tsx:101
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:204
+msgid "Mod settings"
+msgstr "Mod settings"
+
+#: src/renderer/src/components/layout/NavRail.tsx:9
+#: src/renderer/src/components/mods/ModsScreen.tsx:111
+msgid "Mods"
+msgstr "Mods"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:77
+msgid "Mods applied"
+msgstr "Mods applied"
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:67
+msgid "Multiple files install in parallel"
+msgstr "Multiple files install in parallel"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:42
+msgid "Neutral"
+msgstr "Neutral"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:186
+msgid "Next"
+msgstr "Next"
+
+#: src/renderer/src/components/mods/ImageViewerDialog.tsx:72
+msgid "Next (→)"
+msgstr "Next (→)"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:85
+msgid "No mods found in this folder yet - double-check the path if you expected some."
+msgstr "No mods found in this folder yet - double-check the path if you expected some."
+
+#. placeholder {0}: search.trim()
+#: src/renderer/src/components/mods/ModsScreen.tsx:153
+msgid "No mods match \"{0}\"."
+msgstr "No mods match \"{0}\"."
+
+#: src/renderer/src/components/mods/ModRow.tsx:78
+msgid "Options"
+msgstr "Options"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:27
+msgid "Patching game files"
+msgstr "Patching game files"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:77
+msgid "Paths"
+msgstr "Paths"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:263
+msgid "Point to the folder that contains the game's Retail executable."
+msgstr "Point to the folder that contains the game's Retail executable."
+
+#: src/renderer/src/components/mods/ImageViewerDialog.tsx:64
+msgid "Previous (←)"
+msgstr "Previous (←)"
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:22
+msgid "Queued…"
+msgstr "Queued…"
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:118
+msgid "Re-scan the Mods folder and re-read every manifest from disk"
+msgstr "Re-scan the Mods folder and re-read every manifest from disk"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:224
+msgid "Rebuild"
+msgstr "Rebuild"
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:120
+msgid "Rebuild cache"
+msgstr "Rebuild cache"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:176
+#: src/renderer/src/components/settings/SettingsScreen.tsx:184
+#: src/renderer/src/components/settings/SettingsScreen.tsx:210
+msgid "Rebuild cache database"
+msgstr "Rebuild cache database"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:46
+msgid "Red"
+msgstr "Red"
+
+#: src/renderer/src/components/mods/ModRow.tsx:112
+msgid "Remove mod"
+msgstr "Remove mod"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:51
+msgid "Report an issue"
+msgstr "Report an issue"
+
+#: src/renderer/src/components/mods/ModRow.tsx:75
+msgid "RPKG"
+msgstr "RPKG"
+
+#: src/renderer/src/components/mods/ModRow.tsx:52
+msgid "RPKG-only mod"
+msgstr "RPKG-only mod"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:71
+msgid "Run setup wizard"
+msgstr "Run setup wizard"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:186
+msgid "Save & finish"
+msgstr "Save & finish"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:376
+msgid "Saving…"
+msgstr "Saving…"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:67
+msgid "Scanning this folder for mods…"
+msgstr "Scanning this folder for mods…"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:205
+msgid "Select a cache folder"
+msgstr "Select a cache folder"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:212
+msgid "Select a mod folder"
+msgstr "Select a mod folder"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:311
+msgid "Sets the in-game text language mods will target."
+msgstr "Sets the in-game text language mods will target."
+
+#: src/renderer/src/components/layout/NavRail.tsx:10
+#: src/renderer/src/components/settings/SettingsScreen.tsx:68
+msgid "Settings"
+msgstr "Settings"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:351
+msgid "Setup wizard"
+msgstr "Setup wizard"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:135
+msgid "Show raw log"
+msgstr "Show raw log"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:164
+msgid "Shows the authoring tools and raw docs in the rail."
+msgstr "Shows the authoring tools and raw docs in the rail."
+
+#: src/renderer/src/components/mods/ModRow.tsx:93
+msgid "Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database."
+msgstr "Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database."
+
+#: src/renderer/src/components/mods/DeployToast.tsx:25
+msgid "Sorting load order"
+msgstr "Sorting load order"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:291
+msgid "The folder the manager scans for mods to load."
+msgstr "The folder the manager scans for mods to load."
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:122
+msgid "Theme"
+msgstr "Theme"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:213
+msgid "This deletes cache.db and rebuilds every mod's cache from scratch - the same work as a first launch. It can take a while with a lot of mods installed, and any deploy is blocked until it finishes. Your Mods folder and load order aren't touched."
+msgstr "This deletes cache.db and rebuilds every mod's cache from scratch - the same work as a first launch. It can take a while with a lot of mods installed, and any deploy is blocked until it finishes. Your Mods folder and load order aren't touched."
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:75
+msgid "This folder doesn't exist yet - it'll be created when you finish setup."
+msgstr "This folder doesn't exist yet - it'll be created when you finish setup."
+
+#: src/renderer/src/components/mods/DeployToast.tsx:41
+msgid "This may take a moment…"
+msgstr "This may take a moment…"
+
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:213
+msgid "This mod has no configurable options."
+msgstr "This mod has no configurable options."
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:254
+msgid "This wizard walks you through pointing the mod manager at your game install and choosing where mods and cache files live. You can change any of this later in Settings."
+msgstr "This wizard walks you through pointing the mod manager at your game install and choosing where mods and cache files live. You can change any of this later in Settings."
+
+#: src/renderer/src/components/mods/AddModDialog.tsx:24
+msgid "Validating manifest…"
+msgstr "Validating manifest…"
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:44
+msgid "Violet"
+msgstr "Violet"
+
+#: src/renderer/src/components/mods/DeployToast.tsx:24
+msgid "Waiting for mods to finish building"
+msgstr "Waiting for mods to finish building"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:251
+msgid "Welcome to Simple Mod Framework"
+msgstr "Welcome to Simple Mod Framework"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:275
+msgid "Where extracted RPKG data and intermediate build files are stored."
+msgstr "Where extracted RPKG data and intermediate build files are stored."
+
+#: src/renderer/src/components/settings/SettingsScreen.tsx:179
+msgid "Wipes and rebuilds cache.db from scratch (mods, manifests, per-mod builds) - the \"something's wrong with the cache\" recovery option. Doesn't touch your Mods folder or load order."
+msgstr "Wipes and rebuilds cache.db from scratch (mods, manifests, per-mod builds) - the \"something's wrong with the cache\" recovery option. Doesn't touch your Mods folder or load order."
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:333
+msgid "You're all set"
+msgstr "You're all set"
+
+#: src/renderer/src/components/settings/SetupWizard.tsx:336
+msgid "Your paths and language are saved. You can revisit this wizard any time from Settings."
+msgstr "Your paths and language are saved. You can revisit this wizard any time from Settings."

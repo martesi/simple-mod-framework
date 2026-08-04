@@ -1,6 +1,7 @@
 import { useEffect } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
 import { Toaster } from "sonner"
+import { Trans } from "@lingui/react/macro"
 
 import { useAppStore } from "@/store/app-store"
 import { computeThemeVars, resolveDark } from "@/lib/theme"
@@ -77,7 +78,7 @@ export default function App() {
   if (!loaded || !config) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-app-bg text-text-2 text-sm">
-        Loading Mod Manager…
+        <Trans>Loading Mod Manager…</Trans>
       </div>
     )
   }

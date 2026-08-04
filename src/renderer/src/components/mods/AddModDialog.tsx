@@ -1,19 +1,11 @@
 import { useRef, useState } from "react"
 import { CircleCheck, CircleX, Loader2, UploadCloud } from "lucide-react"
+import { Trans, useLingui } from "@lingui/react/macro"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
-
-const STATUS_LABEL: Record<string, string> = {
-  queued: "Queued…",
-  extracting: "Extracting archive…",
-  validating: "Validating manifest…",
-  installing: "Copying into Mods…",
-  done: "Installed",
-  error: "Failed"
-}
 
 export function AddModDialog({ open, onOpenChange }: { open: boolean; onOpenChange(open: boolean): void }) {
   // Each file gets its own independent add task - looping and firing them all off here (rather
@@ -24,6 +16,16 @@ export function AddModDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const addTasks = useAppStore((s) => s.addTasks)
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
+  const { t } = useLingui()
+
+  const STATUS_LABEL: Record<string, string> = {
+    queued: t`Queued…`,
+    extracting: t`Extracting archive…`,
+    validating: t`Validating manifest…`,
+    installing: t`Copying into Mods…`,
+    done: t`Installed`,
+    error: t`Failed`
+  }
 
   const tasks = Object.values(addTasks).sort((a, b) => a.startedAt - b.startedAt)
 
@@ -31,8 +33,12 @@ export function AddModDialog({ open, onOpenChange }: { open: boolean; onOpenChan
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add a mod</DialogTitle>
-          <DialogDescription>Drop one or more mod archives (.zip, .7z, .rar) or raw .rpkg files. Each one installs independently.</DialogDescription>
+          <DialogTitle>
+            <Trans>Add a mod</Trans>
+          </DialogTitle>
+          <DialogDescription>
+            <Trans>Drop one or more mod archives (.zip, .7z, .rar) or raw .rpkg files. Each one installs independently.</Trans>
+          </DialogDescription>
         </DialogHeader>
 
         <div className="px-6 pb-2">
@@ -54,8 +60,12 @@ export function AddModDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             )}
           >
             <UploadCloud className="h-7 w-7 text-text-3" />
-            <div className="text-[13px] text-text">Drop mod files here, or click to browse</div>
-            <div className="text-[12px] text-text-3">Multiple files install in parallel</div>
+            <div className="text-[13px] text-text">
+              <Trans>Drop mod files here, or click to browse</Trans>
+            </div>
+            <div className="text-[12px] text-text-3">
+              <Trans>Multiple files install in parallel</Trans>
+            </div>
             <input
               ref={inputRef}
               type="file"
@@ -88,7 +98,7 @@ export function AddModDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 
         <DialogFooter>
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
-            Done
+            <Trans>Done</Trans>
           </Button>
         </DialogFooter>
       </DialogContent>
