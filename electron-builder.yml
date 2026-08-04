@@ -59,6 +59,13 @@ protocols:
   - name: Simple Mod Framework
     schemes:
       - simple-mod-framework
+# Without this, electron-builder auto-detects a GitHub publish target from
+# the git remote (no `repository` field in package.json overrides it) and,
+# since NSIS generates auto-update metadata (latest.yml) by default, demands
+# a GH_TOKEN just to build the installer - even though nothing here actually
+# publishes through electron-builder. The GH Actions release job uploads the
+# raw dist/*.exe itself via softprops/action-gh-release instead.
+publish: null
 win:
   executableName: Mod Manager
   # Skips electron-builder's rcedit/signtool pass (icon + version-info embedding), which
