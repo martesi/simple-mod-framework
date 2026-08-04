@@ -16,6 +16,7 @@
     "dev:win": "node scripts/fetch-win-electron.js && WSLENV=\"${WSLENV:+$WSLENV:}ELECTRON_RENDERER_URL\" NO_SANDBOX=1 ELECTRON_EXEC_PATH=.win-electron-dev/electron.exe electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "build:win": "npm run typecheck && electron-vite build && electron-builder --win --dir",
+    "dist:win": "npm run typecheck && electron-vite build && electron-builder --win",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false",
     "lint": "eslint ."
