@@ -79,6 +79,20 @@
   animation: fade-in 0.12s ease-out;
 }
 
+@keyframes row-flash {
+  0%,
+  15% {
+    background-color: var(--accent-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.row-flash {
+  animation: row-flash 1100ms ease-out;
+}
+
 .animate-spin-slow {
   animation: spin-slow 0.7s linear infinite;
 }

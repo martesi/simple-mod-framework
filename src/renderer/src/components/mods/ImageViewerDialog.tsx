@@ -1,12 +1,17 @@
 import { useEffect } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Locate, X } from "lucide-react"
 import { Trans, useLingui } from "@lingui/react/macro"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 
 export interface PreviewableOption {
   key: string
   name: string
   image: string
+  /** Which list this option lives in, so "Locate" (see ModSettingsDrawer.tsx) knows which section to scroll. */
+  section: { type: "checkbox" } | { type: "group"; name: string }
+  /** Index within that section's *unfiltered* source array - only valid once that list's own search filter is cleared. */
+  rowIndex: number
 }
 
 /**
@@ -20,7 +25,20 @@ export interface PreviewableOption {
  * Built on the existing shadcn/Base UI Dialog primitive already used elsewhere in this app (the
  * "Delete mod" confirmation) - no new dependency.
  */
-export function ImageViewerDialog({ items, index, onIndexChange, onClose }: { items: PreviewableOption[]; index: number | null; onIndexChange(index: number): void; onClose(): void }) {
+export function ImageViewerDialog({
+  items,
+  index,
+  onIndexChange,
+  onClose,
+  onLocate
+}: {
+  items: PreviewableOption[]
+  index: number | null
+  onIndexChange(index: number): void
+  onClose(): void
+  /** Closes this viewer and scrolls/flashes the option's row in the underlying drawer list - see ModSettingsDrawer.tsx's `locate()`. */
+  onLocate(item: PreviewableOption): void
+}) {
   const { t } = useLingui()
   const open = index !== null
   const current = index !== null ? items[index] : null
@@ -53,7 +71,7 @@ export function ImageViewerDialog({ items, index, onIndexChange, onClose }: { it
         {current && (
           <>
             <button type="button" onClick={onClose} title={t`Close (Esc)`} className="absolute right-5 top-5 rounded-full bg-white/10 p-2 text-white/80 hover:bg-white/20 hover:text-white">
-              <span className="block h-4 w-4 text-center text-[18px] leading-none">×</span>
+              <X className="h-4 w-4" />
             </button>
 
             {hasMultiple && (
@@ -90,6 +108,10 @@ export function ImageViewerDialog({ items, index, onIndexChange, onClose }: { it
                   </span>
                 )}
               </div>
+              <Button variant="outline" size="sm" onClick={() => onLocate(current)} className="gap-1.5 border-white/20 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white">
+                <Locate className="h-3.5 w-3.5" />
+                <Trans>Locate in list</Trans>
+              </Button>
             </div>
           </>
         )}

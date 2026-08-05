@@ -9,6 +9,8 @@ export interface VirtualWindow<T> {
   topSpacer: number
   /** Height (px) of the empty spacer standing in for every skipped row *below* `windowed`. */
   bottomSpacer: number
+  /** Imperatively scroll `containerRef`'s element so row `index` is in view. */
+  scrollToIndex(index: number, opts?: { align?: "start" | "center"; behavior?: ScrollBehavior }): void
 }
 
 /**
@@ -64,10 +66,26 @@ export function useVirtualList<T>(items: T[], rowHeight: number, overscan = 10):
   const visibleCount = Math.ceil(viewport.height / rowHeight) + overscan * 2
   const endIndex = Math.min(total, startIndex + visibleCount)
 
+  // Scrolls the container directly rather than going through e.g. a re-render + effect, and
+  // updates `viewport` from the same call instead of waiting on the native 'scroll' event to
+  // round-trip back into this hook's own listener - otherwise the newly-scrolled-to row wouldn't
+  // exist in `windowed` until an extra, timing-dependent render later, which matters to callers
+  // that need to act on that row (e.g. flash-highlighting it) in the same tick as the scroll.
+  function scrollToIndex(index: number, opts?: { align?: "start" | "center"; behavior?: ScrollBehavior }) {
+    const el = containerRef.current
+    if (!el) return
+    let target = index * rowHeight
+    if (opts?.align === "center") target -= (el.clientHeight - rowHeight) / 2
+    target = Math.max(0, Math.min(target, el.scrollHeight - el.clientHeight))
+    el.scrollTo({ top: target, behavior: opts?.behavior ?? "smooth" })
+    setViewport({ scrollTop: target, height: el.clientHeight })
+  }
+
   return {
     containerRef,
     windowed: items.slice(startIndex, endIndex),
     topSpacer: startIndex * rowHeight,
-    bottomSpacer: (total - endIndex) * rowHeight
+    bottomSpacer: (total - endIndex) * rowHeight,
+    scrollToIndex
   }
 }
