@@ -1,9 +1,9 @@
-import type { ReactNode } from "react"
-import { Check, ChevronDown, TriangleAlert, X } from "lucide-react"
+import { useState, type ReactNode } from "react"
+import { Ban, Check, ChevronDown, TriangleAlert, X } from "lucide-react"
 import { Trans, useLingui } from "@lingui/react/macro"
 import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
-import type { DeployStage } from "@/lib/ipc"
+import { getSmfApi, type DeployStage } from "@/lib/ipc"
 
 /**
  * Non-blocking deploy status, bottom-right - no backdrop, the rest of the app
@@ -16,6 +16,7 @@ export function DeployToast() {
   const closeDeploy = useAppStore((s) => s.closeDeploy)
   const toggleDeployExpanded = useAppStore((s) => s.toggleDeployExpanded)
   const toggleDeployLog = useAppStore((s) => s.toggleDeployLog)
+  const [cancelling, setCancelling] = useState(false)
 
   // Matches deployManager.ts's STAGE_INDEX ordering exactly - "waiting-for-cache-build" (LEI-141's
   // queue-aware deploy gate) only ever actually shows when at least one mod in the load order isn't
@@ -37,6 +38,22 @@ export function DeployToast() {
   // build-wait timeout). `ok` is what actually distinguishes the two.
   const failed = done && deploy.progress?.ok === false
   const progressPct = done ? 100 : Math.round(((Math.max(currentStageIndex, 0) + 0.5) / STAGES.length) * 100)
+
+  // Safe-window cancel (see deployManager.ts/core/cancel.ts) - once the deploy reaches
+  // "finalizing" it's writing directly into the game's Retail/Runtime folder with no atomic
+  // rename, so cancellation is locked out server-side too; hide the action here to match.
+  const canCancel = !done && deploy.progress?.stage !== "finalizing"
+
+  async function handleCancel(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!deploy.snapshot || cancelling) return
+    setCancelling(true)
+    try {
+      await getSmfApi().deploy.cancel(deploy.snapshot.snapshotId)
+    } finally {
+      setCancelling(false)
+    }
+  }
 
   let statusLine: ReactNode = <Trans>This may take a moment…</Trans>
   if (failed) {
@@ -79,6 +96,16 @@ export function DeployToast() {
           <div className="truncate text-[12px] text-text-2">{statusLine}</div>
         </div>
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-text-3 transition-transform", deploy.expanded && "rotate-180")} />
+        {canCancel && (
+          <button
+            onClick={handleCancel}
+            disabled={cancelling}
+            title={t`Cancel deploy`}
+            className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-text-3 hover:bg-surface-hover disabled:opacity-50"
+          >
+            <Ban className="h-3 w-3" />
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation()

@@ -34,7 +34,7 @@ export interface DeployPipelineLogLine {
 	mod?: string
 }
 
-export type DeployPipelineResult = { ok: true } | { ok: false; error: string }
+export type DeployPipelineResult = { ok: true } | { ok: false; error: string; cancelled?: boolean }
 
 /**
  * Builds the framework core's real `Config` object in memory from this app's persisted
@@ -205,6 +205,12 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, mods
 
 		return { ok: true }
 	} catch (err) {
+		const { DeployCancelledError } = await import("./core/cancel")
+		if (err instanceof DeployCancelledError) {
+			await core.cleanExit().catch(() => {})
+			return { ok: false, error: "Deploy cancelled", cancelled: true }
+		}
+
 		if (err instanceof CoreFatalError) {
 			return { ok: false, error: err.message }
 		}

@@ -106,6 +106,8 @@ interface AppState {
 
   startDeploy(): Promise<void>
   closeDeploy(): void
+  /** Reopens the toast for the currently-running deploy after it was dismissed - see `selectDeployActive`. A no-op if there's no active deploy. */
+  openDeploy(): void
   toggleDeployExpanded(): void
   toggleDeployLog(): void
 
@@ -129,6 +131,14 @@ interface AppState {
   /** Batches every field the wizard staged into one commit - see the implementation's doc comment. */
   commitWizard(draft: { gamePath: string; cachePath: string; modPath: string; language: string }): Promise<void>
 }
+
+/**
+ * Whether a deploy is currently running, independent of whether its toast is open - `deploy.open`
+ * only controls the toast's own visibility (see `closeDeploy()`/`openDeploy()`); this is the
+ * single source of truth every consumer (the Apply button's disabled state, NavRail's persistent
+ * status icon) should read instead of re-deriving the same `snapshot`/`progress.done` check.
+ */
+export const selectDeployActive = (s: AppState): boolean => !!s.deploy.snapshot && !(s.deploy.progress?.done ?? false)
 
 export const useAppStore = create<AppState>((set, get) => ({
   loaded: false,
@@ -388,6 +398,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   closeDeploy() {
     set((s) => ({ deploy: { ...s.deploy, open: false } }))
+  },
+
+  openDeploy() {
+    set((s) => ({ deploy: { ...s.deploy, open: true } }))
   },
 
   toggleDeployExpanded() {

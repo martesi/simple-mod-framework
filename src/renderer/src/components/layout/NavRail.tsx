@@ -1,10 +1,13 @@
 import { NavLink } from "react-router-dom"
-import { LayoutList, Settings2 } from "lucide-react"
+import { LayoutList, Loader2, Settings2 } from "lucide-react"
 import { useLingui } from "@lingui/react/macro"
 import { cn } from "@/lib/utils"
+import { selectDeployActive, useAppStore } from "@/store/app-store"
 
 export function NavRail() {
   const { t } = useLingui()
+  const deployActive = useAppStore(selectDeployActive)
+  const openDeploy = useAppStore((s) => s.openDeploy)
   const items = [
     { to: "/", label: t`Mods`, icon: LayoutList },
     { to: "/settings", label: t`Settings`, icon: Settings2 }
@@ -28,6 +31,19 @@ export function NavRail() {
       ))}
 
       <div className="grow" />
+
+      {deployActive && (
+        // Stays visible even after the deploy toast (DeployToast.tsx) is dismissed - closing the
+        // toast only hides it, it doesn't stop tracking progress, so without this there was no way
+        // to tell a deploy was still running or get back to its status.
+        <button
+          onClick={openDeploy}
+          title={t`Deploy in progress — click to view`}
+          className="flex h-10 w-11 shrink-0 items-center justify-center rounded-lg text-accent hover:bg-surface-hover"
+        >
+          <Loader2 className="h-[18px] w-[18px] animate-spin" strokeWidth={1.75} />
+        </button>
+      )}
     </div>
   )
 }

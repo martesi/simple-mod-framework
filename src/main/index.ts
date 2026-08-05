@@ -1,5 +1,5 @@
 import { join } from "node:path"
-import { app, shell, BrowserWindow } from "electron"
+import { app, dialog, shell, BrowserWindow } from "electron"
 import { electronApp, optimizer, is } from "@electron-toolkit/utils"
 import { resolveAppPaths } from "./paths"
 import { registerIpcHandlers } from "./ipcHandlers"
@@ -51,6 +51,8 @@ function createWindow(): void {
   }
 }
 
+let forceQuit = false
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId("com.atampy26.simple-mod-framework.mod-manager")
 
@@ -59,7 +61,34 @@ app.whenReady().then(() => {
   })
 
   registerModImageProtocolHandler()
-  registerIpcHandlers(resolveAppPaths())
+  const deployManager = registerIpcHandlers(resolveAppPaths())
+
+  // Closing the app (window close, taskbar quit, Cmd/Alt+Q) while a deploy is running today just
+  // kills the process mid-write with no warning - `deploy()`'s finalize stage (see
+  // core/cancel.ts's doc comment) writes directly into the game's Retail/Runtime folder with no
+  // atomic rename, so an uncontrolled kill there can corrupt the actual game install. This doesn't
+  // make that safe - it just makes sure the user is told before it happens, same as the in-app
+  // Cancel action being locked out past that point rather than silently allowed.
+  app.on("before-quit", (event) => {
+    if (forceQuit || !deployManager.isActive()) return
+    event.preventDefault()
+
+    dialog
+      .showMessageBox(BrowserWindow.getAllWindows()[0] ?? null, {
+        type: "warning",
+        buttons: ["Quit anyway", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+        message: "Deploy in progress",
+        detail: "Quitting now may leave your game files in a partially-patched state. Quit anyway?"
+      })
+      .then(({ response }) => {
+        if (response === 0) {
+          forceQuit = true
+          app.quit()
+        }
+      })
+  })
 
   createWindow()
 

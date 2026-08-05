@@ -75,7 +75,9 @@ const smf = {
 
     getActiveSnapshot: () => ipcRenderer.invoke("deploy:getActiveSnapshot"),
 
-    analyseMod: (modId: string) => ipcRenderer.invoke("deploy:analyseMod", modId)
+    analyseMod: (modId: string) => ipcRenderer.invoke("deploy:analyseMod", modId),
+
+    cancel: (snapshotId: string) => ipcRenderer.invoke("deploy:cancel", snapshotId)
   },
 
   /** Electron 32+'s replacement for the removed `File.path` - the only way for the renderer to learn a dropped/picked file's real on-disk path without raw Node access. */

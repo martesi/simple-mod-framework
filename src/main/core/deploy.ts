@@ -6,6 +6,7 @@ import * as ts from "./typescript"
 import { RPKGHashCache, callRPKGFunction, execCommand, getRPKGOfHash, loadRPKGHashCache, loadReadyDeployInstruction, saveRPKGHashCache, thirdParty } from "./analyseMod"
 import type { DeployInstruction, HMLanguageToolsLOCR, ManifestOptionData, ModScript } from "./types"
 import { config, logger, options, paths, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
+import { enterFinalizePhase, throwIfCancelled } from "./cancel"
 import { copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
 import { resolveModFolder } from "./resolveModFolder"
 import { walk } from "./fsWalk"
@@ -137,6 +138,8 @@ export default async function deploy(
 	// isn't ready here is a bug in that gate, not something this function should silently paper over
 	// by re-running analysis on its own critical path (see the old inline fallback this replaces).
 	for (const mod of config.loadOrder) {
+		throwIfCancelled()
+
 		await logger.verbose(`Resolving ${mod}`)
 
 		const resolved = resolveModFolder(mod)
@@ -206,6 +209,8 @@ export default async function deploy(
 	/*                                      Execute instructions                                      */
 	/* ---------------------------------------------------------------------------------------------- */
 	for (const instruction of deployInstructions) {
+		throwIfCancelled()
+
 		const sentryModTransaction = sentryModsTransaction.startChild({
 			op: "stage",
 			description: instruction.id
@@ -1956,6 +1961,14 @@ export default async function deploy(
 	}
 
 	sentryModsTransaction.finish()
+
+	// From here on, every remaining stage (Contract destinations, Localisation, Thumbs, Package
+	// definition, Generate RPKGs) writes its output directly into the game's live Retail/Runtime
+	// folder with no staging-then-atomic-rename - interrupting mid-write risks corrupting the
+	// actual game install, not just mod output. Cancellation is locked out from this point on; see
+	// cancel.ts's doc comment.
+	await logger.info("Finalizing deploy")
+	enterFinalizePhase()
 
 	if (config.outputToSeparateDirectory) {
 		fs.emptyDirSync(path.join(paths.dataRoot, "Output"))
