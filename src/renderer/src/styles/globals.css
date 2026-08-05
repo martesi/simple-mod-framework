@@ -26,10 +26,8 @@
   --color-warning: var(--warning);
   --color-success: var(--success);
 
-  /* Same runtime-computed vars as above - theme.ts sets these as inline
-     styles on the root element, which always wins over this declaration. */
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
+  --shadow-sm: var(--app-shadow-sm);
+  --shadow-md: var(--app-shadow-md);
 
   --radius-lg: 12px;
   --radius-md: 8px;
