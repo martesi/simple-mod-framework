@@ -111,7 +111,6 @@ interface AppState {
 
   setThemeMode(mode: Config["themeMode"]): void
   setAccent(accent: Config["accent"]): void
-  toggleDevMode(): void
   setReportErrors(value: boolean): void
 
   setGamePath(path: string): void
@@ -124,7 +123,6 @@ interface AppState {
   browseModPath(): Promise<void>
 
   wizard: WizardState
-  openWizard(): void
   closeWizard(): void
   wizardBack(): void
   wizardNext(): void
@@ -414,14 +412,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     getSmfApi().config.merge({ accent })
   },
 
-  toggleDevMode() {
-    const { config } = get()
-    if (!config) return
-    const developerMode = !config.developerMode
-    set({ config: { ...config, developerMode } })
-    getSmfApi().config.merge({ developerMode })
-  },
-
   setReportErrors(value) {
     const { config } = get()
     if (!config) return
@@ -511,10 +501,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     await getSmfApi().config.merge({ modPath: picked })
     const { mods, config: freshConfig } = await refreshModsAndConfig(() => getSmfApi().mods.list())
     set({ mods, config: freshConfig, modsLoading: false })
-  },
-
-  openWizard() {
-    set({ wizard: { open: true, step: 0 } })
   },
 
   closeWizard() {

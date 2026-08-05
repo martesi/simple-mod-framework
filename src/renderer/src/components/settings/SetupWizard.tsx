@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAppStore } from "@/store/app-store"
 import { getSmfApi } from "@/lib/ipc"
 import { cn } from "@/lib/utils"
-import { LANGUAGES } from "@/lib/languages"
+import { LANGUAGES, LANGUAGE_ITEMS } from "@/lib/languages"
 import { WIZARD_STEPS } from "@/lib/wizard-steps"
 import { PathInputRow } from "./PathInputRow"
 
@@ -127,8 +127,7 @@ export function SetupWizard() {
   const [modPreview, setModPreview] = useState<ModPreview | null>(null)
   const [committing, setCommitting] = useState(false)
 
-  // Re-seeds the draft from whatever's actually committed every time the wizard opens - covers both
-  // the fresh-install auto-open (init()) and re-opening it from Settings' "Run setup wizard" - so a
+  // Re-seeds the draft from whatever's actually committed every time the wizard opens - so a
   // previous session's abandoned (never-committed) edits never leak into a new one. Adjusts state
   // directly during render on the open/closed transition (React's documented alternative to an
   // effect for "reset state when a prop changes" - see its own "You Might Not Need An Effect" guide)
@@ -310,7 +309,7 @@ export function SetupWizard() {
           <div className="mb-[18px] text-[14px] leading-[1.55] text-text-2">
             <Trans>Sets the in-game text language mods will target.</Trans>
           </div>
-          <Select value={draft.language} onValueChange={(language) => language && setDraft((d) => d && { ...d, language })}>
+          <Select items={LANGUAGE_ITEMS} value={draft.language} onValueChange={(language) => language && setDraft((d) => d && { ...d, language })}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>

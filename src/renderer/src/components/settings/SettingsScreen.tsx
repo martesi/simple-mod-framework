@@ -1,14 +1,13 @@
 import { useState } from "react"
 import { ExternalLink, Loader2 } from "lucide-react"
 import { Trans, useLingui } from "@lingui/react/macro"
-import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAppStore } from "@/store/app-store"
 import { cn } from "@/lib/utils"
 import { ACCENTS, resolveDark, type Accent, type ThemeMode } from "@/lib/theme"
-import { LANGUAGES } from "@/lib/languages"
+import { LANGUAGES, LANGUAGE_ITEMS } from "@/lib/languages"
 import { PathInputRow } from "./PathInputRow"
 
 export function SettingsScreen() {
@@ -18,7 +17,6 @@ export function SettingsScreen() {
   const systemDark = useAppStore((s) => s.systemDark)
   const setThemeMode = useAppStore((s) => s.setThemeMode)
   const setAccent = useAppStore((s) => s.setAccent)
-  const toggleDevMode = useAppStore((s) => s.toggleDevMode)
   const setGamePath = useAppStore((s) => s.setGamePath)
   const setCachePath = useAppStore((s) => s.setCachePath)
   const setModPath = useAppStore((s) => s.setModPath)
@@ -26,7 +24,6 @@ export function SettingsScreen() {
   const browseGamePath = useAppStore((s) => s.browseGamePath)
   const browseCachePath = useAppStore((s) => s.browseCachePath)
   const browseModPath = useAppStore((s) => s.browseModPath)
-  const openWizard = useAppStore((s) => s.openWizard)
   const rebuildCacheDb = useAppStore((s) => s.rebuildCacheDb)
   const rebuildingCacheDb = useAppStore((s) => s.rebuildingCacheDb)
 
@@ -63,14 +60,9 @@ export function SettingsScreen() {
 
   return (
     <div className="max-w-[520px]">
-      <div className="mb-1 flex items-start justify-between gap-4">
-        <h1 className="text-2xl font-bold">
-          <Trans>Settings</Trans>
-        </h1>
-        <Button variant="outline" size="sm" className="shrink-0" onClick={openWizard}>
-          <Trans>Run setup wizard</Trans>
-        </Button>
-      </div>
+      <h1 className="mb-1 text-2xl font-bold">
+        <Trans>Settings</Trans>
+      </h1>
       <div className="mb-6 text-[13px] text-text-2">Simple Mod Framework · Mod Manager v3.0.0-preview</div>
 
       <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">
@@ -99,7 +91,7 @@ export function SettingsScreen() {
           <div className="mb-2 text-[12px] font-semibold text-text-2">
             <Trans>Language</Trans>
           </div>
-          <Select value={config.language} onValueChange={(language) => language && setLanguage(language)}>
+          <Select items={LANGUAGE_ITEMS} value={config.language} onValueChange={(language) => language && setLanguage(language)}>
             <SelectTrigger className="py-[9px] text-[13px]">
               <SelectValue />
             </SelectTrigger>
@@ -153,18 +145,6 @@ export function SettingsScreen() {
             />
           ))}
         </div>
-      </div>
-
-      <div className="mb-6 flex items-center justify-between rounded-lg border border-border bg-surface px-[18px] py-4 shadow-sm">
-        <div>
-          <div className="text-[14px] font-semibold">
-            <Trans>Developer mode</Trans>
-          </div>
-          <div className="text-[12.5px] text-text-2">
-            <Trans>Shows the authoring tools and raw docs in the rail.</Trans>
-          </div>
-        </div>
-        <Switch checked={config.developerMode} onCheckedChange={toggleDevMode} />
       </div>
 
       <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">
