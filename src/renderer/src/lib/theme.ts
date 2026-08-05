@@ -40,8 +40,8 @@ export function computeThemeVars(dark: boolean, accent: Accent): Record<string, 
         "--danger": "#ff8a80",
         "--warning": "#e3a008",
         "--success": "#4caf82",
-        "--shadow-sm": "0 1px 2px rgba(0,0,0,.35)",
-        "--shadow-md": "0 8px 28px rgba(0,0,0,.55)"
+        "--app-shadow-sm": "0 1px 2px rgba(0,0,0,.35)",
+        "--app-shadow-md": "0 8px 28px rgba(0,0,0,.55)"
       }
     : {
         "--app-bg": "#f3f3f3",
@@ -55,8 +55,8 @@ export function computeThemeVars(dark: boolean, accent: Accent): Record<string, 
         "--danger": "#c42b1c",
         "--warning": "#9d5d00",
         "--success": "#0e8a5f",
-        "--shadow-sm": "0 1px 2px rgba(0,0,0,.06)",
-        "--shadow-md": "0 8px 24px rgba(0,0,0,.16)"
+        "--app-shadow-sm": "0 1px 2px rgba(0,0,0,.06)",
+        "--app-shadow-md": "0 8px 24px rgba(0,0,0,.16)"
       }
 
   const accentHex = ACCENTS[accent][dark ? "dark" : "light"]

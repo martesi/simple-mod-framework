@@ -56,7 +56,7 @@ export function DeployToast() {
   }
 
   return (
-    <div className="absolute bottom-5 right-5 z-[100] flex max-h-[70vh] w-[360px] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-md animate-fade-in">
+    <div className="absolute bottom-5 right-5 z-100 flex max-h-[70vh] w-[360px] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-md animate-fade-in">
       <div onClick={toggleDeployExpanded} className="flex cursor-pointer items-center gap-3 px-4 py-3.5">
         <div
           className={cn(

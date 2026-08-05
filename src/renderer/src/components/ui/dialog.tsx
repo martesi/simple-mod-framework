@@ -9,11 +9,11 @@ export const DialogTrigger = DialogPrimitive.Trigger
 export const DialogContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Popup>, React.ComponentPropsWithoutRef<typeof DialogPrimitive.Popup> & { hideClose?: boolean }>(
   ({ className, children, hideClose, ...props }, ref) => (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Backdrop className="fixed inset-0 z-[100] bg-black/45 animate-fade-in" />
+      <DialogPrimitive.Backdrop className="fixed inset-0 z-100 bg-black/45 animate-fade-in" />
       <DialogPrimitive.Popup
         ref={ref}
         className={cn(
-          "fixed left-1/2 top-1/2 z-[101] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface shadow-md animate-fade-in",
+          "fixed left-1/2 top-1/2 z-101 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface shadow-md animate-fade-in",
           className
         )}
         {...props}

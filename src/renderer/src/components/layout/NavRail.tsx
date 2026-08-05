@@ -27,7 +27,7 @@ export function NavRail() {
         </NavLink>
       ))}
 
-      <div className="flex-grow" />
+      <div className="grow" />
     </div>
   )
 }
