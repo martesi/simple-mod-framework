@@ -12,7 +12,7 @@ export const SelectTrigger = React.forwardRef<React.ElementRef<typeof SelectPrim
     <SelectPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex w-full items-center justify-between rounded-md border border-border bg-surface-2 px-3.5 py-3 text-[14px] text-text outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
+        "flex w-full items-center justify-between rounded-md border border-border bg-surface-2 px-3.5 py-3 text-[14px] text-text outline-none data-disabled:cursor-not-allowed data-disabled:opacity-50",
         className
       )}
       {...props}
@@ -29,7 +29,7 @@ SelectTrigger.displayName = "SelectTrigger"
 export const SelectContent = React.forwardRef<React.ElementRef<typeof SelectPrimitive.Popup>, React.ComponentPropsWithoutRef<typeof SelectPrimitive.Popup>>(
   ({ className, children, ...props }, ref) => (
     <SelectPrimitive.Portal>
-      <SelectPrimitive.Positioner sideOffset={6} className="z-[110]">
+      <SelectPrimitive.Positioner sideOffset={6} className="z-110">
         <SelectPrimitive.Popup
           ref={ref}
           className={cn(

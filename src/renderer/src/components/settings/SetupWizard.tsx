@@ -343,7 +343,7 @@ export function SetupWizard() {
   return (
     <DialogPrimitive.Root open={wizard.open} onOpenChange={(open) => !open && dismissable && closeWizard()} modal>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Popup className="fixed inset-0 z-[120] flex flex-col overflow-hidden bg-app-bg text-text outline-none animate-fade-in">
+        <DialogPrimitive.Popup className="fixed inset-0 z-120 flex flex-col overflow-hidden bg-app-bg text-text outline-none animate-fade-in">
           <div className="flex items-center justify-between px-10 py-6">
             <div className="flex items-center gap-2.5">
               <div className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent text-[11px] font-bold text-accent-foreground">SMF</div>

@@ -6,7 +6,7 @@ const badgeVariants = cva("inline-flex items-center rounded-[5px] border px-[7px
   variants: {
     variant: {
       default: "border-border bg-surface-2 text-text-2",
-      warning: "border-transparent bg-[var(--warning-soft)] text-warning",
+      warning: "border-transparent bg-(--warning-soft) text-warning",
       accent: "border-transparent bg-accent-soft text-accent"
     }
   },

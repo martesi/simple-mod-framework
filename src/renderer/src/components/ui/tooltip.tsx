@@ -12,7 +12,7 @@ export const TooltipContent = React.forwardRef<React.ElementRef<typeof TooltipPr
       <TooltipPrimitive.Positioner sideOffset={sideOffset}>
         <TooltipPrimitive.Popup
           ref={ref}
-          className={cn("z-[110] max-w-[220px] rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12px] text-text shadow-md animate-fade-in", className)}
+          className={cn("z-110 max-w-[220px] rounded-md border border-border bg-surface px-2.5 py-1.5 text-[12px] text-text shadow-md animate-fade-in", className)}
           {...props}
         />
       </TooltipPrimitive.Positioner>

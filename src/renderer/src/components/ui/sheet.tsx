@@ -9,10 +9,10 @@ export const SheetTrigger = DialogPrimitive.Trigger
 export const SheetContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Popup>, React.ComponentPropsWithoutRef<typeof DialogPrimitive.Popup>>(
   ({ className, children, ...props }, ref) => (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Backdrop className="fixed inset-0 z-[90] bg-black/35 animate-fade-in" />
+      <DialogPrimitive.Backdrop className="fixed inset-0 z-90 bg-black/35 animate-fade-in" />
       <DialogPrimitive.Popup
         ref={ref}
-        className={cn("fixed right-0 top-0 z-[91] flex h-full w-[400px] max-w-[90vw] flex-col border-l border-border bg-surface shadow-md", className)}
+        className={cn("fixed right-0 top-0 z-91 flex h-full w-[400px] max-w-[90vw] flex-col border-l border-border bg-surface shadow-md", className)}
         {...props}
       >
         {children}
