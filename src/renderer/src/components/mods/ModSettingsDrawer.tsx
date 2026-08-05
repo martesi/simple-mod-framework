@@ -249,6 +249,7 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
     setDraft(mod ? (config?.modOptions[mod.id] ?? []) : [])
     setPreviewIndex(null)
     setCheckboxSearch("")
+    setCheckboxLocate(null)
     setGroupLocate({})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mod?.id])

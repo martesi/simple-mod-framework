@@ -85,6 +85,9 @@ export class DeployManager {
   /** Set by `cancel()` when a deploy is still in the (main-process, worker-less) "waiting for cache build" gate - see `waitForBuildsThenDeploy`. That phase never touches the game's Runtime folder at all, so it's always safe to cancel. */
   private waitCancelled = false
 
+  /** Mirrors the active deploy worker's current stage (kept in sync in `spawnDeployWorker`'s message handler) so `cancel()` can reject once the worker has entered the safe-window lockout, without waiting on a round trip to the worker itself. Null whenever no worker-backed deploy is active. */
+  private activeStage: DeployProgress["stage"] | null = null
+
   /**
    * LEI-144: in-process dedup registry. `triggerBuild()` stores each mod's in-flight Promise here
    * and returns the existing one to any subsequent caller for the same modId, so concurrent trigger
@@ -155,6 +158,13 @@ export class DeployManager {
       // always safe. waitForBuildsThenDeploy's loop checks this flag at its next poll tick.
       this.waitCancelled = true
       return { ok: true }
+    }
+
+    if (this.activeStage === "finalizing") {
+      // Mirrors ipc.mock.ts's cancel(): once the worker has logged "Finalizing deploy" it's past the
+      // point cancel.ts's isCancelActive() will ever honour again, so report that up front instead of
+      // silently posting a message the worker is guaranteed to ignore.
+      return { ok: false, error: "Deploy is finalizing and can no longer be cancelled." }
     }
 
     this.activeWorker.postMessage({ id: this.activeTaskId, type: "cancel" } satisfies DeployWorkerRequest)
@@ -258,19 +268,7 @@ export class DeployManager {
     }
 
     while (notReady.length) {
-      if (this.waitCancelled) {
-        this.waitCancelled = false
-        this.emit({
-          stage: "finalizing",
-          stageIndex: STAGE_INDEX.finalizing,
-          stageTotal: STAGE_TOTAL,
-          logLine: "Deploy cancelled.",
-          done: true,
-          ok: false
-        })
-        this.active = null
-        return
-      }
+      if (this.bailIfWaitCancelled()) return
 
       if (Date.now() > deadline) {
         this.emit({
@@ -318,7 +316,29 @@ export class DeployManager {
       notReady = this.findNotReadyMods(snapshot.loadOrder)
     }
 
+    // Re-check here too, not just at the top of the loop above: a cancel that lands during the very
+    // last poll (right as `notReady` empties out) would otherwise fall straight through into spawning
+    // the real worker, and `waitCancelled` would then linger `true` and wrongly cancel the *next*
+    // deploy the first time it hits this gate.
+    if (this.bailIfWaitCancelled()) return
+
     this.spawnDeployWorker(snapshot, settings, modsConfig)
+  }
+
+  /** Consumes a pending `waitCancelled` request, if any, emitting the cancellation and clearing `active`. Returns whether it did so - callers should return immediately when it does. */
+  private bailIfWaitCancelled(): boolean {
+    if (!this.waitCancelled) return false
+    this.waitCancelled = false
+    this.emit({
+      stage: "finalizing",
+      stageIndex: STAGE_INDEX.finalizing,
+      stageTotal: STAGE_TOTAL,
+      logLine: "Deploy cancelled.",
+      done: true,
+      ok: false
+    })
+    this.active = null
+    return true
   }
 
   private spawnDeployWorker(snapshot: DeploySnapshot, settings: AppSettings, modsConfig: ModsConfig): void {
@@ -342,6 +362,7 @@ export class DeployManager {
     const worker = new Worker(resolveDeployWorkerPath())
     this.activeWorker = worker
     this.activeTaskId = taskId
+    this.activeStage = "sorting"
 
     let stage: DeployProgress["stage"] = "sorting"
 
@@ -355,6 +376,7 @@ export class DeployManager {
 
       if (msg.type === "log") {
         stage = this.handleLine(snapshot, msg.line, stage)
+        this.activeStage = stage
       } else if (msg.type === "done") {
         settled = true
         this.emit({
@@ -368,6 +390,7 @@ export class DeployManager {
         this.active = null
         this.activeWorker = null
         this.activeTaskId = null
+        this.activeStage = null
         void worker.terminate()
       }
     })
@@ -386,6 +409,7 @@ export class DeployManager {
       this.active = null
       this.activeWorker = null
       this.activeTaskId = null
+      this.activeStage = null
       void worker.terminate()
     })
 
@@ -399,6 +423,7 @@ export class DeployManager {
         this.active = null
         this.activeWorker = null
         this.activeTaskId = null
+        this.activeStage = null
         this.emit({
           stage: "finalizing",
           stageIndex: STAGE_INDEX.finalizing,
