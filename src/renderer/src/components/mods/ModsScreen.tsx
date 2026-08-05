@@ -8,7 +8,7 @@ import { Trans, useLingui } from "@lingui/react/macro"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { useAppStore } from "@/store/app-store"
+import { selectDeployActive, useAppStore } from "@/store/app-store"
 import { useVirtualList } from "@/lib/useVirtualList"
 import type { ModEntry } from "@/lib/manifest-types"
 
@@ -44,7 +44,6 @@ export function ModsScreen() {
   const rebuildIndex = useAppStore((s) => s.rebuildIndex)
   const rebuildingIndex = useAppStore((s) => s.rebuildingIndex)
   const startDeploy = useAppStore((s) => s.startDeploy)
-  const deploy = useAppStore((s) => s.deploy)
   // Lifted to the store (see app-store.ts's addDialogOpen/openAddDialog/closeAddDialog) so the
   // whole-window drop handler in App.tsx can pop this dialog open too, not just this screen's own
   // "Add a mod" button - a drop landing anywhere in the app needs somewhere to show its progress.
@@ -55,7 +54,7 @@ export function ModsScreen() {
   const [settingsModId, setSettingsModId] = useState<string | null>(null)
   const [removeCandidate, setRemoveCandidate] = useState<ModEntry | null>(null)
 
-  const deployActive = !!deploy.snapshot && !(deploy.progress?.done ?? false)
+  const deployActive = useAppStore(selectDeployActive)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 

@@ -74,12 +74,42 @@ export class DeployManager {
   private nextTaskId = 0
 
   /**
+   * The worker + task id for the currently-running full deploy, so `cancel()` can reach it. Only
+   * ever set/cleared alongside `active` in `spawnDeployWorker` - not used for build workers (see
+   * `buildWorkers`/`buildGeneration` below, a separate cancel-and-restart mechanism since build
+   * output never touches the game's Runtime folder and doesn't need the safe-window restriction).
+   */
+  private activeWorker: Worker | null = null
+  private activeTaskId: number | null = null
+
+  /** Set by `cancel()` when a deploy is still in the (main-process, worker-less) "waiting for cache build" gate - see `waitForBuildsThenDeploy`. That phase never touches the game's Runtime folder at all, so it's always safe to cancel. */
+  private waitCancelled = false
+
+  /**
    * LEI-144: in-process dedup registry. `triggerBuild()` stores each mod's in-flight Promise here
    * and returns the existing one to any subsequent caller for the same modId, so concurrent trigger
    * points (the deploy wait-loop and `triggerEagerBuild` from ipcHandlers.ts) never spawn two
    * workers for the same mod simultaneously. Removed when the build settles (success or failure).
    */
   private readonly buildInFlight = new Map<string, Promise<{ ok: boolean; error?: string }>>()
+
+  /**
+   * The live build Worker for each in-flight `analyseMod` run, keyed by modId - lets a rapid
+   * option change kill and immediately restart the build instead of letting a now-stale build run
+   * to completion first (see `triggerBuild()`). Safe to hard-kill: unlike a full deploy,
+   * `analyseMod` only ever writes to `cache.db`/temp locations, never the game's live Retail/
+   * Runtime folder, so there's no safe-window restriction here.
+   */
+  private readonly buildWorkers = new Map<string, Worker>()
+
+  /**
+   * Bumped every `triggerBuild(modId)` call, including ones that reuse an already-in-flight
+   * promise. Closed over by that call's worker handlers so a worker whose generation has since
+   * been superseded (killed and replaced by a newer option change) knows not to write a `failed`
+   * result to `cache.db` for a build that's actually about to be re-run with current config, and
+   * so its `.finally()` cleanup doesn't release a semaphore slot the newer run still holds.
+   */
+  private readonly buildGeneration = new Map<string, number>()
 
   /** LEI-145: number of build workers currently running (not queued). */
   private buildActiveCount = 0
@@ -105,6 +135,30 @@ export class DeployManager {
 
   isActive(): boolean {
     return this.active !== null
+  }
+
+  /**
+   * Requests cancellation of the currently-running deploy. `snapshotId` must match the active
+   * deploy so a stale renderer (e.g. a leftover toast from a previous deploy) can't cancel a
+   * different, newer one. Cooperative and safe-window only - see cancel.ts: the worker honours
+   * this at its next per-mod/per-instruction loop boundary and ignores it entirely once it has
+   * entered the finalize phase (Contract destinations onward), where interrupting would risk
+   * corrupting the actual game install rather than just mod output.
+   */
+  cancel(snapshotId: string): { ok: boolean; error?: string } {
+    if (!this.active || this.active.snapshotId !== snapshotId) {
+      return { ok: false, error: "No matching active deploy." }
+    }
+
+    if (!this.activeWorker || this.activeTaskId === null) {
+      // Still in the worker-less "waiting for cache build" gate - nothing has touched Runtime yet,
+      // always safe. waitForBuildsThenDeploy's loop checks this flag at its next poll tick.
+      this.waitCancelled = true
+      return { ok: true }
+    }
+
+    this.activeWorker.postMessage({ id: this.activeTaskId, type: "cancel" } satisfies DeployWorkerRequest)
+    return { ok: true }
   }
 
   /**
@@ -204,6 +258,20 @@ export class DeployManager {
     }
 
     while (notReady.length) {
+      if (this.waitCancelled) {
+        this.waitCancelled = false
+        this.emit({
+          stage: "finalizing",
+          stageIndex: STAGE_INDEX.finalizing,
+          stageTotal: STAGE_TOTAL,
+          logLine: "Deploy cancelled.",
+          done: true,
+          ok: false
+        })
+        this.active = null
+        return
+      }
+
       if (Date.now() > deadline) {
         this.emit({
           stage: "finalizing",
@@ -272,6 +340,8 @@ export class DeployManager {
 
     const taskId = this.nextTaskId++
     const worker = new Worker(resolveDeployWorkerPath())
+    this.activeWorker = worker
+    this.activeTaskId = taskId
 
     let stage: DeployProgress["stage"] = "sorting"
 
@@ -291,11 +361,13 @@ export class DeployManager {
           stage: "finalizing",
           stageIndex: STAGE_INDEX.finalizing,
           stageTotal: STAGE_TOTAL,
-          logLine: msg.ok ? "Deploy finished." : `Deploy failed: ${msg.error}`,
+          logLine: msg.ok ? "Deploy finished." : msg.cancelled ? "Deploy cancelled." : `Deploy failed: ${msg.error}`,
           done: true,
           ok: msg.ok
         })
         this.active = null
+        this.activeWorker = null
+        this.activeTaskId = null
         void worker.terminate()
       }
     })
@@ -312,6 +384,8 @@ export class DeployManager {
         ok: false
       })
       this.active = null
+      this.activeWorker = null
+      this.activeTaskId = null
       void worker.terminate()
     })
 
@@ -323,6 +397,8 @@ export class DeployManager {
       if (code !== 0) {
         settled = true
         this.active = null
+        this.activeWorker = null
+        this.activeTaskId = null
         this.emit({
           stage: "finalizing",
           stageIndex: STAGE_INDEX.finalizing,
@@ -366,30 +442,50 @@ export class DeployManager {
    * The build-trigger primitive - spawns a worker to run `analyseMod(modId)`, writing `cache.db`'s
    * `mod_build` row. Used both by the public `runAnalyseMod()` and the queue-aware deploy gate.
    *
-   * LEI-144: deduplicates concurrent triggers for the same modId by storing the in-flight Promise
-   * and returning it to all callers while it's still running. A second call for the same mod before
-   * the first finishes gets the existing Promise, not a new worker.
+   * LEI-144's dedup is now cancel-and-restart rather than pure dedup: a call for a modId that's
+   * already in flight kills that stale worker (safe here - `analyseMod` never touches the game's
+   * Runtime folder, unlike a full deploy) and starts a fresh one immediately with current config,
+   * instead of letting the stale run finish uselessly and only then re-triggering. This avoids
+   * wasting a full build's worth of time on every intermediate state when a user changes a mod's
+   * options repeatedly in quick succession - only the *last* change's config ever actually
+   * completes and gets written to `cache.db`. See `buildGeneration`'s doc comment for how a
+   * superseded worker's late-arriving result is silently dropped instead of corrupting the newer
+   * run's outcome.
    *
    * LEI-145: enforces a concurrency cap (`BUILD_CONCURRENCY_CAP`) so a batch rebuild of a large
    * collection doesn't saturate CPU with simultaneous tsc imports. Excess triggers queue and run as
-   * slots free up.
+   * slots free up. A cancel-and-restart reuses the semaphore slot the superseded build already
+   * held rather than releasing and re-queueing behind it.
    */
   private triggerBuild(modId: string): Promise<{ ok: boolean; error?: string }> {
-    // LEI-144: return existing promise if already in flight
+    const generation = (this.buildGeneration.get(modId) ?? 0) + 1
+    this.buildGeneration.set(modId, generation)
+
+    const staleWorker = this.buildWorkers.get(modId)
+    if (staleWorker) {
+      void staleWorker.terminate()
+      this.buildWorkers.delete(modId)
+
+      // Restart in place - this modId already holds a semaphore slot (buildActiveCount was
+      // incremented when the stale build started and isn't decremented here), so go straight to a
+      // fresh worker instead of back through the concurrency-cap queue below.
+      const promise = this._runBuildWorker(modId, generation).finally(() => this._releaseBuildSlot(modId, generation))
+      this.buildInFlight.set(modId, promise)
+      return promise
+    }
+
+    // LEI-144: return existing promise if already in flight (no stale worker to replace - i.e.
+    // this modId isn't building at all right now, or another caller already reused the current
+    // in-flight run).
     const existing = this.buildInFlight.get(modId)
     if (existing) return existing
 
     const promise = new Promise<{ ok: boolean; error?: string }>((resolve, reject) => {
       const start = (): void => {
         this.buildActiveCount++
-        this._runBuildWorker(modId)
+        this._runBuildWorker(modId, generation)
           .then(resolve, reject)
-          .finally(() => {
-            // Release semaphore slot and wake the next queued build, if any.
-            this.buildInFlight.delete(modId)
-            this.buildActiveCount--
-            this.buildWaiters.shift()?.()
-          })
+          .finally(() => this._releaseBuildSlot(modId, generation))
       }
 
       // LEI-145: concurrency cap - queue if at capacity.
@@ -404,11 +500,19 @@ export class DeployManager {
     return promise
   }
 
+  /** Releases a build's semaphore slot and wakes the next queued build, if any - but only for the generation that's still current. A superseded (killed-and-restarted) run's eventual settlement calls this too; the generation mismatch makes it a no-op so the slot it's replaced by is released exactly once, by whichever generation actually finishes. */
+  private _releaseBuildSlot(modId: string, generation: number): void {
+    if (this.buildGeneration.get(modId) !== generation) return
+    this.buildInFlight.delete(modId)
+    this.buildActiveCount--
+    this.buildWaiters.shift()?.()
+  }
+
   /**
    * Actual build worker spawn logic, separated from `triggerBuild` to keep dedup/semaphore
    * bookkeeping clean. The outer `triggerBuild` already holds the semaphore slot when this runs.
    */
-  private _runBuildWorker(modId: string): Promise<{ ok: boolean; error?: string }> {
+  private _runBuildWorker(modId: string, generation: number): Promise<{ ok: boolean; error?: string }> {
     const settings: AppSettings = loadSettings(this.paths)
     const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths) : ({ ok: false, error: "" } as const)
     if (!detection.ok) {
@@ -419,6 +523,7 @@ export class DeployManager {
 
     const taskId = this.nextTaskId++
     const worker = new Worker(resolveDeployWorkerPath())
+    this.buildWorkers.set(modId, worker)
     const { ok: _ok, ...game } = detection
 
     const req: DeployWorkerRequest = {
@@ -434,10 +539,19 @@ export class DeployManager {
     return new Promise<{ ok: boolean; error?: string }>((resolvePromise, reject) => {
       let settled = false
 
+      // Only this worker's own map entry should be cleared - if it's already been superseded (a
+      // newer triggerBuild() call already overwrote buildWorkers.get(modId) with a fresh worker
+      // before this one's terminate-induced exit fires), leave that newer entry alone.
+      const clearWorkerEntry = (): void => {
+        if (this.buildWorkers.get(modId) === worker) this.buildWorkers.delete(modId)
+      }
+      const isCurrent = (): boolean => this.buildGeneration.get(modId) === generation
+
       worker.on("message", (msg: DeployWorkerMessage) => {
         if (msg.id !== taskId) return
         if (msg.type === "done") {
           settled = true
+          clearWorkerEntry()
           void worker.terminate()
           resolvePromise(msg.ok ? { ok: true } : { ok: false, error: msg.error })
         }
@@ -451,11 +565,17 @@ export class DeployManager {
       // stay 'building' forever - the queue-aware gate in waitForBuildsThenDeploy() only stops
       // retriggering a mod once it sees 'failed', so an orphaned 'building' row just silently waits
       // out the full BUILD_WAIT_TIMEOUT_MS instead of surfacing the failure.
+      //
+      // If this run has been superseded (isCurrent() false - triggerBuild() already killed this
+      // worker to restart with newer config), skip the cache.db write: the mod isn't actually
+      // failed, a fresh build for it is already running, and writing 'failed' here would flash a
+      // spurious error in the UI right before the real result lands.
       worker.on("error", (err) => {
         if (settled) return
         settled = true
-        finishModBuildFailed(modId, err.message)
+        clearWorkerEntry()
         void worker.terminate()
+        if (isCurrent()) finishModBuildFailed(modId, err.message)
         reject(err)
       })
 
@@ -463,8 +583,9 @@ export class DeployManager {
         if (settled) return
         if (code !== 0) {
           settled = true
+          clearWorkerEntry()
           const message = `Build worker exited unexpectedly (code ${code})`
-          finishModBuildFailed(modId, message)
+          if (isCurrent()) finishModBuildFailed(modId, message)
           reject(new Error(message))
         }
       })
@@ -496,7 +617,11 @@ export class DeployManager {
       return "patching"
     }
 
-    if (/generating rpkgs/i.test(text)) {
+    if (/^Finalizing deploy|generating rpkgs/i.test(text)) {
+      // "Finalizing deploy" (logged right after the "Execute instructions" loop, before any
+      // Runtime-writing stage) is the authoritative signal that cancellation is now locked out -
+      // see cancel.ts. "generating rpkgs" is kept as a fallback stage match for log lines that
+      // arrive without ever having matched the finalize marker (shouldn't normally happen).
       this.emit({ stage: "finalizing", stageIndex: STAGE_INDEX.finalizing, stageTotal: STAGE_TOTAL, logLine: text, done: false })
       return "finalizing"
     }

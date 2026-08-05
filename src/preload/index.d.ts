@@ -33,6 +33,7 @@ export interface SmfBridge {
     onProgress(callback: (progress: unknown) => void): () => void
     getActiveSnapshot(): Promise<unknown>
     analyseMod(modId: string): Promise<unknown>
+    cancel(snapshotId: string): Promise<unknown>
   }
   getPathForFile(file: File): string
 }

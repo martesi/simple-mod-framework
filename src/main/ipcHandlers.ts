@@ -24,7 +24,7 @@ import type { ModBuildInfo } from "../renderer/src/lib/ipc"
  * deployManager.ts, deployPipeline.ts, settings.ts, modsConfig.ts) is plain
  * Node modules with no Electron dependency of their own, called from here.
  */
-export function registerIpcHandlers(paths: AppPaths): void {
+export function registerIpcHandlers(paths: AppPaths): DeployManager {
 	const getModsDir = () => resolveModsDir(paths, loadSettings(paths))
 	const getModsConfig = () => loadModsConfig(getModsDir())
 
@@ -298,6 +298,11 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
 	ipcMain.handle("deploy:getActiveSnapshot", () => deployManager.getActiveSnapshot())
 
+	// Safe-window cancel (see deployManager.ts's cancel() and core/cancel.ts) - the renderer only
+	// shows the Cancel action while `deploy:progress`'s stage isn't yet "finalizing", but this is
+	// re-checked server-side regardless since deployManager.cancel() itself is a no-op past that point.
+	ipcMain.handle("deploy:cancel", (_event, snapshotId: string): { ok: boolean; error?: string } => deployManager.cancel(snapshotId))
+
 	// LEI-108/LEI-141's "background analyseMod, off the deploy critical path" - also the explicit
 	// "rebuild this mod's cache" trigger point the design calls for, wired up to the options-change
 	// path automatically (see config:merge above) as well as being callable directly (e.g. a
@@ -371,4 +376,6 @@ export function registerIpcHandlers(paths: AppPaths): void {
 
 		return { ok: true }
 	})
+
+	return deployManager
 }

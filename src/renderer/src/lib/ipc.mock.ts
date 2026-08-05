@@ -189,6 +189,7 @@ class MockSmfApi implements SmfApi {
   private progressListeners = new Set<(p: DeployProgress) => void>()
   private activeSnapshot: DeploySnapshot | null = null
   private deployTimer: ReturnType<typeof setInterval> | null = null
+  private deployStage: DeployProgress["stage"] | null = null
 
   config = {
     get: async (): Promise<Config> => structuredClone(this.cfg),
@@ -381,6 +382,7 @@ class MockSmfApi implements SmfApi {
 
       const tick = () => {
         const stage = stages[stageIndex]
+        this.deployStage = stage
         const isPatching = stage === "patching"
         const modTotal = snapshot.loadOrder.length
 
@@ -417,6 +419,7 @@ class MockSmfApi implements SmfApi {
           this.deployTimer = null
           this.emitProgress({ stage: "finalizing", stageIndex: stages.length - 1, stageTotal: stages.length, logLine: "Done.", done: true, ok: true })
           this.activeSnapshot = null
+          this.deployStage = null
         }
       }
 
@@ -434,6 +437,28 @@ class MockSmfApi implements SmfApi {
     analyseMod: async (modId: string): Promise<{ ok: boolean; error?: string }> => {
       await delay(200)
       return this.modsData.some((m) => m.id === modId) ? { ok: true } : { ok: false, error: `"${modId}" isn't installed.` }
+    },
+
+    cancel: async (snapshotId: string): Promise<{ ok: boolean; error?: string }> => {
+      await delay(50)
+      if (!this.activeSnapshot || this.activeSnapshot.snapshotId !== snapshotId) {
+        return { ok: false, error: "No matching active deploy." }
+      }
+
+      // Mirrors the real safe-window lockout: once the simulated run has reached "finalizing",
+      // cancellation is no longer honoured.
+      if (this.deployStage === "finalizing") {
+        return { ok: false, error: "Deploy is finalizing and can no longer be cancelled." }
+      }
+
+      if (this.deployTimer) {
+        clearInterval(this.deployTimer)
+        this.deployTimer = null
+      }
+      this.emitProgress({ stage: "finalizing", stageIndex: 3, stageTotal: 4, logLine: "Deploy cancelled.", done: true, ok: false })
+      this.activeSnapshot = null
+      this.deployStage = null
+      return { ok: true }
     }
   }
 

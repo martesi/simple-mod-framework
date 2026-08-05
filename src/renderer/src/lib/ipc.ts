@@ -195,6 +195,14 @@ export interface SmfApi {
     getActiveSnapshot(): DeploySnapshot | null
     /** Analyses a single mod in-process without running a full deploy (LEI-133/LEI-108) - rejected while a deploy is active. */
     analyseMod(modId: string): Promise<{ ok: boolean; error?: string }>
+    /**
+     * Requests cancellation of the active deploy matching `snapshotId`. Safe-window only: honoured
+     * at the next per-mod/per-instruction loop boundary, and a no-op once the deploy has entered
+     * its "finalizing" stage (writes directly to the game's Retail/Runtime folder from that point
+     * on with no atomic rename - interrupting mid-write risks corrupting the actual game install).
+     * UI should hide/disable the cancel action once `DeployProgress.stage === "finalizing"`.
+     */
+    cancel(snapshotId: string): Promise<{ ok: boolean; error?: string }>
   }
 }
 

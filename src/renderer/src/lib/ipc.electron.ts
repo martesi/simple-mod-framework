@@ -59,7 +59,9 @@ export function createElectronSmfApi(): SmfApi {
         return null
       },
 
-      analyseMod: (modId) => bridge.deploy.analyseMod(modId) as Promise<{ ok: boolean; error?: string }>
+      analyseMod: (modId) => bridge.deploy.analyseMod(modId) as Promise<{ ok: boolean; error?: string }>,
+
+      cancel: (snapshotId) => bridge.deploy.cancel(snapshotId) as Promise<{ ok: boolean; error?: string }>
     }
   }
 }
