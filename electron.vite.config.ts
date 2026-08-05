@@ -4,6 +4,7 @@ import type { ConfigEnv } from "vite"
 import react, { reactCompilerPreset } from "@vitejs/plugin-react"
 import babel from "@rolldown/plugin-babel"
 import linguiMacroPlugin from "@lingui/babel-plugin-lingui-macro"
+import { lingui } from "@lingui/vite-plugin"
 
 // This app replaces the old Svelte Mod Manager's Electron renderer (see
 // LEI-137 for the UI rebuild). fs/child_process access lives only in
@@ -214,10 +215,16 @@ export default defineConfig(async ({ command }: ConfigEnv): Promise<UserConfig> 
       // literal, and the widened shape then fails to structurally match any overload.
       // Lingui's t()/Trans macros (see lingui.config.js and main.tsx's I18nProvider setup) compile
       // away at build time into plain @lingui/core calls - this plugin is what does that expansion,
-      // riding the same babel() pipeline already wired up for the React Compiler preset above rather
-      // than pulling in a second bundler-specific integration (e.g. @lingui/vite-plugin, which isn't
-      // verified compatible with Vite 8's Rolldown bundler the way this repo's own babel() call is).
-      await babel({ presets: [reactCompilerPreset()], plugins: [linguiMacroPlugin] })
+      // riding the same babel() pipeline already wired up for the React Compiler preset above.
+      await babel({ presets: [reactCompilerPreset()], plugins: [linguiMacroPlugin] }),
+      // Compiles .po catalogs (see lingui.config.js) into loadable modules on the fly - dev-server
+      // request time in dev, bundled at build time - so `messages.po` is imported directly (see
+      // i18n.ts) and is the only catalog artifact that exists; no separate `lingui compile` step or
+      // committed compiled-catalog file. @lingui/vite-plugin@6.6.0 explicitly peer-deps on the same
+      // rolldown/@rolldown/plugin-babel stack this app already runs (Vite 8's Rolldown bundler), so
+      // the earlier "not verified compatible with Rolldown" concern that kept this out no longer
+      // applies.
+      lingui()
     ]
   }
 }))

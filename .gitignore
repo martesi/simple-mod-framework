@@ -10,6 +10,12 @@ hash_list.txt
 *.local
 /ui
 
+# Compiled Lingui catalogs - @lingui/vite-plugin compiles messages.po on the fly (dev-server
+# request time / bundled at build time, see electron.vite.config.ts), so this is never meant to
+# exist on disk as a checked-in file; messages.po is the only catalog artifact that's source of
+# truth.
+src/renderer/src/locales/**/messages.mjs
+
 # scripts/fetch-win-electron.js's extraction target - see npm run dev:win.
 /.win-electron-dev
 

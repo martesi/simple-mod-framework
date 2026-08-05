@@ -2,7 +2,6 @@
 export default {
   locales: ["en-US"],
   sourceLocale: "en-US",
-  compileNamespace: "es",
   catalogs: [
     {
       path: "src/renderer/src/locales/{locale}/messages",
