@@ -108,7 +108,12 @@ import * as LosslessJSON from "lossless-json"
 import { Decimal } from "decimal.js"
 import rfc6902 from "rfc6902"
 
-import * as THREE from "three"
+import { Euler, MathUtils, Matrix4 } from "three"
+
+// This file only uses Matrix4/Euler for rotation-matrix decomposition, plus the legacy
+// `THREE.Math` alias (removed from three.js itself, replaced by MathUtils) for RAD2DEG/DEG2RAD -
+// see quickentity1136.js's identical shim.
+const THREE = { Matrix4, Euler, Math: MathUtils, MathUtils }
 
 const QuickEntityVersion = 2.0
 
