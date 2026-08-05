@@ -12,6 +12,7 @@
     "setup": "node scripts/setup.js",
     "fetch:hashes": "node scripts/fetch-hashes.js",
     "dev": "electron-vite dev",
+    "dev:remote": "electron-vite dev --remoteDebuggingPort 9222 -- --remote-allow-origins=*",
     "fetch:win-electron": "node scripts/fetch-win-electron.js",
     "dev:win": "node scripts/fetch-win-electron.js && WSLENV=\"${WSLENV:+$WSLENV:}ELECTRON_RENDERER_URL\" NO_SANDBOX=1 ELECTRON_EXEC_PATH=.win-electron-dev/electron.exe electron-vite dev",
     "build": "npm run i18n:compile && npm run typecheck && electron-vite build",
