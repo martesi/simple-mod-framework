@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react"
-import { Search } from "lucide-react"
+import { Locate, Search } from "lucide-react"
 import { Trans, useLingui } from "@lingui/react/macro"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -11,7 +11,7 @@ import { useAppStore } from "@/store/app-store"
 import { useVirtualList } from "@/lib/useVirtualList"
 import { cn } from "@/lib/utils"
 import { OptionType, type ManifestOption, type ModEntry } from "@/lib/manifest-types"
-import { ImageViewerDialog, type PreviewableOption } from "./ImageViewerDialog"
+import { openImageViewer, closeImageViewer, type PreviewableOption, type LocateTarget } from "./imageViewer"
 import { HoverImagePreview, clampHoverPosition } from "./HoverImagePreview"
 
 /** How long the cursor must stay on a thumbnail before the larger hover preview appears - short enough to feel responsive, long enough that scanning across many thumbnails doesn't flash a popup on every one. */
@@ -104,18 +104,15 @@ function SelectGroupSection({
   group,
   selected,
   onSelect,
-  previewIndex,
-  previewable,
-  onOpenPreview,
+  onLocateOption,
   locate,
   onLocateHandled
 }: {
   group: { name: string; options: ManifestOption[] }
   selected: string | undefined
   onSelect(optionName: string): void
-  previewIndex: number | null
-  previewable: PreviewableOption[]
-  onOpenPreview(key: string): void
+  /** Routes to ModSettingsDrawer's `locate()` - used both by this group's own row thumbnails (via the viewer's "Locate in list" button) and by the inline Locate button next to the filter input. */
+  onLocateOption(target: LocateTarget): void
   /** Set by ModSettingsDrawer's `locate()` when the user clicks "Locate" on an option that lives in this group; this component owns clearing its own filter and flashing its own row in response. */
   locate: LocateRequest | null
   /** Called once `locate` has actually been acted on, so the parent can clear it back to null - otherwise it stays "armed" forever and the very next character typed into this group's own search box (which momentarily makes `search` truthy) would immediately be wiped by the effect below, mistaking it for a fresh locate needing its filter cleared. */
@@ -124,6 +121,24 @@ function SelectGroupSection({
   const { t } = useLingui()
   const selectedOption = group.options.find((o) => o.name === selected)
   const hasImages = group.options.some((o) => o.image)
+
+  // Which row (if any) the full-screen viewer currently has open, for this group's own thumbnails'
+  // "active" glow - scoped locally since each group opens its own gallery independently now (see
+  // openImageViewer's doc comment for why there's no more single drawer-wide preview index).
+  const [activeKey, setActiveKey] = useState<string | null>(null)
+
+  function locateTarget(option: ManifestOption): LocateTarget {
+    return {
+      key: `${group.name}-${option.name}`,
+      section: { type: "group", name: group.name },
+      rowIndex: group.options.findIndex((o) => o.name === option.name)
+    }
+  }
+
+  /** Only meaningful for an option that actually has `image` set - callers must guard for that themselves (see the preview box and row-thumbnail click handlers below). */
+  function previewItem(option: ManifestOption): PreviewableOption {
+    return { ...locateTarget(option), name: option.name, image: option.image! }
+  }
 
   const [search, setSearch] = useState("")
   const q = search.trim().toLowerCase()
@@ -167,7 +182,9 @@ function SelectGroupSection({
       {hasImages && (
         <div className="mb-2.5 flex h-[140px] w-full items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2">
           {selectedOption?.image ? (
-            <img src={selectedOption.image} alt={selectedOption.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+            <button type="button" title={t`Click to preview`} onClick={() => openImageViewer([previewItem(selectedOption)], 0, {})} className="h-full w-full">
+              <img src={selectedOption.image} alt={selectedOption.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+            </button>
           ) : (
             <span className="px-2 text-center text-[12px] text-text-3">{selected ?? ""}</span>
           )}
@@ -175,9 +192,21 @@ function SelectGroupSection({
       )}
 
       {group.options.length > 8 && (
-        <div className="relative mb-2">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t`Filter options…`} className="h-8 pl-8 text-[12.5px]" />
+        <div className="mb-2 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t`Filter options…`} className="h-8 pl-8 text-[12.5px]" />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            disabled={!selectedOption}
+            onClick={() => selectedOption && onLocateOption(locateTarget(selectedOption))}
+            title={t`Locate current option`}
+          >
+            <Locate className="h-3.5 w-3.5" />
+          </Button>
         </div>
       )}
 
@@ -201,10 +230,22 @@ function SelectGroupSection({
               style={{ height: RADIO_ROW_HEIGHT, boxSizing: "border-box", background: selected === option.name ? "var(--accent-soft)" : "transparent" }}
               className={cn("flex items-center gap-2.5 border-b border-border px-2.5 last:border-b-0", flashKey === key && "row-flash")}
             >
-              {option.image && <PreviewThumb image={option.image} active={previewable[previewIndex ?? -1]?.key === key} onClick={() => onOpenPreview(key)} />}
+              {option.image && (
+                <PreviewThumb
+                  image={option.image}
+                  active={activeKey === key}
+                  onClick={() => {
+                    const imageOptions = filteredOptions.filter((o) => o.image)
+                    openImageViewer(imageOptions.map(previewItem), imageOptions.findIndex((o) => o.name === option.name), {
+                      onLocate: onLocateOption,
+                      onActiveChange: setActiveKey
+                    })
+                  }}
+                />
+              )}
               <label className="flex flex-1 cursor-pointer items-center gap-2.5 min-w-0">
                 <RadioGroupItem value={option.name} />
-                <span className="truncate text-[13px]" style={{ fontWeight: selected === option.name ? 600 : 400 }}>
+                <span className="truncate text-[13px] text-text" style={{ fontWeight: selected === option.name ? 600 : 400 }}>
                   {option.name}
                 </span>
               </label>
@@ -228,13 +269,23 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
   // subscribes to `config`) on every single click, which is what made "switching an option" feel
   // slow with many mods installed. Toggling this local state instead only re-renders this drawer.
   const [draft, setDraft] = useState<string[]>([])
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+
+  // Which checkbox row (if any) the full-screen viewer currently has open, for that row's
+  // PreviewThumb's "active" glow - each select group tracks its own equivalent locally (see
+  // SelectGroupSection), since each section now opens its own gallery independently.
+  const [checkboxActiveKey, setCheckboxActiveKey] = useState<string | null>(null)
 
   // Keyed "checkboxes" / `group:${group.name}` - each section's outer wrapper div registers
   // itself here so locate() can scroll it into view via the browser's own scrollIntoView, which
   // walks and scrolls every scrollable ancestor (including the outer drawer body) without this
   // component needing to measure anything by hand.
   const sectionRefs = useRef(new Map<string, HTMLDivElement>())
+
+  // Just needs to be different on every locate() call so LocateRequest's consuming effects re-fire
+  // even for a re-locate of the same row - a ref-mutated counter avoids the impure `Date.now()` call
+  // the React Compiler ESLint rule flags when a closure like locate() gets invoked through more than
+  // one layer of indirection (e.g. openImageViewer's onLocate callback).
+  const locateNonce = useRef(0)
 
   const [checkboxSearch, setCheckboxSearch] = useState("")
   const [checkboxFlashKey, setCheckboxFlashKey] = useState<string | null>(null)
@@ -247,7 +298,8 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
   // mod id twice in a row, so this always reflects the latest on-disk state at open time.
   useEffect(() => {
     setDraft(mod ? (config?.modOptions[mod.id] ?? []) : [])
-    setPreviewIndex(null)
+    closeImageViewer()
+    setCheckboxActiveKey(null)
     setCheckboxSearch("")
     setCheckboxLocate(null)
     setGroupLocate({})
@@ -262,22 +314,6 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
     const groups = groupNames.map((name) => ({ name, options: selects.filter((o) => o.type === OptionType.select && o.group === name) }))
     return { checkboxes, groups }
   }, [mod])
-
-  // Every previewable thumbnail in this drawer, in display order, so the full-screen viewer can
-  // step through all of them with prev/next regardless of which section (checkboxes vs. a
-  // particular select group) the user clicked into.
-  const previewable = useMemo<PreviewableOption[]>(() => {
-    const list: PreviewableOption[] = []
-    checkboxes.forEach((o, i) => {
-      if (o.image) list.push({ key: `cb-${o.name}`, name: o.name, image: o.image, section: { type: "checkbox" }, rowIndex: i })
-    })
-    for (const g of groups) {
-      g.options.forEach((o, i) => {
-        if (o.image) list.push({ key: `${g.name}-${o.name}`, name: o.name, image: o.image, section: { type: "group", name: g.name }, rowIndex: i })
-      })
-    }
-    return list
-  }, [checkboxes, groups])
 
   const cq = checkboxSearch.trim().toLowerCase()
   const filteredCheckboxes = useMemo(() => checkboxes.filter((o) => !cq || o.name.toLowerCase().includes(cq)), [checkboxes, cq])
@@ -319,20 +355,17 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
 
   useEffect(() => () => clearTimeout(checkboxFlashTimer.current), [])
 
-  function openPreview(key: string) {
-    const index = previewable.findIndex((p) => p.key === key)
-    if (index !== -1) setPreviewIndex(index)
-  }
-
-  // Called from ImageViewerDialog's "Locate" button - closes the full-screen preview, scrolls the
-  // option's owning section into view, and dispatches a locate request to whichever list actually
-  // owns that row (the checkbox list, or one specific select group) so it can clear its own filter
-  // if needed and flash the row once it's back in the DOM.
-  function locate(item: PreviewableOption) {
-    setPreviewIndex(null)
+  // Called from the viewer's "Locate in list" toolbar button, and from SelectGroupSection's own
+  // inline Locate button next to its filter input - closes any open viewer, scrolls the option's
+  // owning section into view, and dispatches a locate request to whichever list actually owns that
+  // row (the checkbox list, or one specific select group) so it can clear its own filter if needed
+  // and flash the row once it's back in the DOM. Only ever reads `section`/`rowIndex`/`key`, so a
+  // bare LocateTarget (no image required) works just as well as a full PreviewableOption.
+  function locate(item: LocateTarget) {
+    closeImageViewer()
     const sectionKey = item.section.type === "checkbox" ? "checkboxes" : `group:${item.section.name}`
     sectionRefs.current.get(sectionKey)?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-    const request: LocateRequest = { rowIndex: item.rowIndex, key: item.key, nonce: Date.now() }
+    const request: LocateRequest = { rowIndex: item.rowIndex, key: item.key, nonce: locateNonce.current++ }
     if (item.section.type === "checkbox") {
       setCheckboxLocate(request)
     } else {
@@ -354,12 +387,11 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
       commitModOptions(mod.id, draft)
     }
     onClose()
-    setPreviewIndex(null)
+    closeImageViewer()
   }
 
   return (
-    <>
-      <Sheet open={!!mod} onOpenChange={(open) => !open && close()}>
+    <Sheet open={!!mod} onOpenChange={(open) => !open && close()}>
         <SheetContent>
           <SheetHeader>
             <div>
@@ -411,7 +443,23 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
                         style={{ height: CHECKBOX_ROW_HEIGHT, boxSizing: "border-box" }}
                         className={cn("flex items-center gap-2.5 border-b border-border px-2.5 last:border-b-0", checkboxFlashKey === key && "row-flash")}
                       >
-                        {option.image && <PreviewThumb image={option.image} active={previewable[previewIndex ?? -1]?.key === key} onClick={() => openPreview(key)} />}
+                        {option.image && (
+                          <PreviewThumb
+                            image={option.image}
+                            active={checkboxActiveKey === key}
+                            onClick={() => {
+                              const imageOptions = filteredCheckboxes.filter((o) => o.image)
+                              const items: PreviewableOption[] = imageOptions.map((o) => ({
+                                key: `cb-${o.name}`,
+                                name: o.name,
+                                image: o.image!,
+                                section: { type: "checkbox" },
+                                rowIndex: checkboxes.findIndex((c) => c.name === o.name)
+                              }))
+                              openImageViewer(items, imageOptions.findIndex((o) => o.name === option.name), { onLocate: locate, onActiveChange: setCheckboxActiveKey })
+                            }}
+                          />
+                        )}
                         <label className="flex flex-1 cursor-pointer items-center gap-2.5">
                           <Checkbox checked={checked} onCheckedChange={(v) => setCheckbox(option.name, v === true)} />
                           <span className="text-[13.5px] text-text">{option.name}</span>
@@ -444,9 +492,7 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
                     group={group}
                     selected={selected}
                     onSelect={(optionName) => setSelect(group.name, optionName)}
-                    previewIndex={previewIndex}
-                    previewable={previewable}
-                    onOpenPreview={openPreview}
+                    onLocateOption={locate}
                     locate={groupLocate[group.name] ?? null}
                     onLocateHandled={() => setGroupLocate((prev) => ({ ...prev, [group.name]: null }))}
                   />
@@ -462,8 +508,5 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
           </SheetFooter>
         </SheetContent>
       </Sheet>
-
-      <ImageViewerDialog items={previewable} index={previewIndex} onIndexChange={setPreviewIndex} onClose={() => setPreviewIndex(null)} onLocate={locate} />
-    </>
   )
 }
