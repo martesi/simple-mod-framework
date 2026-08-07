@@ -40,3 +40,4 @@ HMLanguageTools.exe
 HMTextureTools.exe
 quickentity-rs.exe
 tests/mods
+.ref/
