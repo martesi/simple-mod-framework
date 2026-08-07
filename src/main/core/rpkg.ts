@@ -37,7 +37,7 @@ class RPKGInstance {
 
 	/** @param rpkgCliPath Path to the rpkg-cli executable - callers now always pass this explicitly (usually `path.join(paths.toolsRoot, "Third-Party", "rpkg-cli")`) instead of relying on a `process.cwd()`-based default (see LEI-130). */
 	constructor(rpkgCliPath: string) {
-		this.rpkgProcess = child_process.spawn(rpkgCliPath, ["-i"])
+		this.rpkgProcess = child_process.spawn(rpkgCliPath, ["-i"], { windowsHide: true })
 		this.output = ""
 		this.previousOutput = ""
 		this.initialised = false

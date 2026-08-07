@@ -31,7 +31,7 @@ export const execCommand = function (command: string) {
 	// dataRoot is never UNC in normal operation (userData, or a folder next to the game install -
 	// see settings.ts's resolveTempDir()), so pinning it here sidesteps that regardless of where
 	// the process itself was launched from.
-	child_process.execSync(command, { stdio: ["pipe", "pipe", "inherit"], cwd: paths.dataRoot })
+	child_process.execSync(command, { stdio: ["pipe", "pipe", "inherit"], cwd: paths.dataRoot, windowsHide: true })
 }
 
 export const callRPKGFunction = async function (command: string) {

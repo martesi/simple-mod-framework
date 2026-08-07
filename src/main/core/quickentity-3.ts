@@ -13,7 +13,7 @@ const execCommand = function (command: string) {
 	// See analyseMod.ts's execCommand for why cwd is pinned to dataRoot rather than left to
 	// process.cwd() - cmd.exe (which execSync shells out through on Windows) refuses to start at
 	// all with a UNC cwd.
-	child_process.execSync(command, { stdio: [ "pipe", "pipe", "inherit" ], cwd: paths.dataRoot })
+	child_process.execSync(command, { stdio: [ "pipe", "pipe", "inherit" ], cwd: paths.dataRoot, windowsHide: true })
 }
 
 export async function convert(_game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) {

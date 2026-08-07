@@ -19,7 +19,7 @@ const execCommand = function (command: string) {
 		// See analyseMod.ts's execCommand for why cwd is pinned to dataRoot rather than left to
 		// process.cwd() - cmd.exe (which exec shells out through on Windows) refuses to start at
 		// all with a UNC cwd.
-		const x = child_process.exec(command, { cwd: paths.dataRoot })
+		const x = child_process.exec(command, { cwd: paths.dataRoot, windowsHide: true })
 		x.stdout?.pipe(process.stdout)
 		x.stderr?.pipe(process.stderr)
 		x.on("close", resolve)
