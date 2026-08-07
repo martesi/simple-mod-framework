@@ -5,11 +5,17 @@
  * boundary rather than instantly.
  *
  * Once {@link enterFinalizePhase} is called (right after the "Execute instructions" loop finishes,
- * before Contract destinations/Localisation/Thumbs/Package definition/Generate RPKGs - the stages
- * that write directly into the game's live Retail/Runtime folder with no staging-then-atomic-
- * rename), cancellation is permanently locked out for the rest of this run: {@link isCancelActive}
- * returns false from then on even if a cancel was already requested, because interrupting a
- * mid-write to Runtime risks corrupting the actual game install, not just mod output.
+ * before Contract destinations/WWEV patches/Localisation/Localisation overrides/Thumbs/Package
+ * definition/Generate RPKGs), cancellation is permanently locked out for the rest of this run:
+ * {@link isCancelActive} returns false from then on even if a cancel was already requested. As of
+ * LEI-151, the stages that actually write into the game's live Retail/Runtime folder (Thumbs,
+ * Package definition, Generate RPKGs - the others only ever write into paths.dataRoot's own
+ * staging/temp scratch dirs) do so via a staged-then-atomic-rename (utils.ts's
+ * atomicCopyFileSync), so a kill here no longer risks leaving Runtime with a truncated file. The
+ * lockout remains regardless: these stages also shell out to external tools (HMLanguageTools,
+ * rpkgFunction.exe, h6xtea.exe) this app doesn't control and can't safely interrupt
+ * mid-invocation - interrupting a live child process, not raw write safety, is now the actual
+ * reason cancellation is refused here.
  *
  * Module-level singleton, same "one active core per module realm" bridge pattern as
  * `core-singleton.ts` - each deploy runs in its own fresh worker thread (see `deployManager.ts`'s

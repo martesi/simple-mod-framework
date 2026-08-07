@@ -145,8 +145,8 @@ export class DeployManager {
    * deploy so a stale renderer (e.g. a leftover toast from a previous deploy) can't cancel a
    * different, newer one. Cooperative and safe-window only - see cancel.ts: the worker honours
    * this at its next per-mod/per-instruction loop boundary and ignores it entirely once it has
-   * entered the finalize phase (Contract destinations onward), where interrupting would risk
-   * corrupting the actual game install rather than just mod output.
+   * entered the finalize phase (Contract destinations onward) - see cancel.ts's doc comment for
+   * why the lockout still applies there even though its Runtime writes are now atomic (LEI-151).
    */
   cancel(snapshotId: string): { ok: boolean; error?: string } {
     if (!this.active || this.active.snapshotId !== snapshotId) {

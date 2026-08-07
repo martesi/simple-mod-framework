@@ -166,32 +166,6 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, mods
 		await core.logger.verbose("Initialising RPKG instance")
 		await core.rpkgInstance.waitForInitialised()
 
-		await core.logger.verbose("Removing existing patch files")
-		for (const chunkPatchFile of fs.readdirSync(config.runtimePath)) {
-			try {
-				if (chunkPatchFile.includes("patch")) {
-					const match = chunkPatchFile.match(/^chunk[0-9]+patch([0-9]+)\.rpkg$/)
-					if (match) {
-						const patchNumber = parseInt(match[1])
-						if (patchNumber >= 200 && patchNumber <= 300) {
-							// The mod framework manages patch files between 200 (inc) and 300 (inc), allowing mods to place runtime files in those ranges
-							fs.rmSync(path.join(config.runtimePath, chunkPatchFile))
-						}
-					} else {
-						await core.logger.warn(`${chunkPatchFile} in your Runtime folder is not from the vanilla game. This might cause issues with SMF - move it elsewhere!`)
-					}
-				} else if (chunkPatchFile.match(/^chunk[0-9]+\.rpkg$/)) {
-					if (parseInt(chunkPatchFile.split(".")[0].slice(5)) > 30) {
-						fs.rmSync(path.join(config.runtimePath, chunkPatchFile))
-					}
-				} else if (chunkPatchFile !== "packagedefinition.txt") {
-					await core.logger.warn(`${chunkPatchFile} in your Runtime folder is not from the vanilla game. This might cause issues with SMF - move it elsewhere!`)
-				}
-			} catch {
-				// Best-effort cleanup of a single stray Runtime file shouldn't abort the whole deploy - mirrors src/main.ts's own empty catch here.
-			}
-		}
-
 		await core.logger.verbose("Emptying folders")
 		fs.emptyDirSync(path.join(core.paths.dataRoot, "staging"))
 		fs.emptyDirSync(path.join(core.paths.dataRoot, "temp"))

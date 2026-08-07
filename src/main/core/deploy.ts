@@ -7,7 +7,7 @@ import { RPKGHashCache, callRPKGFunction, execCommand, getRPKGOfHash, loadRPKGHa
 import type { DeployInstruction, HMLanguageToolsLOCR, ManifestOptionData, ModScript } from "./types"
 import { config, logger, options, paths, registerCleanup, rpkgInstance, unregisterCleanup } from "./core-singleton"
 import { enterFinalizePhase, throwIfCancelled } from "./cancel"
-import { copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
+import { atomicCopyFileSync, copyFromCache, copyToCache, extractOrCopyToTemp, getQuickEntityFromPatchVersion, getQuickEntityFromVersion, hexflip, normaliseToHash } from "./utils"
 import { resolveModFolder } from "./resolveModFolder"
 import { walk } from "./fsWalk"
 import { WorkerPool } from "./workerPool"
@@ -1962,11 +1962,15 @@ export default async function deploy(
 
 	sentryModsTransaction.finish()
 
-	// From here on, every remaining stage (Contract destinations, Localisation, Thumbs, Package
-	// definition, Generate RPKGs) writes its output directly into the game's live Retail/Runtime
-	// folder with no staging-then-atomic-rename - interrupting mid-write risks corrupting the
-	// actual game install, not just mod output. Cancellation is locked out from this point on; see
-	// cancel.ts's doc comment.
+	// From here on ("Finalizing deploy"), remaining stages shell out to external tools this app
+	// doesn't control (HMLanguageTools, callRPKGFunction/rpkgFunction.exe, h6xtea.exe) that can't
+	// safely be interrupted mid-invocation. Of these stages, only Thumbs, Package definition and
+	// Generate RPKGs actually write into the game's live Retail/Runtime folder - Contract
+	// destinations/WWEV patches/Localisation/Localisation overrides only ever write into
+	// paths.dataRoot's own staging/temp scratch dirs. As of LEI-151 those three Runtime writes are
+	// staged-then-atomic-rename (see utils.ts's atomicCopyFileSync), so a crash/kill mid-write no
+	// longer corrupts Runtime the way it used to - but cancellation stays locked out from this point
+	// on regardless, for the external-tool-interruption reason above; see cancel.ts's doc comment.
 	await logger.info("Finalizing deploy")
 	enterFinalizePhase()
 
@@ -2369,7 +2373,7 @@ export default async function deploy(
 			await copyToCache("global", thumbsOutputDir, thumbsCacheKey)
 		}
 
-		fs.copyFileSync(
+		atomicCopyFileSync(
 			path.join(thumbsOutputDir, "thumbs.dat"),
 			config.outputToSeparateDirectory ? path.join(paths.dataRoot, "Output", "thumbs.dat") : path.join(config.retailPath, "thumbs.dat")
 		) // Output thumbs
@@ -2471,7 +2475,7 @@ export default async function deploy(
 
 	await logger.verbose("Copying new packagedefinition to output")
 
-	fs.copyFileSync(
+	atomicCopyFileSync(
 		path.join(packagedefinitionOutputDir, "packagedefinition.txt"),
 		config.outputToSeparateDirectory ? path.join(paths.dataRoot, "Output", "packagedefinition.txt") : path.join(config.runtimePath, "packagedefinition.txt")
 	) // Output PD
@@ -2489,22 +2493,66 @@ export default async function deploy(
 	})
 	configureSentryScope(sentryRPKGGenerationTransaction)
 
+	const writtenRuntimeChunkNames = new Set<string>() // populated only when !config.outputToSeparateDirectory
+
 	for (const stagingChunkFolder of fs.readdirSync(path.join(paths.dataRoot, "staging"))) {
 		await callRPKGFunction(`-generate_rpkg_quickly_from "${path.join(paths.dataRoot, "staging", stagingChunkFolder)}" -output_path "${path.join(paths.dataRoot, "staging")}"`)
 
+		const outputChunkName = allRPKGTypes[stagingChunkFolder] === "base" ? `${stagingChunkFolder}.rpkg` : `${stagingChunkFolder}patch300.rpkg`
+
 		try {
-			fs.copyFileSync(
+			atomicCopyFileSync(
 				path.join(paths.dataRoot, "staging", `${stagingChunkFolder}.rpkg`),
-				config.outputToSeparateDirectory
-					? path.join(paths.dataRoot, "Output", allRPKGTypes[stagingChunkFolder] === "base" ? `${stagingChunkFolder}.rpkg` : `${stagingChunkFolder}patch300.rpkg`)
-					: path.join(config.runtimePath, allRPKGTypes[stagingChunkFolder] === "base" ? `${stagingChunkFolder}.rpkg` : `${stagingChunkFolder}patch300.rpkg`)
+				config.outputToSeparateDirectory ? path.join(paths.dataRoot, "Output", outputChunkName) : path.join(config.runtimePath, outputChunkName)
 			)
+
+			if (!config.outputToSeparateDirectory) {
+				writtenRuntimeChunkNames.add(outputChunkName)
+			}
 		} catch {
 			await logger.error("Couldn't copy the RPKG files! Make sure the game isn't running when you deploy your mods.")
 		}
 	}
 
 	sentryRPKGGenerationTransaction.finish()
+
+	// LEI-151: prune framework-owned chunk/patch rpkgs left over from a previous deploy's larger
+	// name-range. Moved here from deployPipeline.ts's old pre-deploy fs.rmSync cleanup, which ran
+	// unconditionally before deploy() even started - a crash between that deletion and deploy()
+	// regenerating the file left Runtime missing an rpkg the game expects. Pruning now only removes
+	// names this run did NOT just (re)write, and only runs after every chunk above copied
+	// successfully: a failed atomicCopyFileSync throws via logger.error's default exitAfter=true
+	// (core.ts), which aborts deploy() before this point is reached - so reaching here already means
+	// a complete, successful replacement set. Also skipped entirely when outputToSeparateDirectory is
+	// set, since this run's output then goes to dataRoot/Output, not Runtime - pruning Runtime here
+	// in that mode would just delete live files with nothing replacing them.
+	if (!config.outputToSeparateDirectory) {
+		await logger.verbose("Pruning stale Runtime patch/chunk files")
+
+		for (const runtimeFile of fs.readdirSync(config.runtimePath)) {
+			if (writtenRuntimeChunkNames.has(runtimeFile)) continue
+
+			try {
+				const patchMatch = runtimeFile.match(/^chunk[0-9]+patch([0-9]+)\.rpkg$/)
+				if (patchMatch) {
+					const patchNumber = parseInt(patchMatch[1])
+					if (patchNumber >= 200 && patchNumber <= 300) {
+						// The mod framework manages patch files between 200 (inc) and 300 (inc); this one
+						// wasn't (re)written this run, so it's stale.
+						fs.removeSync(path.join(config.runtimePath, runtimeFile))
+					}
+				} else if (runtimeFile.match(/^chunk[0-9]+\.rpkg$/)) {
+					if (parseInt(runtimeFile.split(".")[0].slice(5)) > 30) {
+						fs.removeSync(path.join(config.runtimePath, runtimeFile))
+					}
+				} else if (runtimeFile !== "packagedefinition.txt") {
+					await logger.warn(`${runtimeFile} in your Runtime folder is not from the vanilla game. This might cause issues with SMF - move it elsewhere!`)
+				}
+			} catch {
+				// Best-effort cleanup of a single stale Runtime file shouldn't abort an otherwise-successful deploy.
+			}
+		}
+	}
 
 	fs.removeSync(path.join(paths.dataRoot, "staging"))
 	fs.removeSync(path.join(paths.dataRoot, "temp"))

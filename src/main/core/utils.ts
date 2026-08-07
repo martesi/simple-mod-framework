@@ -148,6 +148,34 @@ export async function contentCacheExists(mod: string, cachePath: string): Promis
 	return fs.pathExists(contentCacheSlotDir(mod, cachePath))
 }
 
+/**
+ * Copies `src` to `dest` via a same-directory temp file + rename (LEI-151), instead of a direct
+ * overwrite - so a crash/kill mid-copy never leaves `dest` truncated. Concurrent readers (the
+ * game, Steam's "verify integrity") only ever see either the fully-intact old `dest` or the
+ * fully-written new one.
+ *
+ * The temp file is derived from `dest` itself (not some shared scratch dir) because
+ * `fs.renameSync` is only atomic within a single volume, and `dest` here is always either a path
+ * inside the game install or `dataRoot/Output` - both same-volume as themselves, but not
+ * necessarily the same volume as this app's own dataRoot/staging.
+ */
+export function atomicCopyFileSync(src: string, dest: string): void {
+	const tmpDest = `${dest}.tmp`
+
+	try {
+		fs.copyFileSync(src, tmpDest)
+		fs.renameSync(tmpDest, dest)
+	} catch (err) {
+		try {
+			fs.removeSync(tmpDest)
+		} catch {
+			// Best-effort cleanup of our own half-written temp file - don't mask the original error.
+		}
+
+		throw err
+	}
+}
+
 export function winPathEscape(str: string) {
 	return str
 		.replace(/</gi, "")

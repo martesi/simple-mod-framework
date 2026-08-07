@@ -64,11 +64,14 @@ app.whenReady().then(() => {
   const deployManager = registerIpcHandlers(resolveAppPaths())
 
   // Closing the app (window close, taskbar quit, Cmd/Alt+Q) while a deploy is running today just
-  // kills the process mid-write with no warning - `deploy()`'s finalize stage (see
-  // core/cancel.ts's doc comment) writes directly into the game's Retail/Runtime folder with no
-  // atomic rename, so an uncontrolled kill there can corrupt the actual game install. This doesn't
-  // make that safe - it just makes sure the user is told before it happens, same as the in-app
-  // Cancel action being locked out past that point rather than silently allowed.
+  // kills the process with no warning. `deploy()`'s finalize stage (see core/cancel.ts's doc
+  // comment) shells out to external tools (HMLanguageTools, rpkgFunction.exe, h6xtea.exe) this app
+  // doesn't control - an uncontrolled kill mid-invocation there can still leave one of those
+  // half-run against a live game file, even though the writes deploy() itself makes into Retail/
+  // Runtime are staged-then-atomic-rename (LEI-151) and no longer the risk they used to be. This
+  // doesn't make quitting mid-deploy safe - it just makes sure the user is told before it happens,
+  // same as the in-app Cancel action being locked out past "Finalizing deploy" rather than
+  // silently allowed.
   app.on("before-quit", (event) => {
     if (forceQuit || !deployManager.isActive()) return
     event.preventDefault()
