@@ -24,10 +24,18 @@
 //     pattern. (This used to scrape https://www.7-zip.org/download.html for
 //     the same link, but that page doesn't reliably serve a scriptable
 //     response - the GitHub API is the more reliable source it should've
-//     used from the start.) Extracting it needs 7zr.exe, 7-Zip's own
+//     used from the start.) Extracting that "*-extra.7z" wrapper archive
+//     itself needs a 7-Zip build: on Windows, 7zr.exe (7-Zip's own
 //     dependency-free minimal extractor, published for exactly this
-//     bootstrapping problem; Windows only, since that's the only platform
-//     this repo ships 7z.exe for.
+//     bootstrapping problem); on Linux, whatever native "7zz"/"7z"/"7za" is
+//     already on PATH (see findNativeSevenZipCli() - `nix develop .#e2e`
+//     provides 7zz for this, see flake.nix).
+//     7za.exe itself is still a win32 PE binary either way - on Linux it's
+//     copied to "7z-real.exe" instead, with a `wine` shebang-script wrapper
+//     written to "7z.exe" in its place (see the platform branch at the
+//     bottom of ensureSevenZip()), since this sandbox has no root to make
+//     the kernel exec PE binaries via Wine directly (binfmt_misc) the way a
+//     real desktop Wine install would.
 //     (7z-LICENSE isn't fetched here - unconfirmed whether the Extra
 //     package bundles it, so it stays committed in extra/Third-Party/
 //     either way.)
@@ -205,30 +213,48 @@ async function ensureTonyTools() {
 	return "downloaded"
 }
 
+// Finds a native (non-Windows) 7-Zip CLI on PATH to extract the "*-extra.7z" release asset
+// below with - "7zz" is 7-Zip's own official Linux build (what `nix develop .#e2e` provides,
+// see flake.nix), "7z"/"7za" cover a p7zip install. Tried in that order; returns null if none
+// are on PATH.
+function findNativeSevenZipCli() {
+	for (const candidate of ["7zz", "7z", "7za"]) {
+		try {
+			execFileSync(candidate, ["i"], { stdio: "ignore" })
+			return candidate
+		} catch {
+			// not on PATH (or not runnable) - try the next candidate
+		}
+	}
+	return null
+}
+
 async function ensureSevenZip() {
 	if (fs.existsSync(path.join(dest, "7z.exe"))) return "already downloaded"
-
-	if (process.platform !== "win32") {
-		throw new Error('automatic 7-Zip fetch is only implemented for Windows (extraction needs 7zr.exe, a Windows executable)')
-	}
 
 	const archivePath = path.join(os.tmpdir(), "smf-7z-extra.7z")
 	const bootstrapPath = path.join(os.tmpdir(), "smf-7zr.exe")
 	const extractDir = path.join(os.tmpdir(), "smf-7z-extracted")
 
-	// 7zr.exe is a dependency-free minimal extractor 7-Zip itself publishes
-	// specifically so its own .7z-packaged releases can be unpacked without
-	// already having 7-Zip installed - the exact bootstrapping problem this
-	// function would otherwise have. It's a fixed URL with no dependency on
-	// the release metadata below, so kick it off now and let it download
-	// concurrently with everything else - only the extraction step at the
-	// bottom genuinely needs it to be done.
-	const bootstrapDownload = download("https://github.com/ip7z/7zip/releases/latest/download/7zr.exe", bootstrapPath)
+	// 7zr.exe is a dependency-free minimal extractor 7-Zip itself publishes specifically so its
+	// own .7z-packaged releases can be unpacked without already having 7-Zip installed - the
+	// exact bootstrapping problem this function would otherwise have. It's a fixed URL with no
+	// dependency on the release metadata below, so kick it off now and let it download
+	// concurrently with everything else. Windows only needs this: on Linux, extraction below
+	// uses whatever native "7zz"/"7z" the dev shell already provides instead (see
+	// findNativeSevenZipCli()), so don't even start this download there.
+	const bootstrapDownload =
+		process.platform === "win32" ? download("https://github.com/ip7z/7zip/releases/latest/download/7zr.exe", bootstrapPath) : Promise.resolve()
 	// Without this, a rejection here before the `await Promise.all([bootstrapDownload, ...])`
 	// below reaches it would be an unhandled rejection (Node treats those as fatal) -
 	// this no-op handler just marks it "observed"; the real error still propagates
 	// normally when bootstrapDownload is awaited below.
 	bootstrapDownload.catch(() => {})
+
+	const nativeSevenZip = process.platform !== "win32" ? findNativeSevenZipCli() : null
+	if (process.platform !== "win32" && !nativeSevenZip) {
+		throw new Error('no "7zz"/"7z"/"7za" found on PATH to extract the upstream 7-Zip release - run this from `nix develop .#e2e` (provides 7zz) or install p7zip')
+	}
 
 	try {
 		const release = await fetchJson("https://api.github.com/repos/ip7z/7zip/releases/latest")
@@ -246,22 +272,80 @@ async function ensureSevenZip() {
 
 		fs.rmSync(extractDir, { recursive: true, force: true })
 		fs.mkdirSync(extractDir, { recursive: true })
-		execFileSync(bootstrapPath, ["x", archivePath, `-o${extractDir}`, "-y"])
+		if (process.platform === "win32") {
+			execFileSync(bootstrapPath, ["x", archivePath, `-o${extractDir}`, "-y"])
+		} else {
+			if (DEBUG) console.error(`[debug] extracting with native "${nativeSevenZip}"`)
+			execFileSync(nativeSevenZip, ["x", archivePath, `-o${extractDir}`, "-y"])
+		}
 
 		// The "Extra" package doesn't actually contain 7z.exe/7z.dll (the
 		// full command-line build, which needs 7z.dll for its codecs) -
 		// it ships 7za.exe instead, the statically-linked "alone" build
 		// that needs no companion DLL (fewer formats than 7z.exe - no RAR -
 		// but zip/7z/gzip/bzip2/tar, which is all mod archives use here).
-		// Copied to dest as "7z.exe" so nothing else in the codebase (Mod
-		// Manager's archive extraction, scripts/fetch-hashes.js) needs to
-		// know the difference.
 		if (DEBUG) console.error(`[debug] extracted ${asset.name}, contents: ${fs.readdirSync(extractDir).join(", ")}`)
-		const found = findFile(extractDir, "7za.exe")
+		// The package roots both a 32-bit 7za.exe (top level) and a 64-bit one (x64/) - on
+		// Windows either runs natively so it's never mattered which findFile() happened to hit
+		// first (top level, alphabetically before "x64"). On Linux it matters: nixpkgs' `wine64`
+		// is a 64-bit-only build with no WoW64/32-bit support, so handing it the 32-bit binary
+		// fails opaquely (`wine: failed to load ntdll.dll error c0000135`) - search x64/ specifically.
+		const found = process.platform === "win32" ? findFile(extractDir, "7za.exe") : findFile(path.join(extractDir, "x64"), "7za.exe")
 		if (!found) {
 			throw new Error(`Couldn't find 7za.exe inside ${asset.name} - the package layout may have changed. Place a 7-Zip build at "extra/Third-Party/7z.exe" yourself.`)
 		}
-		fs.copyFileSync(found, path.join(dest, "7z.exe"))
+
+		if (process.platform === "win32") {
+			// Copied to dest as "7z.exe" so nothing else in the codebase (Mod Manager's archive
+			// extraction, scripts/fetch-hashes.js) needs to know the difference.
+			fs.copyFileSync(found, path.join(dest, "7z.exe"))
+		} else {
+			// 7za.exe is still a win32 PE binary - it can't be exec'd directly on Linux, and this
+			// sandbox has no root to register a binfmt_misc handler routing PE through Wine. So
+			// ship the real binary under a different name, and put a `wine` wrapper *script* at
+			// "7z.exe" instead (the path src/main/archive.ts actually execFile()s) - the kernel
+			// natively understands a `#!` shebang with zero registration needed, so the exec of
+			// that path just happens to run a shell script that hands off to Wine instead of a PE
+			// binary directly. Nothing in src/main needs a platform branch as a result. See
+			// flake.nix's devShells.e2e comment for the full picture (this needs `wine` on PATH -
+			// that dev shell provides it).
+			const realBinPath = path.join(dest, "7z-real.exe")
+			fs.copyFileSync(found, realBinPath)
+			const wrapperPath = path.join(dest, "7z.exe")
+			// src/main/archive.ts's execFile() call has no reason to know any of this is
+			// Wine underneath, so the wrapper can't rely on a caller-set environment - it defaults
+			// everything Wine needs itself (the `:-` guards still let an interactive e2e shell
+			// override any of them, e.g. to point WINEPREFIX at a shared one to skip reinitializing
+			// it per test run):
+			//   - WINEPREFIX: an unset one defaults to "~/.wine", which is fine standalone but not
+			//     something a from-scratch e2e sandbox (no $HOME writable, or none at all) can
+			//     assume - default to a directory colocated with the tools instead. First run pays
+			//     wineboot's prefix-init cost; later runs reuse it.
+			//   - XDG_RUNTIME_DIR: wine aborts immediately ("invalid or not set") without this in a
+			//     minimal container that never set it up.
+			//   - WINEDLLOVERRIDES=mscoree,mshtml=: disables the Mono/Gecko install prompts Wine
+			//     would otherwise try to throw up (and hang on, headless) the first time anything
+			//     touches .NET or an embedded web control - 7za.exe never needs either, so disabling
+			//     both outright is strictly a safety net, not a feature this needs.
+			//   - WINEDEBUG=-all: Wine's fixme:/err: diagnostic spam (mostly about the missing GUI
+			//     driver, harmless here since 7za.exe is a console app) would otherwise land on
+			//     stderr and be indistinguishable from a real failure.
+			fs.writeFileSync(
+				wrapperPath,
+				[
+					"#!/bin/sh",
+					'toolsDir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"',
+					'export WINEPREFIX="${WINEPREFIX:-$toolsDir/.wineprefix}"',
+					'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$toolsDir/.wineprefix/.xdg-runtime}"',
+					'mkdir -p "$XDG_RUNTIME_DIR"',
+					'export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-mscoree,mshtml=}"',
+					'export WINEDEBUG="${WINEDEBUG:--all}"',
+					'exec wine "$toolsDir/7z-real.exe" "$@"',
+					""
+				].join("\n")
+			)
+			fs.chmodSync(wrapperPath, 0o755)
+		}
 	} finally {
 		fs.rmSync(archivePath, { force: true })
 		fs.rmSync(bootstrapPath, { force: true })
