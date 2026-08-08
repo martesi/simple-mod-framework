@@ -82,12 +82,12 @@
         # (extra/Third-Party/) - headlessly on Linux, for e2e runs: a virtual X server to give
         # Electron/Chromium somewhere to render (it still opens a real window/GL context even when
         # driven over CDP, not just when clicked through with xdotool), and Wine so the bundled
-        # win32 tools (7z.exe et al) can actually execute. `scripts/fetch-third-party.js` fetches
-        # 7z.exe's own upstream archive with `7zz` (native Linux 7-Zip) on this platform rather than
-        # needing Wine just to bootstrap that - see its ensureSevenZip() for why - and wraps the
-        # extracted win32 binary in a `wine "$@"` shebang script of the same name so
-        # src/main/archive.ts's `execFile(sevenZip, ...)` needs no platform branch at all: the OS
-        # exec of that path just happens to run a script instead of a PE binary. This is kept out of
+        # win32 tools (7z.exe, rpkg-cli.exe, ResourceTool.exe, ...) can actually execute -
+        # src/main/wineExec.ts is the single interop point that decides whether to prefix `wine`
+        # (a no-op on win32), used by every Third-Party tool invocation in src/main, rather than a
+        # per-binary wrapper-script trick. `scripts/fetch-third-party.js` fetches 7z.exe's own
+        # upstream archive with `7zz` (native Linux 7-Zip) on this platform rather than needing Wine
+        # just to bootstrap that - see its ensureSevenZip() for why. This whole shell is kept out of
         # `devShells.default` since it's dead weight (GUI/X11/Wine closure) for everyday
         # typecheck/lint/dev work - see references/e2e-shell.md in the headless-gui skill.
         e2e = pkgs.mkShell {

@@ -440,7 +440,7 @@ export interface ModAPI {
 
 	/** Utility functions. */
 	utils: {
-		/** Execute a shell command. */
+		/** Execute a shell command. On non-Windows platforms this transparently runs the command under Wine. */
 		execCommand(command: string): void
 
 		/** Get the QuickEntity module for a given QuickEntity version. */

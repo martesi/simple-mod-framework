@@ -16,6 +16,8 @@ import md5 from "md5"
 import mergeWith from "lodash.mergewith"
 import path from "path"
 
+import { wineCommand } from "../wineExec"
+
 /* ---------------------------------------------------------------------------------------------- */
 /*   Shared with deploy.ts's "Execute instructions" phase - single source of truth so that the     */
 /*   in-memory RPKGHashCache stays one real singleton instead of two independent copies.           */
@@ -23,15 +25,21 @@ import path from "path"
 
 export const thirdParty = (exe: string) => path.join(paths.toolsRoot, "Third-Party", exe)
 
+/**
+ * Also exposed to mod scripts as `utils.execCommand` (see types.ts) - on non-win32 this
+ * transparently runs the command under Wine (see wineExec.ts), since every realistic command a
+ * mod script or the deploy pipeline shells out to here is one of the bundled Windows tools.
+ */
 export const execCommand = function (command: string) {
 	void logger.verbose(`Executing command ${command}`)
+	const { command: wrapped, env } = wineCommand(command, paths.toolsRoot)
 	// cwd is pinned to dataRoot rather than left to default to process.cwd() - on Windows,
 	// execSync shells out through cmd.exe, which refuses to start at all if its cwd is a UNC path
 	// (e.g. \\wsl.localhost\... when this app/repo is running from a WSL-hosted checkout).
 	// dataRoot is never UNC in normal operation (userData, or a folder next to the game install -
 	// see settings.ts's resolveTempDir()), so pinning it here sidesteps that regardless of where
 	// the process itself was launched from.
-	child_process.execSync(command, { stdio: ["pipe", "pipe", "inherit"], cwd: paths.dataRoot, windowsHide: true })
+	child_process.execSync(wrapped, { stdio: ["pipe", "pipe", "inherit"], cwd: paths.dataRoot, windowsHide: true, env })
 }
 
 export const callRPKGFunction = async function (command: string) {

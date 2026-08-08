@@ -30,12 +30,17 @@
 //     bootstrapping problem); on Linux, whatever native "7zz"/"7z"/"7za" is
 //     already on PATH (see findNativeSevenZipCli() - `nix develop .#e2e`
 //     provides 7zz for this, see flake.nix).
-//     7za.exe itself is still a win32 PE binary either way - on Linux it's
-//     copied to "7z-real.exe" instead, with a `wine` shebang-script wrapper
-//     written to "7z.exe" in its place (see the platform branch at the
-//     bottom of ensureSevenZip()), since this sandbox has no root to make
-//     the kernel exec PE binaries via Wine directly (binfmt_misc) the way a
-//     real desktop Wine install would.
+//     7za.exe itself is still a win32 PE binary - it can't be exec'd
+//     directly on Linux, and this sandbox has no root to make the kernel
+//     exec PE binaries via Wine directly (binfmt_misc) the way a real
+//     desktop Wine install would. Unlike the old approach here (copying the
+//     real binary to "7z-real.exe" and generating a `wine` shebang-script
+//     wrapper named "7z.exe"), that's now handled at call time instead: this
+//     script always just copies 7za.exe straight to "7z.exe" on every
+//     platform, and src/main/archive.ts runs it through src/main/wineExec.ts
+//     (which decides whether to prefix `wine`) rather than needing a
+//     generated wrapper file - the same interop point every other bundled
+//     Third-Party tool now goes through too, not just this one.
 //     (7z-LICENSE isn't fetched here - unconfirmed whether the Extra
 //     package bundles it, so it stays committed in extra/Third-Party/
 //     either way.)
@@ -295,57 +300,12 @@ async function ensureSevenZip() {
 			throw new Error(`Couldn't find 7za.exe inside ${asset.name} - the package layout may have changed. Place a 7-Zip build at "extra/Third-Party/7z.exe" yourself.`)
 		}
 
-		if (process.platform === "win32") {
-			// Copied to dest as "7z.exe" so nothing else in the codebase (Mod Manager's archive
-			// extraction, scripts/fetch-hashes.js) needs to know the difference.
-			fs.copyFileSync(found, path.join(dest, "7z.exe"))
-		} else {
-			// 7za.exe is still a win32 PE binary - it can't be exec'd directly on Linux, and this
-			// sandbox has no root to register a binfmt_misc handler routing PE through Wine. So
-			// ship the real binary under a different name, and put a `wine` wrapper *script* at
-			// "7z.exe" instead (the path src/main/archive.ts actually execFile()s) - the kernel
-			// natively understands a `#!` shebang with zero registration needed, so the exec of
-			// that path just happens to run a shell script that hands off to Wine instead of a PE
-			// binary directly. Nothing in src/main needs a platform branch as a result. See
-			// flake.nix's devShells.e2e comment for the full picture (this needs `wine` on PATH -
-			// that dev shell provides it).
-			const realBinPath = path.join(dest, "7z-real.exe")
-			fs.copyFileSync(found, realBinPath)
-			const wrapperPath = path.join(dest, "7z.exe")
-			// src/main/archive.ts's execFile() call has no reason to know any of this is
-			// Wine underneath, so the wrapper can't rely on a caller-set environment - it defaults
-			// everything Wine needs itself (the `:-` guards still let an interactive e2e shell
-			// override any of them, e.g. to point WINEPREFIX at a shared one to skip reinitializing
-			// it per test run):
-			//   - WINEPREFIX: an unset one defaults to "~/.wine", which is fine standalone but not
-			//     something a from-scratch e2e sandbox (no $HOME writable, or none at all) can
-			//     assume - default to a directory colocated with the tools instead. First run pays
-			//     wineboot's prefix-init cost; later runs reuse it.
-			//   - XDG_RUNTIME_DIR: wine aborts immediately ("invalid or not set") without this in a
-			//     minimal container that never set it up.
-			//   - WINEDLLOVERRIDES=mscoree,mshtml=: disables the Mono/Gecko install prompts Wine
-			//     would otherwise try to throw up (and hang on, headless) the first time anything
-			//     touches .NET or an embedded web control - 7za.exe never needs either, so disabling
-			//     both outright is strictly a safety net, not a feature this needs.
-			//   - WINEDEBUG=-all: Wine's fixme:/err: diagnostic spam (mostly about the missing GUI
-			//     driver, harmless here since 7za.exe is a console app) would otherwise land on
-			//     stderr and be indistinguishable from a real failure.
-			fs.writeFileSync(
-				wrapperPath,
-				[
-					"#!/bin/sh",
-					'toolsDir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"',
-					'export WINEPREFIX="${WINEPREFIX:-$toolsDir/.wineprefix}"',
-					'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-$toolsDir/.wineprefix/.xdg-runtime}"',
-					'mkdir -p "$XDG_RUNTIME_DIR"',
-					'export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-mscoree,mshtml=}"',
-					'export WINEDEBUG="${WINEDEBUG:--all}"',
-					'exec wine "$toolsDir/7z-real.exe" "$@"',
-					""
-				].join("\n")
-			)
-			fs.chmodSync(wrapperPath, 0o755)
-		}
+		// Copied to dest as "7z.exe" regardless of platform - nothing else in the codebase (Mod
+		// Manager's archive extraction, scripts/fetch-hashes.js) needs to know the difference. On
+		// non-win32, src/main/archive.ts runs this under Wine itself at call time (see
+		// src/main/wineExec.ts) rather than needing a generated wrapper script here - one interop
+		// decision point instead of a per-binary file-renaming trick.
+		fs.copyFileSync(found, path.join(dest, "7z.exe"))
 	} finally {
 		fs.rmSync(archivePath, { force: true })
 		fs.rmSync(bootstrapPath, { force: true })

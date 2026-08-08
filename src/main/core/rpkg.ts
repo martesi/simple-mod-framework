@@ -1,6 +1,8 @@
 import child_process from "child_process"
 import path from "path"
 
+import { wineArgv } from "../wineExec"
+
 /**
  * Thrown when the underlying rpkg-cli process exits unexpectedly (crashes) instead of on
  * request. Replaces the previous behaviour of calling `process.exit(1)` from inside the
@@ -35,9 +37,16 @@ class RPKGInstance {
 	private initialisedWaiters: PendingCall[] = []
 	private readyWaiter?: PendingCall
 
-	/** @param rpkgCliPath Path to the rpkg-cli executable - callers now always pass this explicitly (usually `path.join(paths.toolsRoot, "Third-Party", "rpkg-cli")`) instead of relying on a `process.cwd()`-based default (see LEI-130). */
-	constructor(rpkgCliPath: string) {
-		this.rpkgProcess = child_process.spawn(rpkgCliPath, ["-i"], { windowsHide: true })
+	/**
+	 * @param toolsRoot The app's Third-Party tools root (usually `paths.toolsRoot`) - resolves to
+	 * `{toolsRoot}/Third-Party/rpkg-cli.exe` internally (explicit `.exe`, not left to Windows'
+	 * implicit spawn-extension resolution - see wineExec.ts's doc comment for why that matters on
+	 * Linux) and routed through {@link wineArgv} so it runs under Wine there.
+	 */
+	constructor(toolsRoot: string) {
+		const rpkgCliPath = path.join(toolsRoot, "Third-Party", "rpkg-cli.exe")
+		const { command, args, env } = wineArgv(rpkgCliPath, ["-i"], toolsRoot)
+		this.rpkgProcess = child_process.spawn(command, args, { windowsHide: true, env })
 		this.output = ""
 		this.previousOutput = ""
 		this.initialised = false
@@ -74,31 +83,45 @@ class RPKGInstance {
 			}
 		})
 
+		// Node fires both "error" (if the process couldn't even be spawned - e.g. a missing exe or
+		// missing `wine`) and "close" for the same failure, in unspecified relative order - failWith()
+		// is idempotent (guarded by `this.fatalError`) so whichever fires first wins and the other is
+		// a no-op. Without the "error" listener, a spawn failure was an unhandled EventEmitter "error"
+		// (Node throws synchronously when "error" has zero listeners) that never rejected any pending
+		// waiter - callers just hung until whatever external timeout gave up on them.
+		this.rpkgProcess.on("error", (err) => {
+			this.failWith(new RPKGProcessError(`Failed to start rpkg-cli: ${err.message}`))
+		})
+
 		this.rpkgProcess.on("close", () => {
 			if (this.shouldExit) {
 				return
 			}
 
-			console.error("Fatal error!")
-			console.error("RPKG process exited unexpectedly with output:")
-
-			for (const line of this.output.split("\n")) {
-				console.log(line)
-			}
-
-			this.fatalError = new RPKGProcessError(`RPKG process exited unexpectedly with output:\n${this.output}`)
-
-			const initialisedWaiters = this.initialisedWaiters.splice(0)
-			for (const { reject } of initialisedWaiters) {
-				reject(this.fatalError)
-			}
-
-			if (this.readyWaiter) {
-				const { reject } = this.readyWaiter
-				this.readyWaiter = undefined
-				reject(this.fatalError)
-			}
+			this.failWith(new RPKGProcessError(`RPKG process exited unexpectedly with output:\n${this.output}`))
 		})
+	}
+
+	private failWith(error: RPKGProcessError): void {
+		if (this.fatalError) {
+			return
+		}
+
+		console.error("Fatal error!")
+		console.error(error.message)
+
+		this.fatalError = error
+
+		const initialisedWaiters = this.initialisedWaiters.splice(0)
+		for (const { reject } of initialisedWaiters) {
+			reject(this.fatalError)
+		}
+
+		if (this.readyWaiter) {
+			const { reject } = this.readyWaiter
+			this.readyWaiter = undefined
+			reject(this.fatalError)
+		}
 	}
 
 	async waitForInitialised(): Promise<string> {

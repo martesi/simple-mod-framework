@@ -1,6 +1,7 @@
 import child_process from "child_process"
 import path from "path"
 import { logger, paths } from "./core-singleton"
+import { wineCommand } from "../wineExec"
 
 // Shim for QuickEntity 3.0 executable
 
@@ -10,10 +11,11 @@ const qnExe = () => path.join(paths.toolsRoot, "Third-Party", "quickentity-3.exe
 
 const execCommand = function (command: string) {
 	void logger.verbose(`Executing QN 3.0 command ${command}`)
+	const { command: wrapped, env } = wineCommand(command, paths.toolsRoot)
 	// See analyseMod.ts's execCommand for why cwd is pinned to dataRoot rather than left to
 	// process.cwd() - cmd.exe (which execSync shells out through on Windows) refuses to start at
 	// all with a UNC cwd.
-	child_process.execSync(command, { stdio: [ "pipe", "pipe", "inherit" ], cwd: paths.dataRoot, windowsHide: true })
+	child_process.execSync(wrapped, { stdio: [ "pipe", "pipe", "inherit" ], cwd: paths.dataRoot, windowsHide: true, env })
 }
 
 export async function convert(_game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) {

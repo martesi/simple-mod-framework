@@ -1101,7 +1101,7 @@ export default async function deploy(
 							}
 
 							execCommand(
-								`"${thirdParty("HMTextureTools")}" rebuild H3 "${contentFilePath}" --metapath "${`${contentFilePath}.meta`}" "${path.join(
+								`"${thirdParty("HMTextureTools.exe")}" rebuild H3 "${contentFilePath}" --metapath "${`${contentFilePath}.meta`}" "${path.join(
 									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
@@ -1194,7 +1194,7 @@ export default async function deploy(
 							}
 
 							execCommand(
-								`"${thirdParty("HMTextureTools")}" rebuild H3 "${contentFilePath}" --metapath "${`${contentFilePath}.meta`}" "${path.join(
+								`"${thirdParty("HMTextureTools.exe")}" rebuild H3 "${contentFilePath}" --metapath "${`${contentFilePath}.meta`}" "${path.join(
 									paths.dataRoot,
 									"temp",
 									`chunk${content.chunk}`,
@@ -1349,7 +1349,7 @@ export default async function deploy(
 						}
 
 						execCommand(
-							`"${thirdParty("xdelta3")}" -d -s "${path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${runtimeID}.${fileType}`)}" "${contentFilePath}" "${path.join(
+							`"${thirdParty("xdelta3.exe")}" -d -s "${path.join(paths.dataRoot, "temp", rpkgOfFile, fileType, `${runtimeID}.${fileType}`)}" "${contentFilePath}" "${path.join(
 								paths.dataRoot,
 								"temp",
 								`chunk${content.chunk}`,
@@ -1419,7 +1419,7 @@ export default async function deploy(
 						}
 
 						execCommand(
-							`"${thirdParty("HMLanguageTools")}" rebuild H3 ${binaryType} "${contentFilePath}" "${path.join(
+							`"${thirdParty("HMLanguageTools.exe")}" rebuild H3 ${binaryType} "${contentFilePath}" "${path.join(
 								paths.dataRoot,
 								"temp",
 								`chunk${content.chunk}`,
@@ -2175,7 +2175,7 @@ export default async function deploy(
 			await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR.meta")}"`)
 
 			execCommand(
-				`"${thirdParty("HMLanguageTools")}" convert H3 LOCR "${path.join(paths.dataRoot, "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR")}" "${path.join(
+				`"${thirdParty("HMLanguageTools.exe")}" convert H3 LOCR "${path.join(paths.dataRoot, "temp", `${localisationFileRPKG}`, "LOCR", "00F5817876E691F1.LOCR")}" "${path.join(
 					paths.dataRoot,
 					"temp",
 					"LOCR",
@@ -2218,7 +2218,7 @@ export default async function deploy(
 
 		// Rebuild the LOCR
 		execCommand(
-			`"${thirdParty("HMLanguageTools")}" rebuild H3 LOCR "${path.join(paths.dataRoot, "temp", "LOCR", `${localisationFileRPKG}.rpkg`, "00F5817876E691F1.LOCR.JSON")}" "${path.join(
+			`"${thirdParty("HMLanguageTools.exe")}" rebuild H3 LOCR "${path.join(paths.dataRoot, "temp", "LOCR", `${localisationFileRPKG}.rpkg`, "00F5817876E691F1.LOCR.JSON")}" "${path.join(
 				paths.dataRoot,
 				"staging",
 				localisationFileRPKG.replace(/patch[0-9]*/gi, ""),
@@ -2265,7 +2265,7 @@ export default async function deploy(
 				await callRPKGFunction(`-hash_meta_to_json "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.meta`)}"`)
 
 				execCommand(
-					`"${thirdParty("HMLanguageTools")}" convert H3 LOCR "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR`)}" "${path.join(
+					`"${thirdParty("HMLanguageTools.exe")}" convert H3 LOCR "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR`)}" "${path.join(
 						paths.dataRoot,
 						"temp",
 						localisationFileRPKG,
@@ -2306,7 +2306,7 @@ export default async function deploy(
 
 			// Rebuild the LOCR
 			execCommand(
-				`"${thirdParty("HMLanguageTools")}" rebuild H3 LOCR "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.JSON`)}" "${path.join(
+				`"${thirdParty("HMLanguageTools.exe")}" rebuild H3 LOCR "${path.join(paths.dataRoot, "temp", localisationFileRPKG, "LOCR", `${locrHash}.LOCR.JSON`)}" "${path.join(
 					paths.dataRoot,
 					"staging",
 					localisationFileRPKG.replace(/patch[0-9]*/gi, ""),

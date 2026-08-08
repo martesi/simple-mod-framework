@@ -167,7 +167,7 @@ export function createCore(configOrPath: Config | string, options: CoreOptions =
 	config.retailPath = path.resolve(dataRoot, config.retailPath)
 	config.modsPath = path.resolve(dataRoot, config.modsPath)
 
-	const rpkgInstance = new RPKGInstance(path.join(toolsRoot, "Third-Party", "rpkg-cli"))
+	const rpkgInstance = new RPKGInstance(toolsRoot)
 
 	// electron-log's own file/console transports replace the old hand-rolled pair of a manual
 	// `fs.appendFileSync` to Deploy.log plus a chalk-coloured `process.stdout.write` - "a proper

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process"
 import { join } from "node:path"
 import type { AppPaths } from "./paths"
+import { wineArgv } from "./wineExec"
 
 /**
  * Extracts an archive with the bundled 7z.exe - same tool the old
@@ -14,12 +15,16 @@ import type { AppPaths } from "./paths"
  *     name a file - the old code's
  *     `` execSync(`"..\\Third-Party\\7z.exe" x "${modFilePath}" ...`) ``
  *     was one crafted filename away from shell injection.
+ *
+ * On non-win32, {@link wineArgv} runs 7z.exe under Wine instead - see wineExec.ts. Nothing here
+ * needs to know that; it always gets back a ready-to-run command/args pair.
  */
 export function extractArchive(paths: AppPaths, archivePath: string, destDir: string): Promise<void> {
   const sevenZip = join(paths.toolsRoot, "Third-Party", "7z.exe")
+  const { command, args, env } = wineArgv(sevenZip, ["x", archivePath, "-aoa", "-y", `-o${destDir}`], paths.toolsRoot)
 
   return new Promise((resolvePromise, reject) => {
-    execFile(sevenZip, ["x", archivePath, "-aoa", "-y", `-o${destDir}`], { windowsHide: true }, (error) => {
+    execFile(command, args, { windowsHide: true, env }, (error) => {
       if (error) reject(error)
       else resolvePromise()
     })

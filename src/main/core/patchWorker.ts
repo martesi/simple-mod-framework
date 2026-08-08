@@ -13,13 +13,16 @@ import path from "path"
 import { parentPort } from "worker_threads"
 import { xxhash3 } from "hash-wasm"
 
+import { wineCommand } from "../wineExec"
+
 const execCommand = function (command: string) {
 	void logger.verbose(`Executing command ${command}`)
 	return new Promise((resolve, _reject) => {
+		const { command: wrapped, env } = wineCommand(command, paths.toolsRoot)
 		// See analyseMod.ts's execCommand for why cwd is pinned to dataRoot rather than left to
 		// process.cwd() - cmd.exe (which exec shells out through on Windows) refuses to start at
 		// all with a UNC cwd.
-		const x = child_process.exec(command, { cwd: paths.dataRoot, windowsHide: true })
+		const x = child_process.exec(wrapped, { cwd: paths.dataRoot, windowsHide: true, env })
 		x.stdout?.pipe(process.stdout)
 		x.stderr?.pipe(process.stderr)
 		x.on("close", resolve)
@@ -80,7 +83,7 @@ async function processPatch({
 	fs.ensureDirSync(path.join(paths.dataRoot, assignedTemporaryDirectory))
 
 	if (!(await copyFromCache(cacheFolder, path.join(chunkFolder, await xxhash3(patches[patches.length - 1].path)), path.join(paths.dataRoot, assignedTemporaryDirectory)))) {
-		const rpkgInstance = new RPKGInstance(path.join(paths.toolsRoot, "Third-Party", "rpkg-cli"))
+		const rpkgInstance = new RPKGInstance(paths.toolsRoot)
 
 		await rpkgInstance.waitForInitialised()
 

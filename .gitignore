@@ -36,7 +36,6 @@ src/renderer/src/locales/**/messages.mjs
 # in git history. Ignored individually by name (rather than the whole
 # directory) since they sit alongside the committed tools above.
 7z.exe
-7z-real.exe
 .wineprefix
 HMLanguageTools.exe
 HMTextureTools.exe

@@ -59,8 +59,11 @@ function naturalCompare(a: string, b: string): number {
  * longer assumes `process.cwd()` is the framework's data root.
  */
 export async function stageDependenciesFrom(fromFolder: string, toStagingDir: string): Promise<void> {
-	const reRpkg = /00[0-9A-F]*\..*?\\(chunk[0-9]*(?:patch[0-9]*)?)\\/i
-	const reRpkgChunk = /00[0-9A-F]*\..*?\\(chunk[0-9]*)(?:patch[0-9]*)?\\/i
+	// [\\/] rather than a literal \\ - entry.path below comes from a real filesystem walk (klaw,
+	// via ./fsWalk), which returns OS-native separators (backslash on Windows, forward slash on
+	// Linux/macOS). A hardcoded \\ only ever matched on Windows.
+	const reRpkg = /00[0-9A-F]*\..*?[\\/](chunk[0-9]*(?:patch[0-9]*)?)[\\/]/i
+	const reRpkgChunk = /00[0-9A-F]*\..*?[\\/](chunk[0-9]*)(?:patch[0-9]*)?[\\/]/i
 	const reMeta = /chunk[0-9]*(?:patch[0-9]*)?\.meta/i
 
 	const allFiles = (await walk(fromFolder))
