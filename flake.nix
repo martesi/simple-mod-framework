@@ -34,6 +34,7 @@
         gdk-pixbuf
         libdrm
         mesa
+        libglvnd
         libgbm # libgbm.so.1 lives in this split-out mesa output, not `mesa` itself
         libxkbcommon
         systemd # libudev.so.1
@@ -98,6 +99,7 @@
               _7zz # extracts 7-Zip's own upstream release archive to fetch 7z.exe in the first place
               xvfb
               xdpyinfo # readiness check - see references/driving.md
+              gsettings-desktop-schemas
             ]);
 
           inherit (commonEnv) LD_LIBRARY_PATH;
@@ -116,6 +118,7 @@
             export FONTCONFIG_FILE="''${FONTCONFIG_FILE:-${pkgs.makeFontsConf {
               fontDirectories = with pkgs; [ dejavu_fonts liberation_ttf ];
             }}}"
+            export GSETTINGS_SCHEMA_DIR="''${GSETTINGS_SCHEMA_DIR:-${pkgs.gtk3}/share/gsettings-schemas/gtk+3-${pkgs.gtk3.version}/glib-2.0/schemas:${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/gsettings-desktop-schemas-${pkgs.gsettings-desktop-schemas.version}/glib-2.0/schemas}"
             echo "smf e2e shell: wine $(wine --version), 7zz $(7zz | sed -n 2p)"
           '';
         };
