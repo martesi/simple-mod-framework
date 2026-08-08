@@ -105,7 +105,7 @@ export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths):
 	if (!isMicrosoftLayout && !existsSync(join(retailPath, "HITMAN3.exe"))) {
 		return {
 			ok: false,
-			error: `HITMAN3.exe couldn't be found in "${retailPath}" - pick the game's Retail folder (the one directly containing HITMAN3.exe).`
+			error: `HITMAN3.exe couldn't be found under "${retailPath}" - pick your game's root folder (or its Retail subfolder directly).`
 		}
 	}
 

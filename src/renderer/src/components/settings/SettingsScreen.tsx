@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ExternalLink, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { Trans, useLingui } from "@lingui/react/macro"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
@@ -43,12 +43,6 @@ export function SettingsScreen() {
     red: t`Red`
   }
 
-  const ABOUT_LINKS = [
-    { label: t`Documentation`, href: "https://github.com/atampy25/simple-mod-framework" },
-    { label: t`Report an issue`, href: "https://github.com/atampy25/simple-mod-framework/issues" },
-    { label: t`Discord community`, href: "https://discord.gg/" }
-  ]
-
   if (!config || !defaultPaths) return null
 
   const dark = resolveDark(config.themeMode, systemDark)
@@ -71,7 +65,7 @@ export function SettingsScreen() {
       <div className="mb-6 flex flex-col gap-4 rounded-lg border border-border bg-surface p-[18px] shadow-sm">
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">
-            <Trans>Game path</Trans>
+            <Trans>Game root</Trans>
           </div>
           <PathInputRow value={config.gamePath} placeholder={defaultPaths.gamePath} onChange={setGamePath} onBrowse={browseGamePath} />
         </div>
@@ -163,24 +157,6 @@ export function SettingsScreen() {
           {rebuildingCacheDb ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           <Trans>Rebuild cache database</Trans>
         </Button>
-      </div>
-
-      <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">
-        <Trans>About</Trans>
-      </div>
-      <div className="rounded-lg border border-border bg-surface shadow-sm">
-        {ABOUT_LINKS.map(({ label, href }, i) => (
-          <a
-            key={label}
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            className={cn("flex items-center justify-between px-[18px] py-3.5 text-[13.5px] text-text hover:bg-surface-hover", i !== ABOUT_LINKS.length - 1 && "border-b border-border")}
-          >
-            {label}
-            <ExternalLink className="h-3.5 w-3.5 text-text-3" />
-          </a>
-        ))}
       </div>
 
       <Dialog open={confirmRebuildOpen} onOpenChange={setConfirmRebuildOpen}>

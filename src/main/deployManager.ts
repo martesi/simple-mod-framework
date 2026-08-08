@@ -227,7 +227,7 @@ export class DeployManager {
           stage: "finalizing",
           stageIndex: STAGE_INDEX.finalizing,
           stageTotal: STAGE_TOTAL,
-          logLine: detection.error || "No valid game folder is set - open Settings and pick your game's Retail folder first.",
+          logLine: detection.error || "No valid game folder is set - open Settings and pick your game's root folder first.",
           done: true,
           ok: false
         })
@@ -348,7 +348,7 @@ export class DeployManager {
         stage: "finalizing",
         stageIndex: STAGE_INDEX.finalizing,
         stageTotal: STAGE_TOTAL,
-        logLine: detection.error || "No valid game folder is set - open Settings and pick your game's Retail folder first.",
+        logLine: detection.error || "No valid game folder is set - open Settings and pick your game's root folder first.",
         done: true,
         ok: false
       })
@@ -541,7 +541,7 @@ export class DeployManager {
     const settings: AppSettings = loadSettings(this.paths)
     const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths) : ({ ok: false, error: "" } as const)
     if (!detection.ok) {
-      return Promise.resolve({ ok: false, error: detection.error || "No valid game folder is set - open Settings and pick your game's Retail folder first." })
+      return Promise.resolve({ ok: false, error: detection.error || "No valid game folder is set - open Settings and pick your game's root folder first." })
     }
 
     const modsConfig: ModsConfig = loadModsConfig(resolveModsDir(this.paths, settings))

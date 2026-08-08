@@ -13,10 +13,19 @@ import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate, SmfAp
 const CONFIG_KEY = "smf-mock:config"
 const MODS_KEY = "smf-mock:mods"
 
-/** Mirrors settings.ts's guessGameRoot() + resolveTempDir()'s "SMF Data"-under-game-root default, just enough to look plausible in the mock. */
+/** Mirrors settings.ts's guessGameRoot() - strips a trailing "\Retail" so both cache/mod path previews sit under the actual game root. */
+function guessGameRoot(gamePath: string): string {
+  return gamePath.replace(/\\Retail$/i, "")
+}
+
+/** Mirrors settings.ts's resolveTempDir()'s ".smf/tmp"-under-game-root default, just enough to look plausible in the mock. */
 function previewCachePath(gamePath: string): string {
-  const root = gamePath.replace(/\\Retail$/i, "")
-  return `${root}\\SMF Data`
+  return `${guessGameRoot(gamePath)}\\.smf\\tmp`
+}
+
+/** Mirrors settings.ts's resolveModsDir()'s ".smf/mods"-under-game-root default, just enough to look plausible in the mock. */
+function previewModPath(gamePath: string): string {
+  return `${guessGameRoot(gamePath)}\\.smf\\mods`
 }
 
 function uuid() {
@@ -207,9 +216,9 @@ class MockSmfApi implements SmfApi {
       await delay(300)
       const gamePath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN 3"
       if (!persist) {
-        return { ok: true, config: { ...structuredClone(this.cfg), gamePath, cachePath: previewCachePath(gamePath) } }
+        return { ok: true, config: { ...structuredClone(this.cfg), gamePath, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath) } }
       }
-      this.cfg = { ...this.cfg, gamePath, cachePath: previewCachePath(gamePath) }
+      this.cfg = { ...this.cfg, gamePath, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath) }
       saveConfig(this.cfg)
       return { ok: true, config: structuredClone(this.cfg) }
     },
@@ -226,12 +235,12 @@ class MockSmfApi implements SmfApi {
       }
     },
 
-    // Mirrors the real backend's config:previewPaths - modPath is intentionally left untouched
-    // (see settings.ts's resolveModsDir() doc comment, it's never gamePath-derived), only cachePath
-    // moves with the hypothetical gamePath.
+    // Mirrors the real backend's config:previewPaths - both cachePath and modPath move with the
+    // hypothetical gamePath (settings.ts's resolveTempDir()/resolveModsDir() both derive from the
+    // game root by default).
     previewPaths: async (gamePath: string): Promise<{ cachePath: string; modPath: string }> => {
       await delay(50)
-      return { cachePath: previewCachePath(gamePath), modPath: this.cfg.modPath }
+      return { cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath) }
     }
   }
 

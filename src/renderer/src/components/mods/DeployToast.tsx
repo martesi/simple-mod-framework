@@ -96,26 +96,27 @@ export function DeployToast() {
           <div className="truncate text-[12px] text-text-2">{statusLine}</div>
         </div>
         <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-text-3 transition-transform", deploy.expanded && "rotate-180")} />
-        {canCancel && (
+        {done ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              closeDeploy()
+            }}
+            title={t`Dismiss`}
+            className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-text-3 hover:bg-surface-hover"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        ) : (
           <button
             onClick={handleCancel}
-            disabled={cancelling}
+            disabled={cancelling || !canCancel}
             title={t`Cancel deploy`}
             className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-text-3 hover:bg-surface-hover disabled:opacity-50"
           >
             <Ban className="h-3 w-3" />
           </button>
         )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            closeDeploy()
-          }}
-          title={t`Dismiss`}
-          className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-text-3 hover:bg-surface-hover"
-        >
-          <X className="h-3 w-3" />
-        </button>
       </div>
 
       <div className="h-[3px] shrink-0 bg-surface-2">

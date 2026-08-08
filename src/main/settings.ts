@@ -19,8 +19,12 @@ export interface AppSettings {
 	/** The folder containing the game's Retail executable (or its parent - `deriveGamePathInfo()` self-heals that) - the one thing the user picks via `config:pickGameDirectory`, or types directly into Settings. */
 	gamePath: string
 
-	/** Where mods are stored. Defaults to a "Mods" folder under `dataRoot` (userData) if unset - resolved via `resolveModsDir()`. */
-	modsPath: string
+	/**
+	 * Explicit override for where mods are stored. Unset means "use the computed default" - under
+	 * the game root once one's picked (`<gameRoot>/.smf/mods`), or a "Mods" folder under `dataRoot`
+	 * itself before that - see `resolveModsDir()`.
+	 */
+	modsPath?: string
 
 	/**
 	 * Explicit override for the temp dir (cache.db + staging/ + Output/ + the ephemeral working
@@ -50,7 +54,6 @@ export function settingsPath(paths: AppPaths): string {
 function defaultSettings(): AppSettings {
 	return {
 		gamePath: "",
-		modsPath: "Mods",
 		skipIntro: false,
 		outputToSeparateDirectory: false,
 		outputConfigToAppDataOnDeploy: false,
@@ -108,9 +111,19 @@ export function mergeSettings(paths: AppPaths, patch: Partial<AppSettings>): App
 	return next
 }
 
-/** Where Mods/ actually is, resolved against dataRoot if `modsPath` isn't already absolute - mirrors `src/core.ts`'s `createCore()`. */
+/**
+ * Where Mods/ actually is.
+ *
+ * Default resolution mirrors `resolveTempDir()`: derived from the game root once one's picked
+ * (`<gameRoot>/.smf/mods`), or `dataRoot` itself before that. A user's own explicit `modsPath`
+ * override always wins over the computed default.
+ */
 export function resolveModsDir(paths: AppPaths, settings: AppSettings): string {
-	return isAbsolute(settings.modsPath) ? settings.modsPath : resolve(paths.dataRoot, settings.modsPath)
+	if (settings.modsPath) return isAbsolute(settings.modsPath) ? settings.modsPath : resolve(paths.dataRoot, settings.modsPath)
+
+	if (settings.gamePath) return join(guessGameRoot(settings.gamePath), ".smf", "mods")
+
+	return resolve(paths.dataRoot, "Mods")
 }
 
 /** Best-effort guess at the game's root folder (the one containing "Retail" and "Runtime") from the raw, possibly-unvalidated `gamePath` string - used only for the temp dir's default location, computed without touching the filesystem beyond a basename check, since a full validated derivation (`gameDetect.ts`'s `deriveGamePathInfo()`) needs the db this very function helps place. */
@@ -131,7 +144,7 @@ function guessGameRoot(gamePath: string): string {
 export function resolveTempDir(paths: AppPaths, settings: AppSettings): string {
 	if (settings.tempPath) return isAbsolute(settings.tempPath) ? settings.tempPath : resolve(paths.dataRoot, settings.tempPath)
 
-	if (settings.gamePath) return join(guessGameRoot(settings.gamePath), "SMF Data")
+	if (settings.gamePath) return join(guessGameRoot(settings.gamePath), ".smf", "tmp")
 
 	// No game picked yet (first-ever launch, before the setup wizard) - dataRoot is the only folder
 	// guaranteed to exist/be writable at this point.
@@ -150,7 +163,7 @@ export interface DefaultUiPaths {
 	gamePath: string
 	/** Where this app would actually put its temp dir (cache.db, staging, etc.) if the user leaves the field untouched - see `resolveTempDir()`. Named `cachePath` to match the renderer's existing `Config`/`DefaultPaths` field (manifest-types.ts) rather than introducing a rename across the IPC boundary in this same change. */
 	cachePath: string
-	/** Same idea as `cachePath` - mirrors `resolveModsDir()`'s own default ("Mods" under `dataRoot`) when `modsPath` is unset. */
+	/** Same idea as `cachePath` - mirrors `resolveModsDir()`'s own default (`.smf/mods` under the game root, or "Mods" under `dataRoot` pre-wizard) when `modsPath` is unset. */
 	modPath: string
 }
 
@@ -190,6 +203,6 @@ export function resolveDefaultUiPaths(paths: AppPaths, settings?: AppSettings): 
 	return {
 		gamePath: exampleGamePath,
 		cachePath: settings ? resolveTempDir(paths, settings) : resolve(paths.dataRoot),
-		modPath: resolve(paths.dataRoot, "Mods")
+		modPath: settings ? resolveModsDir(paths, settings) : resolve(paths.dataRoot, "Mods")
 	}
 }

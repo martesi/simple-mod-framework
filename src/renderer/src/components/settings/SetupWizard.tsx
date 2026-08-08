@@ -222,8 +222,8 @@ export function SetupWizard() {
     const stepKey = WIZARD_STEPS[wizard.step]
 
     if (stepKey === "game") {
-      // Leaving the game-root step: preview what cachePath (resolveTempDir()'s "SMF Data" folder
-      // under the game root) - and modPath, if that's ever made to depend on gamePath too - would
+      // Leaving the game-root step: preview what cachePath (resolveTempDir()'s ".smf/tmp" folder
+      // under the game root) and modPath (resolveModsDir()'s ".smf/mods" folder, same idea) would
       // resolve to now, without persisting anything. Only overwrites a field the user hasn't
       // manually edited yet (see cacheDirty/modDirty's doc comment).
       const preview = await getSmfApi().config.previewPaths(draft.gamePath)
@@ -258,8 +258,8 @@ export function SetupWizard() {
     case "game":
       body = (
         <WizardPathStep
-          title={t`Game path`}
-          description={t`Point to the folder that contains the game's Retail executable.`}
+          title={t`Game root`}
+          description={t`Point to your game's root folder (the one containing Retail and Runtime).`}
           value={draft.gamePath}
           placeholder={defaultPaths.gamePath}
           onChange={(gamePath) => setDraft((d) => d && { ...d, gamePath })}

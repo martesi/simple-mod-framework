@@ -153,7 +153,7 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 	ipcMain.handle("config:pickGameDirectory", async (event, persist: boolean = true): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
 		const win = BrowserWindow.fromWebContents(event.sender)
 		const result = await dialog.showOpenDialog(win ?? undefined!, {
-			title: "Select your game's Retail folder",
+			title: "Select your game's root folder",
 			buttonLabel: "Select",
 			properties: ["openDirectory"]
 		})
