@@ -18,7 +18,6 @@
     "build": "npm run typecheck && electron-vite build",
     "build:win": "npm run typecheck && electron-vite build && electron-builder --win --dir",
     "dist:win": "npm run typecheck && electron-vite build && electron-builder --win",
-    "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false",
     "lint": "eslint .",
     "i18n:extract": "lingui extract"

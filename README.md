@@ -1,68 +1,111 @@
 # Simple Mod Framework
 
-A mod framework for HITMAN 3 that allows the automatic synthesis of mods from source files.
+A mod framework and manager for HITMAN 3 that synthesizes mods from source files instead of
+shipping raw, hand-edited game archives.
 
-This is a single Electron app (React 19 + shadcn/ui on Base UI) - there's no separate CLI anymore.
-The framework core (deploy/discover/analyse a mod, `src/main/core`) is embedded in-process, replacing the
-old `Deploy.exe` subprocess.
+The app is where you point at your game install, drop in mod archives (`.zip`/`.7z`/`.rar`) or raw
+`.rpkg` files, arrange load order, toggle mod options, and deploy.
 
-`src/main`/`src/preload` are the real backend, not stubs. `src/main/ipcHandlers.ts` registers the
-actual `ipcMain.handle` channels (config, mods, deploy) backed by `modIndex.ts`/`modOps.ts`/
-`deployManager.ts`/`deployPipeline.ts` - the latter is the only place that reaches into `src/main/core`,
-including the game-directory picker and userData-backed settings. `src/preload/index.ts` exposes
-those channels as `window.smf`, with no raw `fs`/`child_process` handed to the renderer.
+## Getting started (using the framework)
 
-The renderer talks only to the typed `SmfApi` contract in `src/renderer/src/lib/ipc.ts`.
-`src/renderer/src/main.tsx` is the single swap point: it uses `ipc.electron.ts` (the real
-`window.smf`-backed implementation) whenever the app is running inside real Electron, and falls
-back to the in-memory `ipc.mock.ts` only when the renderer is previewed outside Electron (e.g. a
-plain `vite` browser preview). The component tree never needs to change either way.
+1. Install the app (see [Development](#development) below to build it, or grab a release build).
+2. On first launch, the setup wizard asks for your HITMAN 3 install folder ("game root"). Mods and
+   the working temp folder default to `<gameRoot>/.smf/mods` and `.../.smf/tmp`.
+3. Drag mod archives or `.rpkg` files onto the window (or use "Add mod") to install them.
+4. Reorder mods to control load order, toggle the ones you want enabled, and expand a mod's
+   settings to pick its options.
+5. Click Deploy. Progress and any errors show in a persistent status toast; you can cancel a
+   running deploy up until it starts finalizing.
 
-## Setup
+## Development
+
+We use Bun.
 
 ```
-npm install   # or: bun install
-npm run dev   # launches the Electron app
+bun install
+bun run dev   # launches the Electron app
 ```
 
-`npm run build` typechecks and produces an `out/` bundle; `npm run build:win` additionally packages
-it with electron-builder; `npm run preview` launches a built `out/` without a dev server.
+`bun run build` typechecks and produces an `out/` bundle; `bun run build:win` additionally packages
+it with electron-builder into `dist/`. `bun run typecheck`/`bun run lint` run standalone.
+`postinstall`/`bun run setup` fetch the bundled third-party tools into `extra/Third-Party` (RPKG
+CLI, hash lists, etc.) that the app needs at runtime.
 
-`postinstall`/`npm run setup` populate `extra/Third-Party` (RPKG tools, hitman-hashes, etc.) - the
-embedded framework core's dev-mode `toolsRoot` (see `src/main/paths.ts`). A packaged build gets the
-same tools via `electron-builder.yml`'s `extraResources`, sourced from that same folder.
+### Developing on WSL
 
-## Developing on WSL
+The officially supported target is Windows, so on a WSL host you want to run the real Windows
+Electron binary rather than the Linux one `node_modules/electron` downloads by default (which
+needs WSLg/GPU passthrough to render at all, and still wouldn't reflect real Windows behavior).
+`flake.nix`'s default `nix develop` shell has the Node/Bun toolchain needed for everyday
+dev/build/typecheck work.
 
-This is a win-only app (see `electron-builder.yml`'s `win:` section) - the target you actually care
-about running is the real Windows Electron binary, not the Linux one `node_modules/electron`
-downloads for the WSL host by default (which would need WSLg/GPU passthrough to render at all, and
-still wouldn't reflect real Windows behavior).
+- `bun run dev:win` - fetches a standalone Windows Electron build and runs it against the normal
+  Vite dev server via WSL's reverse interop, so you get hot reload against the real target
+  platform. If the window won't close from Ctrl-C, close it directly or `taskkill /IM electron.exe
+  /F` from a Windows shell - signals don't cross the interop boundary.
+- `bun run build:win` - a full electron-builder package (`dist/win-unpacked/Mod Manager.exe`),
+  buildable from WSL without `wine`. Run `chmod +x` on the produced `.exe` once if you want to
+  launch it directly from a WSL shell.
 
-`flake.nix` provides a `nix develop` shell (node/bun/jj, plus the shared libs the plain `npm run
-dev`/`build` Linux-side tooling needs - `electron-vite`'s own build/typecheck steps run as normal
-Node code, no Windows binary involved there).
+### Running natively on Linux
 
-- `npm run dev:win` - the actual dev loop. Fetches a standalone win32-x64 Electron (cached
-  alongside whatever `npm install`/`build:win` already downloaded) into `.win-electron-dev/`
-  (gitignored), then points `electron-vite`'s `ELECTRON_EXEC_PATH` at it so the *real* Windows
-  Electron process launches - via WSL's reverse interop for PE binaries - against the normal Vite
-  dev server. Hot reload works exactly like `npm run dev`, just against the real target platform.
-  Two WSL-interop-specific quirks this script papers over, in case they resurface elsewhere:
-  - `NO_SANDBOX=1` - without it, Chromium's GPU process fails to launch (its sandbox broker
-    doesn't cope with the unusual parent-process/desktop context a reverse-interop launch has),
-    crashing the whole app on startup.
-  - `WSLENV=...ELECTRON_RENDERER_URL` - env vars don't cross the WSL→Windows interop boundary
-    unless listed in `WSLENV`; without this the Windows process never learns the Vite dev server's
-    URL and falls back to loading a nonexistent production `out/renderer/index.html`.
-  - Closing the window: Ctrl-C on the `npm run dev:win` terminal does **not** reliably kill the
-    Windows-side `electron.exe` processes (signals don't cross reverse interop either) - close the
-    app window itself, or `taskkill /IM electron.exe /F` from a Windows shell if it's stuck running.
-- `npm run build:win` - full electron-builder package (`dist/win-unpacked/Mod Manager.exe`). Works
-  from WSL without `wine` (see `electron-builder.yml`'s `signAndEditExecutable: false`) - the
-  tradeoff is no real icon/version-info embedding; see that file's comment to opt back in.
-  electron-builder doesn't set the Unix executable bit on the binary it produces, so `chmod +x
-  "dist/win-unpacked/Mod Manager.exe"` once after each build if you want to launch it directly
-  from a WSL shell (`./dist/win-unpacked/Mod\ Manager.exe`) rather than from Windows/Explorer -
-  and if you do, it hits the same `NO_SANDBOX`/reverse-interop crash as above (launching it from
-  Windows/Explorer instead avoids that entirely, since then it isn't going through interop).
+The bundled tools (RPKG CLI, resource/entity tools, 7-Zip, ...) are still Windows binaries, but the
+app can also run as a native Linux Electron process and transparently shell out to those tools
+through Wine instead of requiring a Windows host at all - deploy works as expected through this
+path. `nix develop .#e2e` provides everything needed (Wine, a virtual display, font/EGL setup) to
+run the app headlessly for testing.
+
+### Docs
+
+The original project's `docs/` (manifest reference, special file types, scripting API, folder
+structure) isn't carried over in this build. Possibly a static site down the line.
+
+## What changed from the original framework
+
+The original project was a separate Svelte/Electron GUI ("Mod Manager") that shelled out to a
+standalone `Deploy.exe` CLI to do the actual work. This repo collapses that into one Electron app
+with the deploy/discover/analyse logic itself running in-process, rather than as a separate CLI the
+GUI launches and talks to. The framework still shells out to the same third-party tools it always
+has (RPKG CLI, ResourceTool, etc.) - that hasn't changed, only the GUI/`Deploy.exe` split is gone.
+
+### Mod authoring & docs
+
+- **Dropped:** the old GUI's in-app **authoring pages** (guided manifest creation, an in-app
+  option editor) and its **in-app documentation viewer** are gone - there's no in-app way to build
+  a mod by hand-holding anymore. The mod-update auto-download UI is also gone (it wasn't working) -
+  the manifest's `updateCheck` field is still read and stored, just not surfaced or acted on
+  anywhere yet.
+- **Kept and improved:** importing mods (framework archives or raw `.rpkg` files) is still
+  drag-and-drop, and now installs multiple dropped files **in parallel** instead of one at a time,
+  with per-file progress.
+
+### Deploy behavior
+
+- Deploys are now **cancellable** mid-run from the status toast (disabled once finalizing starts,
+  since that phase can't be safely interrupted), and the app warns before quitting during an active
+  deploy instead of leaving a partial deploy on disk.
+- Runtime file writes during deploy are atomic, and a pre-deploy cleanup crash mid-way through no
+  longer leaves the Runtime folder in a broken intermediate state.
+- Mod option image previews got a proper lightbox (zoom/pan) with a "locate current option"
+  shortcut, instead of a plain inline `<img>`.
+
+### Performance
+
+- Mod discovery persists its index to disk instead of rescanning every launch, and skips
+  re-hashing/re-extracting files that haven't changed since last time.
+- Each mod now builds independently and eagerly (as soon as it's added or its options change)
+  against a SQLite-backed cache, instead of one full rebuild pass across every mod on deploy.
+- Deploy's file cache moved from a single blob-cache file to content-addressed loose files, which
+  parallelizes and invalidates more cheaply.
+- The settings drawer's option lists are virtualized, and both first-launch startup and opening the
+  drawer/dialogs no longer visibly lag on larger mod lists.
+
+### Platform / infra
+
+- Windows is the officially shipped target, with Linux (via Wine) also working - see
+  [Running natively on Linux](#running-natively-on-linux) above.
+- Sentry error reporting was replaced with local `electron-log` file logging. The Piscina-based
+  worker pool was replaced with a small hand-rolled one, and mod script transpilation moved off a
+  bundled TypeScript compiler onto `esbuild`.
+- The UI now has i18n infrastructure (Lingui) wired up, though only English (US) is exposed in the
+  language picker for now.
