@@ -36,7 +36,7 @@ export default defineConfig(async ({ command }: ConfigEnv): Promise<UserConfig> 
       // it - only devDependencies (and phantom deps) that are actually
       // imported get bundled/tree-shaken regardless of this setting (see
       // https://electron-vite.org/guide/dependency-handling). That's
-      // invisible in `npm run dev` because a real node_modules folder
+      // invisible in `bun run dev` because a real node_modules folder
       // happens to be sitting on disk next to the project - but
       // electron-builder.yml ships only `out/**/*` with no node_modules in
       // the packaged app, so a "dependencies" require would 404 the same

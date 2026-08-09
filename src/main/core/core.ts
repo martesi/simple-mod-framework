@@ -188,7 +188,7 @@ export function createCore(configOrPath: Config | string, options: CoreOptions =
 	// unconditional appendLog() behaviour. `consoleLevel` only governs the separate console
 	// transport below (main-process stdout / DevTools), which nothing downstream of this embedded
 	// app actually reads once the CLI's own terminal went away - it's left on by default purely as
-	// a cheap `npm run dev` convenience, not because anything in production consumes it.
+	// a cheap `bun run dev` convenience, not because anything in production consumes it.
 	log.transports.file.level = "silly"
 	log.transports.console.level = consoleLevel
 

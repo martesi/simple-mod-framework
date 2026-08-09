@@ -13,7 +13,7 @@ import { isGamePlatform } from "../shared/game"
  * `content_cache/` (see LEI-142) rather than in this DB.
  *
  * Uses `node:sqlite` (Node's built-in synchronous SQLite driver, stable in the Node version this
- * Electron build bundles) rather than a third-party native module - no `npm install` needed, no
+ * Electron build bundles) rather than a third-party native module - no additional `bun install` needed, no
  * separate native-module rebuild step for Electron, nothing to vendor.
  *
  * Must be fully rebuildable from three untouched sources: the `Mods/` folder's actual contents, the

@@ -18,8 +18,8 @@ files:
   - '!**/*'
   - 'out/**/*'
 # The release-backed rpkg-cli/ResourceTool.exe/etc. binaries that
-# scripts/fetch-third-party.js downloads, the remaining committed tools, and
-# the hitman-hashes data scripts/fetch-hashes.js downloads all go straight into
+# scripts/fetch-third-party.ts downloads, the remaining committed tools, and
+# the hitman-hashes data scripts/fetch-hashes.ts downloads all go straight into
 # extra/Third-Party, so a single entry below picks up all of it, tracked and
 # untracked alike - and cleanMicrosoftThumbs.dat (see gameDetect.ts's Microsoft Store
 # thumbs.dat fallback) - mirroring the old Mod Manager's own extraResources
@@ -72,6 +72,6 @@ win:
   # otherwise shells out to `wine` when cross-building this Windows target from a Linux/WSL
   # host - see flake.nix's dev shell doc comment for why wine isn't just added as a default
   # dependency instead. Real icon/version-info embedding still works: run
-  # `nix shell nixpkgs#wine64 -c npm run build:win` (temporarily dropping this line, or
+  # `nix shell nixpkgs#wine64 -c bun run build:win` (temporarily dropping this line, or
   # passing --win.signAndEditExecutable=true to override it) if you need that.
   signAndEditExecutable: false

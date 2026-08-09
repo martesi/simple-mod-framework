@@ -1,7 +1,7 @@
 name: Build
 
 # Windows-only app (see electron-builder.yml's win-only signAndEditExecutable
-# comment) whose postinstall (scripts/setup.js -> fetch-third-party.js)
+# comment) whose postinstall (scripts/setup.ts -> fetch-third-party.ts)
 # extracts Windows-only tooling (7z.exe, quickentity-rs.exe, etc.) via a
 # Windows exe (7zr.exe) - so this always has to run on windows-latest, not
 # just build the win target from another OS.
@@ -23,15 +23,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # scripts/setup.js's postinstall step, and package.json's own scripts
-      # (e.g. "build" shelling out to "npm run typecheck"), invoke `node`/`npm`
-      # directly, so both need to be on PATH even though bun.lock is what's
-      # actually used to install dependencies below.
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
+      # scripts/setup.ts's postinstall step and package.json's own scripts invoke
+      # Bun directly, so the Bun toolchain is the only runtime needed in CI.
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:

@@ -9,13 +9,13 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
 
-      # `npm run dev`/`npm run preview` launch the *actual* Electron binary that
+      # `bun run dev`/`bun run preview` launch the *actual* Electron binary that
       # node_modules/electron downloaded (a prebuilt glibc binary, dynamically linked
       # against the GTK/Chromium stack) - not something Nix built, so NixOS's lack of an
       # FHS /usr/lib means it can't find any of this at startup ("error while loading
       # shared libraries: libglib-2.0.so.0: cannot open shared object file"). Rather than
       # repackaging Electron through nixpkgs (version drift against package.json's pinned
-      # ^43.1.1) or patchelf-ing the downloaded binary (breaks on every `npm install`),
+      # ^43.1.1) or patchelf-ing the downloaded binary (breaks on every `bun install`),
       # just point LD_LIBRARY_PATH at the same shared libs nixpkgs' own Electron/Chromium
       # derivations require (see pkgs/development/tools/electron/generic.nix upstream).
       electronRuntimeLibs = with pkgs; [
@@ -86,7 +86,7 @@
         # win32 tools (7z.exe, rpkg-cli.exe, ResourceTool.exe, ...) can actually execute -
         # src/main/wineExec.ts is the single interop point that decides whether to prefix `wine`
         # (a no-op on win32), used by every Third-Party tool invocation in src/main, rather than a
-        # per-binary wrapper-script trick. `scripts/fetch-third-party.js` fetches 7z.exe's own
+        # per-binary wrapper-script trick. `scripts/fetch-third-party.ts` fetches 7z.exe's own
         # upstream archive with `7zz` (native Linux 7-Zip) on this platform rather than needing Wine
         # just to bootstrap that - see its ensureSevenZip() for why. This whole shell is kept out of
         # `devShells.default` since it's dead weight (GUI/X11/Wine closure) for everyday

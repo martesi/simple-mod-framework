@@ -16,16 +16,17 @@ hash_list.txt
 # truth.
 src/renderer/src/locales/**/messages.mjs
 
-# scripts/fetch-win-electron.js's extraction target - see npm run dev:win.
+# scripts/fetch-win-electron.ts's extraction target - see bun run dev:win.
 /.win-electron-dev
+/.win-electron-dev-*
 
 # extra/Third-Party/ contains the tools the embedded framework core needs at runtime. Most of the
-# release-backed files are ignored below and fetched by scripts/fetch-third-party.js; the few tools
+# release-backed files are ignored below and fetched by scripts/fetch-third-party.ts; the few tools
 # without a confirmed public release remain tracked as regular blobs. Don't ignore the whole
 # directory here - that would stop git from tracking the files that ARE meant to be committed too.
 #
 # The tools below, in that same folder, are the opposite: ones that DO have a
-# stable public release to pull from, so scripts/fetch-third-party.js
+# stable public release to pull from, so scripts/fetch-third-party.ts
 # downloads them straight into extra/Third-Party instead of duplicating them
 # in git history. Ignored individually by name (rather than the whole
 # directory) since they sit alongside the committed tools above.
