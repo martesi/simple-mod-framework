@@ -45,7 +45,7 @@ msgstr "{0} — {1} ({2}/{3})"
 msgid "{0} enabled · {1} total"
 msgstr "{0} enabled · {1} total"
 
-#: src/renderer/src/components/mods/ModRow.tsx:118
+#: src/renderer/src/components/mods/ModRow.tsx:133
 msgid "A deploy is running — mods can't be removed until it finishes."
 msgstr "A deploy is running — mods can't be removed until it finishes."
 
@@ -99,7 +99,7 @@ msgstr "Blue"
 msgid "Browse"
 msgstr "Browse"
 
-#: src/renderer/src/components/mods/ModRow.tsx:90
+#: src/renderer/src/components/mods/ModRow.tsx:94
 msgid "Build failed"
 msgstr "Build failed"
 
@@ -113,7 +113,7 @@ msgstr "Building mod cache — scanned {0} of {1} mods…"
 msgid "Building mod cache — this can take a moment the first time, or after switching mod folders…"
 msgstr "Building mod cache — this can take a moment the first time, or after switching mod folders…"
 
-#: src/renderer/src/components/mods/ModRow.tsx:83
+#: src/renderer/src/components/mods/ModRow.tsx:87
 msgid "Building…"
 msgstr "Building…"
 
@@ -126,7 +126,7 @@ msgstr "Cache database rebuilt from scratch."
 msgid "Cache path"
 msgstr "Cache path"
 
-#: src/renderer/src/components/mods/ModRow.tsx:112
+#: src/renderer/src/components/mods/ModRow.tsx:127
 msgid "Can't remove while a deploy is running"
 msgstr "Can't remove while a deploy is running"
 
@@ -242,7 +242,7 @@ msgstr "Finalizing"
 msgid "Finish"
 msgstr "Finish"
 
-#: src/renderer/src/components/mods/ModRow.tsx:75
+#: src/renderer/src/components/mods/ModRow.tsx:79
 msgid "Framework"
 msgstr "Framework"
 
@@ -290,7 +290,7 @@ msgstr "Mod cache rebuilt."
 msgid "Mod path"
 msgstr "Mod path"
 
-#: src/renderer/src/components/mods/ModRow.tsx:101
+#: src/renderer/src/components/mods/ModRow.tsx:105
 #: src/renderer/src/components/mods/ModSettingsDrawer.tsx:399
 msgid "Mod settings"
 msgstr "Mod settings"
@@ -336,7 +336,15 @@ msgstr "No mods match \"{0}\"."
 msgid "No options match \"{0}\"."
 msgstr "No options match \"{0}\"."
 
-#: src/renderer/src/components/mods/ModRow.tsx:78
+#: src/renderer/src/components/mods/ModRow.tsx:114
+msgid "Open mod page in browser"
+msgstr "Open mod page in browser"
+
+#: src/renderer/src/components/mods/ModRow.tsx:114
+#~ msgid "Open update link in browser"
+#~ msgstr "Open update link in browser"
+
+#: src/renderer/src/components/mods/ModRow.tsx:82
 msgid "Options"
 msgstr "Options"
 
@@ -386,7 +394,7 @@ msgstr "Rebuild cache database"
 msgid "Red"
 msgstr "Red"
 
-#: src/renderer/src/components/mods/ModRow.tsx:112
+#: src/renderer/src/components/mods/ModRow.tsx:127
 msgid "Remove mod"
 msgstr "Remove mod"
 
@@ -394,11 +402,11 @@ msgstr "Remove mod"
 #~ msgid "Report an issue"
 #~ msgstr "Report an issue"
 
-#: src/renderer/src/components/mods/ModRow.tsx:75
+#: src/renderer/src/components/mods/ModRow.tsx:79
 msgid "RPKG"
 msgstr "RPKG"
 
-#: src/renderer/src/components/mods/ModRow.tsx:52
+#: src/renderer/src/components/mods/ModRow.tsx:53
 msgid "RPKG-only mod"
 msgstr "RPKG-only mod"
 
@@ -439,7 +447,7 @@ msgstr "Setup wizard"
 msgid "Show raw log"
 msgstr "Show raw log"
 
-#: src/renderer/src/components/mods/ModRow.tsx:93
+#: src/renderer/src/components/mods/ModRow.tsx:97
 msgid "Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database."
 msgstr "Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database."
 

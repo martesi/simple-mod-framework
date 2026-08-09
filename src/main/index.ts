@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from "@electron-toolkit/utils"
 import { resolveAppPaths } from "./paths"
 import { registerIpcHandlers } from "./ipcHandlers"
 import { registerModImageProtocolHandler, registerModImageSchemePrivileges } from "./modImages"
+import { toHttpsUrl } from "../shared/urls"
 
 /**
  * LEI-134: this app no longer needs (and no longer grants) raw Node access
@@ -40,7 +41,14 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    // Renderer content (including manifests) is untrusted. Never allow it to create a child
+    // BrowserWindow, and only hand canonical HTTPS URLs to the OS browser.
+    const externalUrl = toHttpsUrl(details.url)
+    if (externalUrl) {
+      void shell.openExternal(externalUrl).catch((error) => {
+        console.warn("Couldn't open external URL:", error)
+      })
+    }
     return { action: "deny" }
   })
 

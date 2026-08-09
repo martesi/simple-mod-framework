@@ -9,7 +9,34 @@
  * root, trimmed to what this manager reads. Not imported directly for the
  * same "build standalone" reason as manifest-types.ts.
  */
-export interface DiskManifestOption {
+import type { HttpsUrl } from "../shared/urls"
+import type { ModReference } from "../shared/manifest"
+
+export type { ModReference } from "../shared/manifest"
+
+export type DiskModReference = ModReference
+
+export type DiskLanguage =
+  | "english"
+  | "french"
+  | "italian"
+  | "german"
+  | "spanish"
+  | "russian"
+  | "chineseSimplified"
+  | "chineseTraditional"
+  | "japanese"
+
+export interface DiskCompatibilityData {
+  supportedPlatforms?: ("steam" | "epic" | "microsoft")[]
+  requirements?: DiskModReference[]
+  incompatibilities?: DiskModReference[]
+  loadBefore?: DiskModReference[]
+  loadAfter?: DiskModReference[]
+}
+
+export interface DiskManifestOption extends DiskCompatibilityData {
+  [field: string]: unknown
   name: string
   type: "checkbox" | "select" | "conditional"
   group?: string
@@ -19,9 +46,18 @@ export interface DiskManifestOption {
   condition?: string
   contentFolders?: string[]
   blobsFolders?: string[]
+  localisation?: Partial<Record<DiskLanguage, Record<string, string>>>
+  localisationOverrides?: Record<string, Partial<Record<DiskLanguage, Record<string, string>>>>
+  localisedLines?: Record<string, string>
+  packagedefinition?: unknown[]
+  thumbs?: string[]
+  dependencies?: unknown[]
+  peacockPlugins?: string[]
+  scripts?: string[]
 }
 
-export interface DiskManifest {
+export interface DiskManifest extends DiskCompatibilityData {
+  [field: string]: unknown
   id: string
   name: string
   description: string
@@ -29,7 +65,16 @@ export interface DiskManifest {
   version: string
   frameworkVersion: string
   updateCheck?: string
+  url?: HttpsUrl
   contentFolders?: string[]
   blobsFolders?: string[]
+  localisation?: Partial<Record<DiskLanguage, Record<string, string>>>
+  localisationOverrides?: Record<string, Partial<Record<DiskLanguage, Record<string, string>>>>
+  localisedLines?: Record<string, string>
+  packagedefinition?: unknown[]
+  thumbs?: string[]
+  dependencies?: unknown[]
+  peacockPlugins?: string[]
+  scripts?: string[]
   options?: DiskManifestOption[]
 }

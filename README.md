@@ -72,9 +72,8 @@ has (RPKG CLI, ResourceTool, etc.) - that hasn't changed, only the GUI/`Deploy.e
 
 - **Dropped:** the old GUI's in-app **authoring pages** (guided manifest creation, an in-app
   option editor) and its **in-app documentation viewer** are gone - there's no in-app way to build
-  a mod by hand-holding anymore. The mod-update auto-download UI is also gone (it wasn't working) -
-  the manifest's `updateCheck` field is still read and stored, just not surfaced or acted on
-  anywhere yet.
+  a mod by hand-holding anymore. The mod-update auto-download UI is also gone (it wasn't working);
+  an HTTPS manifest `url` is available from the mod row and opens in the system browser.
 - **Kept and improved:** importing mods (framework archives or raw `.rpkg` files) is still
   drag-and-drop, and now installs multiple dropped files **in parallel** instead of one at a time,
   with per-file progress.

@@ -9,6 +9,7 @@ import { validateModFolder } from "./validateMod"
 import { addNewlyKnownMods } from "./modsConfig"
 import type { DiskManifest } from "./diskManifest"
 import type { ModTaskStatus } from "../renderer/src/lib/ipc"
+import { normalizeManifest, ManifestCompatibilityError } from "./manifestCompatibility"
 
 export interface TaskEmit {
   (update: { status: ModTaskStatus; message?: string; modId?: string }): void
@@ -76,6 +77,14 @@ export async function runAddModTask(paths: AppPaths, modsDir: string, index: Mod
 
     const topLevel = readdirSync(staging).filter((f) => statSync(join(staging, f)).isDirectory())
 
+    // v3-style archives may place manifest.json at the archive root. Install the archive contents
+    // into the canonical manifest ID folder, after validating the destination and manifest before
+    // copying anything. Wrapper-folder archives continue through the legacy multi-mod path below.
+    if (existsSync(join(staging, "manifest.json"))) {
+      await installRootManifest(modsDir, index, staging, emit)
+      return
+    }
+
     if (topLevel.length > 0 && topLevel.every((f) => existsSync(join(staging, f, "manifest.json")))) {
       await installFrameworkMods(modsDir, index, staging, topLevel, emit)
       return
@@ -95,20 +104,50 @@ export async function runAddModTask(paths: AppPaths, modsDir: string, index: Mod
   }
 }
 
+async function installRootManifest(modsDir: string, index: ModIndex, staging: string, emit: TaskEmit): Promise<void> {
+  emit({ status: "validating" })
+  let manifest: DiskManifest
+  try {
+    manifest = normalizeManifest(JSON5.parse(readFileSync(join(staging, "manifest.json"), "utf8")))
+  } catch (error) {
+    const message = error instanceof ManifestCompatibilityError ? `${error.path}: ${error.userMessage}` : "manifest.json is not valid JSON."
+    emit({ status: "error", message })
+    return
+  }
+
+  const destination = join(modsDir, manifest.id)
+  if (index.has(manifest.id) || existsSync(destination)) {
+    emit({ status: "error", message: `"${manifest.name || manifest.id}" is already installed (same mod ID or destination folder).` })
+    return
+  }
+  const { valid, error } = validateModFolder(staging, manifest)
+  if (!valid) {
+    emit({ status: "error", message: `"${manifest.name || manifest.id}" failed validation: ${error}` })
+    return
+  }
+
+  emit({ status: "installing" })
+  cpSync(staging, destination, { recursive: true })
+  index.addFolders([manifest.id])
+  addNewlyKnownMods(modsDir, [{ id: manifest.id, manifest }])
+  emit({ status: "done", modId: manifest.id })
+}
+
 async function installFrameworkMods(modsDir: string, index: ModIndex, staging: string, folders: string[], emit: TaskEmit): Promise<void> {
   emit({ status: "validating" })
 
   const manifests: DiskManifest[] = []
+  const seenIds = new Set<string>()
   for (const folder of folders) {
     let manifest: DiskManifest
     try {
-      manifest = JSON5.parse(readFileSync(join(staging, folder, "manifest.json"), "utf8"))
+      manifest = normalizeManifest(JSON5.parse(readFileSync(join(staging, folder, "manifest.json"), "utf8")))
     } catch {
       emit({ status: "error", message: `"${folder}" has an invalid manifest.json (not valid JSON).` })
       return
     }
 
-    if (index.has(manifest.id)) {
+    if (index.has(manifest.id) || seenIds.has(manifest.id) || existsSync(join(modsDir, folder))) {
       emit({ status: "error", message: `"${manifest.name || manifest.id}" is already installed (same mod ID).` })
       return
     }
@@ -120,6 +159,7 @@ async function installFrameworkMods(modsDir: string, index: ModIndex, staging: s
     }
 
     manifests.push(manifest)
+    seenIds.add(manifest.id)
   }
 
   emit({ status: "installing" })

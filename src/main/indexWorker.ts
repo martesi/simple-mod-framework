@@ -4,6 +4,8 @@ import { parentPort } from "node:worker_threads"
 import JSON5 from "json5"
 import type { DiskManifest } from "./diskManifest"
 import { validateModFolder, isRpkgOnlyModFolder } from "./validateMod"
+import { FRAMEWORK_VERSION } from "./frameworkVersion"
+import { invalidManifestFallback, normalizeManifest } from "./manifestCompatibility"
 
 /**
  * Worker-thread counterpart to ModIndex.rebuildChunked(). Runs the full Mods/ directory walk
@@ -23,7 +25,7 @@ import { validateModFolder, isRpkgOnlyModFolder } from "./validateMod"
 const MANAGED_FOLDER = "Managed by SMF, do not touch"
 
 /** What CURRENT_FRAMEWORK_VERSION is in modIndex.ts - duplicated here so the worker is self-contained. */
-const CURRENT_FRAMEWORK_VERSION = "3.0.0"
+const CURRENT_FRAMEWORK_VERSION = FRAMEWORK_VERSION
 
 function majorOf(version: string): number {
   const n = Number.parseInt(version.split(".")[0], 10)
@@ -72,14 +74,18 @@ port.on("message", ({ modsDir }: IndexWorkerRequest) => {
 
       if (existsSync(manifestPath)) {
         try {
-          const manifest: DiskManifest = JSON5.parse(readFileSync(manifestPath, "utf8"))
+          const manifest: DiskManifest = normalizeManifest(JSON5.parse(readFileSync(manifestPath, "utf8")))
           const { valid, error } = validateModFolder(full, manifest)
           const outdated = majorOf(manifest.frameworkVersion) < majorOf(CURRENT_FRAMEWORK_VERSION)
           entries.push({ folder, id: manifest.id, isFrameworkMod: true, manifest, valid, validationError: error, outdated })
         } catch {
-          // Malformed manifest - treat as a bare/broken folder (same as modIndex.ts's own fallback).
-          const isMaybeRpkg = isRpkgOnlyModFolder(full)
-          entries.push({ folder, id: folder, isFrameworkMod: false, ...(isMaybeRpkg ? {} : {}) })
+          try {
+            const fallback = invalidManifestFallback(JSON5.parse(readFileSync(manifestPath, "utf8")), folder)
+            entries.push({ folder, id: folder, isFrameworkMod: true, manifest: fallback, valid: false, validationError: "Manifest is incompatible with this framework version or has invalid fields." })
+          } catch {
+            const isMaybeRpkg = isRpkgOnlyModFolder(full)
+            entries.push({ folder, id: folder, isFrameworkMod: false, ...(isMaybeRpkg ? {} : {}) })
+          }
         }
       } else {
         entries.push({ folder, id: folder, isFrameworkMod: false })

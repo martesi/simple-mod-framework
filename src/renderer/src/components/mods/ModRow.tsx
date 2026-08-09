@@ -1,12 +1,13 @@
 import * as React from "react"
 import { memo } from "react"
-import { Loader2, Settings2, TriangleAlert, X } from "lucide-react"
+import { ExternalLink, Loader2, Settings2, TriangleAlert, X } from "lucide-react"
 import { Trans, useLingui } from "@lingui/react/macro"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { toHttpsUrl } from "@/lib/external-url"
 import type { ModEntry } from "@/lib/manifest-types"
 import { OptionType } from "@/lib/manifest-types"
 import type { ModBuildInfo } from "@/lib/ipc"
@@ -52,6 +53,9 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
   const description = mod.isFrameworkMod ? mod.manifest!.description : t`RPKG-only mod`
   const author = mod.isFrameworkMod ? mod.manifest!.authors.join(", ") : ""
   const hasOptions = !!mod.manifest?.options?.some((o) => o.type !== OptionType.conditional)
+  // Revalidate at the UI boundary too. Cached manifests can outlive an app upgrade, and this keeps
+  // the click handler safe even if a future data source bypasses ModIndex's normalization.
+  const externalUrl = toHttpsUrl(mod.manifest?.url)
 
   return (
     <div
@@ -103,6 +107,17 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
         </Button>
       )}
 
+      {externalUrl && (
+        <Button
+          variant="ghost"
+          size="icon"
+          title={t`Open mod page in browser`}
+          onClick={() => window.open(externalUrl, "_blank", "noopener,noreferrer")}
+        >
+          <ExternalLink className="h-[15px] w-[15px] text-text-2" />
+        </Button>
+      )}
+
       <Tooltip>
         {/* render={<span />} swaps out Trigger's default button element for a
             span - same reason the old Radix asChild version wrapped the
@@ -120,7 +135,7 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
         )}
       </Tooltip>
 
-      <Switch checked={enabled} onCheckedChange={() => onToggle(mod.id)} />
+      <Switch checked={enabled} disabled={mod.isFrameworkMod && mod.valid === false} onCheckedChange={() => onToggle(mod.id)} />
     </div>
   )
 }

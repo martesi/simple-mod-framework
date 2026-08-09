@@ -2,6 +2,9 @@ type RuntimeID = string
 type LocalisationID = string
 type ModID = string
 
+import type { ModReference } from "../../shared/manifest"
+export type { ModReference } from "../../shared/manifest"
+
 export enum Platform {
 	steam = "steam",
 	epic = "epic",
@@ -47,6 +50,9 @@ export type Manifest = {
 
 	/** A link to an update JSON (must be HTTPS). Information on this can be found in the Mod Updates documentation page. */
 	updateCheck?: string
+
+	/** An optional HTTPS page for the mod manager's external-link action. */
+	url?: string
 
 	/** Settings for the mod that can be enabled and disabled in the Mod Manager. Also, conditional options allow for certain elements of the mod to be automatically enabled/disabled based on, for example, other mods being installed. */
 	options?: ((
@@ -164,19 +170,19 @@ export interface ManifestOptionData {
 
 	/** Mod IDs (possibly accompanied by version ranges) that this mod depends on to function.
 	 * Clients without these mods enabled will be prevented from using this mod. */
-	requirements?: (ModID | [ModID, string])[]
+	requirements?: ModReference[]
 
 	/** Mod IDs (possibly accompanied by version ranges) that this mod will not function with.
 	 * Clients with these mods enabled will be prevented from using this mod. */
-	incompatibilities?: (ModID | [ModID, string])[]
+	incompatibilities?: ModReference[]
 
 	/** Mod IDs (possibly accompanied by version ranges) this mod should load before.
 	 * Used in automatic sorting by the Mod Manager GUI. */
-	loadBefore?: (ModID | [ModID, string])[]
+	loadBefore?: ModReference[]
 
 	/** Mod IDs (possibly accompanied by version ranges) this mod should load after.
 	 * Used in automatic sorting by the Mod Manager GUI. */
-	loadAfter?: (ModID | [ModID, string])[]
+	loadAfter?: ModReference[]
 
 	/** Paths to plugins that Peacock should load when this mod is deployed. */
 	peacockPlugins?: string[]
@@ -193,6 +199,9 @@ export interface DeployInstruction {
 
 	/** Mod's friendly name. Should be the mod's name as defined in the manifest. */
 	name: string
+
+	/** Mod version from the manifest, used by deploy compatibility preflight. */
+	version: string
 
 	/** Cache folder. Should be the mod's ID. */
 	cacheFolder: string
@@ -227,6 +236,15 @@ export interface DeployInstruction {
 		/** Mod IDs that this mod depends on to function.
 		 * Clients without these mods enabled will be prevented from using this mod. */
 		requirements: ManifestOptionData["requirements"]
+
+		/** Mod IDs this mod cannot be deployed with. */
+		incompatibilities: ManifestOptionData["incompatibilities"]
+
+		/** Mod IDs this mod must precede in the configured load order. */
+		loadBefore: ManifestOptionData["loadBefore"]
+
+		/** Mod IDs this mod must follow in the configured load order. */
+		loadAfter: ManifestOptionData["loadAfter"]
 
 		/** Paths to plugins that Peacock should load when this mod is deployed. */
 		peacockPlugins: string[]

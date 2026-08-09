@@ -1,4 +1,6 @@
-const FrameworkVersion = "2.33.40"
+import { FRAMEWORK_VERSION } from "../frameworkVersion"
+
+const FrameworkVersion = FRAMEWORK_VERSION
 const isDevBuild = false
 
 import log from "electron-log/node"

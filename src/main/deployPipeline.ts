@@ -26,7 +26,8 @@ import type { AppSettings } from "./settings"
 import { resolveModsDir, resolveTempDir } from "./settings"
 import type { GamePathInfo } from "./gameDetect"
 import type { ModsConfig } from "./modsConfig"
-import { openDb } from "./db"
+import { getMod, getModBuild, listMods, openDb } from "./db"
+import { validateDeployCompatibility, type DeployCompatibilityInstruction } from "./deployCompatibility"
 
 export interface DeployPipelineLogLine {
 	level: "verbose" | "debug" | "info" | "warn" | "error"
@@ -35,6 +36,30 @@ export interface DeployPipelineLogLine {
 }
 
 export type DeployPipelineResult = { ok: true } | { ok: false; error: string; cancelled?: boolean }
+
+function loadCompatibilityInstructions(loadOrder: readonly string[]): { ok: true; instructions: DeployCompatibilityInstruction[] } | { ok: false; error: string } {
+	const instructions: DeployCompatibilityInstruction[] = []
+
+	for (const modId of loadOrder) {
+		const mod = getMod(modId)
+		if (!mod) return { ok: false, error: `Enabled mod "${modId}" is missing from the index. Rebuild the mod index or remove it from the load order.` }
+		if (!mod.isFrameworkMod) continue
+		if (mod.valid === false) return { ok: false, error: `Enabled mod "${modId}" has an invalid manifest and cannot be deployed: ${mod.validationError ?? "fix the manifest and rebuild the index."}` }
+
+		const build = getModBuild(modId)
+		if (!build || build.status !== "ready" || !build.deployInstructionJson) {
+			return { ok: false, error: `Compatibility preflight could not read ${modId}'s ready deploy instruction. Rebuild the mod cache and deploy again.` }
+		}
+
+		try {
+			instructions.push(JSON.parse(build.deployInstructionJson) as DeployCompatibilityInstruction)
+		} catch {
+			return { ok: false, error: `Compatibility preflight could not parse ${modId}'s cached deploy instruction. Rebuild the mod cache and deploy again.` }
+		}
+	}
+
+	return { ok: true, instructions }
+}
 
 /**
  * Builds the framework core's real `Config` object in memory from this app's persisted
@@ -157,6 +182,23 @@ function noopSpan(): Span {
 export async function runFullDeploy(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: GamePathInfo, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
 	const tempDir = resolveTempDir(paths, settings)
 	openDb(path.join(tempDir, "cache.db"))
+
+	const compatibilityInstructions = loadCompatibilityInstructions(modsConfig.loadOrder)
+	if (!compatibilityInstructions.ok) {
+		onLog({ level: "error", text: compatibilityInstructions.error })
+		return { ok: false, error: compatibilityInstructions.error }
+	}
+
+	const compatibility = validateDeployCompatibility({
+		loadOrder: modsConfig.loadOrder,
+		installedMods: listMods().map((mod) => mod.id),
+		platform: game.platform,
+		instructions: compatibilityInstructions.instructions
+	})
+	if (!compatibility.ok) {
+		for (const error of compatibility.errors) onLog({ level: "error", text: error })
+		return { ok: false, error: compatibility.message }
+	}
 
 	const { CoreFatalError } = await import("./core/core")
 	const config = buildFrameworkConfig(paths, settings, modsConfig, game)

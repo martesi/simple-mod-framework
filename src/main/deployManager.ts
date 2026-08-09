@@ -12,6 +12,7 @@ import { finishModBuildFailed, getMod, getModBuild } from "./db"
 import type { DeployWorkerMessage, DeployWorkerRequest } from "./deployWorker"
 import type { DeployProgress, DeploySnapshot } from "../renderer/src/lib/ipc"
 import type { DeployPipelineLogLine } from "./deployPipeline"
+import { hasDeployCompatibilityMetadata } from "./deployCompatibility"
 
 export interface DeployProgressEmit {
   (progress: DeployProgress): void
@@ -186,16 +187,26 @@ export class DeployManager {
    * `resolveModFolder()` miss surfaces its own clear error later, in `deploy.ts` itself) are never
    * "not ready" - they have nothing to build in the first place.
    */
-  private findNotReadyMods(loadOrder: string[]): string[] {
+	private findNotReadyMods(loadOrder: string[]): string[] {
     const notReady: string[] = []
     for (const mod of loadOrder) {
       const row = getMod(mod)
       if (!row || !row.isFrameworkMod) continue
       const build = getModBuild(row.id)
-      if (!build || build.status !== "ready") notReady.push(row.id)
-    }
+      if (!build || build.status !== "ready" || !hasDeployCompatibilityMetadata(build.deployInstructionJson)) notReady.push(row.id)
+	}
+
     return notReady
   }
+
+	private findInvalidEnabledMods(loadOrder: string[]): string[] {
+		return loadOrder.flatMap((id) => {
+			const row = getMod(id)
+			if (!row) return [`${id} (missing from index)`]
+			if (row.isFrameworkMod && row.valid === false) return [`${id} (${row.validationError ?? "invalid manifest"})`]
+			return []
+		})
+	}
 
   /**
    * Takes an explicit, timestamped snapshot of the settings server-side and spawns a worker to
@@ -251,11 +262,17 @@ export class DeployManager {
    * row from a crashed previous process". A local `attempted` Set replaces `triggered`'s secondary
    * role of "don't re-trigger a mod that already failed this deploy cycle."
    */
-  private async waitForBuildsThenDeploy(snapshot: DeploySnapshot, settings: AppSettings, modsConfig: ModsConfig): Promise<void> {
-    const attempted = new Set<string>()
-    const deadline = Date.now() + BUILD_WAIT_TIMEOUT_MS
+	private async waitForBuildsThenDeploy(snapshot: DeploySnapshot, settings: AppSettings, modsConfig: ModsConfig): Promise<void> {
+		const attempted = new Set<string>()
+		const deadline = Date.now() + BUILD_WAIT_TIMEOUT_MS
+		const invalid = this.findInvalidEnabledMods(snapshot.loadOrder)
+		if (invalid.length) {
+			this.emit({ stage: "finalizing", stageIndex: STAGE_INDEX.finalizing, stageTotal: STAGE_TOTAL, logLine: `Cannot deploy invalid enabled mods: ${invalid.join(", ")}`, done: true, ok: false })
+			this.active = null
+			return
+		}
 
-    let notReady = this.findNotReadyMods(snapshot.loadOrder)
+		let notReady = this.findNotReadyMods(snapshot.loadOrder)
 
     if (notReady.length) {
       this.emit({

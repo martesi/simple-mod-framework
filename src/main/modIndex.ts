@@ -8,6 +8,9 @@ import { isRpkgOnlyModFolder, validateModFolder } from "./validateMod"
 import { rewriteManifestImages } from "./modImages"
 import type { IndexWorkerMessage, IndexWorkerRequest, SerializedIndexEntry } from "./indexWorker"
 import { deleteMod, getMeta, type DbModRow, listMods, replaceModsIndex, setMeta } from "./db"
+import { toHttpsUrl } from "../shared/urls"
+import { FRAMEWORK_VERSION } from "./frameworkVersion"
+import { invalidManifestFallback, normalizeManifest } from "./manifestCompatibility"
 
 /**
  * Resolves the on-disk path to indexWorker.cjs bundled next to this file - mirrors
@@ -43,7 +46,7 @@ function resolveIndexWorkerPath(): string {
  * reading argv) that have no place in an Electron main process, and this
  * package is meant to build standalone (see manifest-types.ts).
  */
-export const CURRENT_FRAMEWORK_VERSION = "3.0.0"
+export const CURRENT_FRAMEWORK_VERSION = FRAMEWORK_VERSION
 
 /** Exported for ipcHandlers.ts's mods:previewFolder - a candidate mod folder is never itself a mod. */
 export const MANAGED_FOLDER = "Managed by SMF, do not touch"
@@ -75,14 +78,15 @@ function majorOf(version: string): number {
 }
 
 function toUiManifest(m: DiskManifest): Manifest {
-  return {
+	const url = toHttpsUrl(m.url)
+	return {
     id: m.id,
     name: m.name,
     description: m.description,
     authors: m.authors,
     version: m.version,
     frameworkVersion: m.frameworkVersion,
-    updateCheck: m.updateCheck,
+		...(url ? { url } : {}),
     options: m.options?.map((o) => ({
       name: o.name,
       tooltip: o.tooltip,
@@ -339,11 +343,18 @@ export class ModIndex {
 
     if (existsSync(manifestPath)) {
       try {
-        const manifest: DiskManifest = JSON5.parse(readFileSync(manifestPath, "utf8"))
+        const manifest: DiskManifest = normalizeManifest(JSON5.parse(readFileSync(manifestPath, "utf8")))
         this.byId.set(manifest.id, { folder, id: manifest.id, isFrameworkMod: true, manifest, ...this.validate(full, manifest) })
         return
       } catch {
-        // malformed manifest - fall through to treat it as a bare/broken folder below
+        try {
+          const raw = JSON5.parse(readFileSync(manifestPath, "utf8"))
+          const fallback = invalidManifestFallback(raw, folder)
+          this.byId.set(folder, { folder, id: folder, isFrameworkMod: true, manifest: fallback, valid: false, validationError: "Manifest is incompatible with this framework version or has invalid fields." })
+          return
+        } catch {
+          // Invalid JSON has no safe manifest metadata; retain the legacy broken-folder fallback.
+        }
       }
     }
 

@@ -1,3 +1,7 @@
+import type { HttpsUrl } from "../../../shared/urls"
+
+export type { HttpsUrl } from "../../../shared/urls"
+
 /**
  * Mirrors the shapes in `src/types.ts` at the repo root (the framework core's
  * Manifest/Config types) that the Mod Manager UI actually needs to render.
@@ -32,7 +36,8 @@ export interface Manifest {
   authors: string[]
   version: string
   frameworkVersion: string
-  updateCheck?: string
+  /** HTTPS page published by the mod author. Opened only in the system browser. */
+  url?: HttpsUrl
   options?: ManifestOption[]
 }
 

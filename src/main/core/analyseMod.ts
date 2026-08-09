@@ -17,6 +17,9 @@ import mergeWith from "lodash.mergewith"
 import path from "path"
 
 import { wineCommand } from "../wineExec"
+import { mergeDeployCompatibilityOptionData } from "../deployCompatibility"
+import { normalizeManifest } from "../manifestCompatibility"
+import { mergeLocalisationOverrides, parseLocalisationPatch } from "../localisationPatch"
 
 /* ---------------------------------------------------------------------------------------------- */
 /*   Shared with deploy.ts's "Execute instructions" phase - single source of truth so that the     */
@@ -231,7 +234,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 	// prefer it over re-reading and re-parsing the file here. Only falls back to a fresh disk read
 	// if the index somehow doesn't have a cached manifest for a mod it otherwise resolved (should
 	// only happen right after a partial/interrupted index write).
-	const manifest: Manifest = (resolved.manifest as unknown as Manifest) ?? json5.parse(fs.readFileSync(path.join(config.modsPath, modFolder, "manifest.json"), "utf8"))
+	const manifest: Manifest = ((resolved.manifest as unknown as Manifest) ?? normalizeManifest(json5.parse(fs.readFileSync(path.join(config.modsPath, modFolder, "manifest.json"), "utf8")))) as unknown as Manifest
 
 	beginModBuild(manifest.id)
 
@@ -295,11 +298,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 				manifest.dependencies || (manifest.dependencies = [])
 				option.dependencies && manifest.dependencies.push(...option.dependencies)
 
-				manifest.requirements || (manifest.requirements = [])
-				option.requirements && manifest.requirements.push(...option.requirements)
-
-				manifest.supportedPlatforms || (manifest.supportedPlatforms = [])
-				option.supportedPlatforms && manifest.supportedPlatforms.push(...option.supportedPlatforms)
+				mergeDeployCompatibilityOptionData(manifest, option)
 
 				manifest.packagedefinition || (manifest.packagedefinition = [])
 				option.packagedefinition && manifest.packagedefinition.push(...option.packagedefinition)
@@ -321,10 +320,16 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 		const blobs: DeployInstruction["blobs"] = []
 		const rpkgTypes: DeployInstruction["rpkgTypes"] = {}
 
-		for (const contentFolder of contentFolders) {
-			for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, modFolder, contentFolder))) {
-				for (const contentFile of (await walk(path.join(config.modsPath, modFolder, contentFolder, chunkFolder))).filter((a) => a.stats.isFile())) {
+		for (const contentFolder of [...contentFolders].sort()) {
+			for (const chunkFolder of fs.readdirSync(path.join(config.modsPath, modFolder, contentFolder)).sort()) {
+				for (const contentFile of (await walk(path.join(config.modsPath, modFolder, contentFolder, chunkFolder))).filter((a) => a.stats.isFile()).sort((a, b) => a.path.localeCompare(b.path))) {
 					const contentFilePath = contentFile.path
+					if (path.basename(contentFilePath) === "localisation.patch.json") {
+						const patch = parseLocalisationPatch(JSON.parse(fs.readFileSync(contentFilePath, "utf8")), contentFilePath)
+						manifest.localisationOverrides ??= {}
+						mergeLocalisationOverrides(manifest.localisationOverrides, patch)
+						continue
+					}
 					const contentType = path.basename(contentFilePath).split(".").slice(1).join(".")
 
 					await logger.verbose(`Registering ${contentType} file ${contentFilePath}`)
@@ -379,6 +384,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 		const deployInstruction: DeployInstruction = {
 			id: manifest.id,
 			name: manifest.name,
+			version: manifest.version,
 			cacheFolder: manifest.id,
 			manifestSources: {
 				localisation: manifest.localisation,
@@ -386,6 +392,9 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 				localisedLines: manifest.localisedLines,
 				dependencies: manifest.dependencies,
 				requirements: manifest.requirements,
+				incompatibilities: manifest.incompatibilities,
+				loadBefore: manifest.loadBefore,
+				loadAfter: manifest.loadAfter,
 				supportedPlatforms: manifest.supportedPlatforms,
 				packagedefinition: manifest.packagedefinition,
 				thumbs: manifest.thumbs,

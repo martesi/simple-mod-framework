@@ -25,6 +25,15 @@ let currentDb: DatabaseSync | undefined
 let currentDbPath: string | undefined
 
 /**
+ * Version of derived data stored in cache.db. Bump this when an indexed manifest, deploy
+ * instruction, game-detection result, or RPKG lookup is no longer safe to read using the current
+ * code. Content artifacts deliberately have no version row here: their slots are content-addressed
+ * and can be retained across a metadata rebuild.
+ */
+export const CACHE_VERSION = "1"
+const CACHE_VERSION_META_KEY = "cacheVersion"
+
+/**
  * Root directory for content-addressed loose artifact files (LEI-142). Set by {@link openDb} to
  * `{dirname(dbPath)}/content_cache/`. Functions in `core/utils.ts` (`copyFromCache`/`copyToCache`)
  * derive the same path independently from `paths.dataRoot` via the core-singleton, so worker
@@ -96,6 +105,31 @@ function migrate(db: DatabaseSync): void {
 
 }
 
+/**
+ * Drops cache *metadata* produced by an incompatible app version. This intentionally leaves
+ * `{cache dir}/content_cache/` alone: it contains content-addressed artifacts, not persisted
+ * deploy decisions, and keeping it avoids turning a safe metadata invalidation into a costly
+ * artifact purge. A fresh mod index and eager builds will repopulate the deleted rows.
+ */
+function invalidateIncompatibleCache(db: DatabaseSync): void {
+	const version = db.prepare("SELECT value FROM meta WHERE key = ?").get(CACHE_VERSION_META_KEY) as { value: string } | undefined
+	if (version?.value === CACHE_VERSION) return
+
+	db.exec("BEGIN")
+	try {
+		db.exec("DELETE FROM game_info")
+		db.exec("DELETE FROM mods")
+		db.exec("DELETE FROM mod_build")
+		db.exec("DELETE FROM rpkg_hash_cache")
+		db.exec("DELETE FROM meta")
+		db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(CACHE_VERSION_META_KEY, CACHE_VERSION)
+		db.exec("COMMIT")
+	} catch (err) {
+		if (db.isTransaction) db.exec("ROLLBACK")
+		throw err
+	}
+}
+
 /** Open (creating if needed) the cache.db at `dbPath` and cache the handle - safe to call repeatedly, only opens once per path per process. Also sets the content-cache root to `{dirname(dbPath)}/content_cache/`. */
 export function openDb(dbPath: string): DatabaseSync {
 	if (currentDb && currentDbPath === dbPath) return currentDb
@@ -117,6 +151,7 @@ export function openDb(dbPath: string): DatabaseSync {
 	db.exec("PRAGMA busy_timeout = 5000")
 	db.exec("PRAGMA foreign_keys = ON")
 	migrate(db)
+	invalidateIncompatibleCache(db)
 
 	currentDb = db
 	currentDbPath = dbPath
@@ -435,4 +470,3 @@ export function clearAllContentCache(): void {
 	if (!contentCacheRoot) return
 	rmSync(contentCacheRoot, { recursive: true, force: true })
 }
-
