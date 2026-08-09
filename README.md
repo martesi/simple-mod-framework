@@ -68,6 +68,29 @@ with the deploy/discover/analyse logic itself running in-process, rather than as
 GUI launches and talks to. The framework still shells out to the same third-party tools it always
 has (RPKG CLI, ResourceTool, etc.) - that hasn't changed, only the GUI/`Deploy.exe` split is gone.
 
+### v3 compatibility milestone
+
+The [Issue #677 compatibility milestone](https://github.com/atampy25/simple-mod-framework/issues/677) is implemented
+within its stated scope. The app remains a v2.33.40 engine, but accepts the selected v3-style
+manifest inputs and normalizes them at the archive, index, validation, and analysis boundaries.
+
+Implemented in this milestone:
+
+- v3 data aliases and precedence, legacy references and ranges, supported-platform mapping, and
+  future-framework rejection.
+- Invalid manifests remain visible as disabled invalid mods instead of being treated as raw RPKGs;
+  normalized index/deploy caches are versioned and safely invalidated.
+- Root-manifest archives, wrapper/multi-mod archives, collision checks, HTTPS mod URLs, and
+  compatibility metadata for requirements, incompatibilities, and load order.
+- Deploy preflight validation with aggregated actionable errors, including platform, version-range,
+  enabled-target, and load-order checks.
+- `localisation.patch.json` validation and deterministic conversion into the existing localization
+  override system.
+
+This is not full v3 support. Graph deployment, Rune, multi-game support, update downloads, option
+interpolation, automatic packagedefinition entries, QuickEntity install-time migration, automatic
+reordering, and broader validation remain future work.
+
 ### Mod authoring & docs
 
 - **Dropped:** the old GUI's in-app **authoring pages** (guided manifest creation, an in-app
