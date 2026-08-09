@@ -1,7 +1,14 @@
 // Downloads the Third-Party tools that have a stable public release to pull
 // from, so a fresh clone doesn't need them placed by hand:
 //
+//   - quickentity-3.exe   <- github.com/atampy25/quickentity-rs (3.0 release)
 //   - quickentity-rs.exe  <- github.com/atampy25/quickentity-rs (latest release)
+//   - rpkg-cli.exe, quickentity_ffi.dll, assimp.dll, hash_list.hmla
+//     <- extracted from the v2.34.0 CLI release of github.com/glacier-modding/RPKG-Tool
+//   - ResourceTool.exe, ResourceLib_HM2.dll, ResourceLib_HM2016.dll,
+//     ResourceLib_HM3.dll
+//     <- extracted from the v4.1.0 Windows release of github.com/OrfeasZ/ZHMTools
+//   - xdelta3.exe <- extracted from the v3.2.0 Windows x64 release of github.com/jmacd/xdelta
 //   - HMLanguageTools.exe, HMTextureTools.exe
 //     <- extracted from TonyTools.zip, github.com/AnthonyFuller/TonyTools (latest release)
 //     (TonyTools-LICENSE is NOT in that zip - TonyTools doesn't bundle a
@@ -161,8 +168,28 @@ function extractZip(zipPath, destDir) {
 	if (process.platform === "win32") {
 		execFileSync("powershell", ["-NoProfile", "-Command", `Expand-Archive -LiteralPath "${zipPath}" -DestinationPath "${destDir}" -Force`])
 	} else {
-		execFileSync("unzip", ["-o", zipPath, "-d", destDir])
+		const extractor = findNativeZipExtractor()
+		if (!extractor) {
+			throw new Error('no "unzip", "7zz", "7z", or "7za" found on PATH to extract an upstream release archive - install one or run this from `nix develop .#e2e`')
+		}
+		if (extractor === "unzip") {
+			execFileSync(extractor, ["-o", zipPath, "-d", destDir])
+		} else {
+			execFileSync(extractor, ["x", zipPath, `-o${destDir}`, "-y"])
+		}
 	}
+}
+
+function findNativeZipExtractor() {
+	for (const candidate of ["unzip", "7zz", "7z", "7za"]) {
+		try {
+			execFileSync(candidate, candidate === "unzip" ? ["-v"] : ["i"], { stdio: "ignore" })
+			return candidate
+		} catch {
+			// not on PATH (or not runnable) - try the next candidate
+		}
+	}
+	return null
 }
 
 // The exact folder layout inside a third-party zip isn't something this
@@ -189,6 +216,16 @@ async function ensureQuickEntityRs() {
 	return "downloaded"
 }
 
+async function ensureQuickEntity3() {
+	const target = path.join(dest, "quickentity-3.exe")
+	if (fs.existsSync(target)) return "already downloaded"
+
+	// The 3.0 release's executable is named quickentity-rs.exe upstream, but this app keeps a
+	// separate filename because it selects the 3.0 and 3.1 command-line behaviors independently.
+	await download("https://github.com/atampy25/quickentity-rs/releases/download/3.0/quickentity-rs.exe", target)
+	return "downloaded"
+}
+
 async function ensureTonyTools() {
 	const files = ["HMLanguageTools.exe", "HMTextureTools.exe"]
 	if (files.every((f) => fs.existsSync(path.join(dest, f)))) return "already downloaded"
@@ -210,6 +247,90 @@ async function ensureTonyTools() {
 			}
 			fs.copyFileSync(found, path.join(dest, file))
 		}
+	} finally {
+		fs.rmSync(zipPath, { force: true })
+		fs.rmSync(extractDir, { recursive: true, force: true })
+	}
+
+	return "downloaded"
+}
+
+async function ensureRpkgTools() {
+	const files = ["rpkg-cli.exe", "quickentity_ffi.dll", "assimp.dll", "hash_list.hmla"]
+	if (files.every((file) => fs.existsSync(path.join(dest, file)))) return "already downloaded"
+
+	const zipPath = path.join(os.tmpdir(), "smf-rpkg-v2.34.0-cli.zip")
+	const extractDir = path.join(os.tmpdir(), "smf-rpkg-v2.34.0-cli-extracted")
+	try {
+		await download("https://github.com/glacier-modding/RPKG-Tool/releases/download/v2.34.0/rpkg_v2.34.0-cli.zip", zipPath)
+
+		fs.rmSync(extractDir, { recursive: true, force: true })
+		extractZip(zipPath, extractDir)
+
+		for (const file of files) {
+			const found = findFile(extractDir, file)
+			if (!found) {
+				throw new Error(
+					`Couldn't find ${file} inside rpkg_v2.34.0-cli.zip - the release layout may have changed. Check https://github.com/glacier-modding/RPKG-Tool/releases/tag/v2.34.0 by hand and place it in "extra/Third-Party/" yourself.`
+				)
+			}
+			fs.copyFileSync(found, path.join(dest, file))
+		}
+	} finally {
+		fs.rmSync(zipPath, { force: true })
+		fs.rmSync(extractDir, { recursive: true, force: true })
+	}
+
+	return "downloaded"
+}
+
+async function ensureZhmTools() {
+	const files = ["ResourceTool.exe", "ResourceLib_HM2.dll", "ResourceLib_HM2016.dll", "ResourceLib_HM3.dll"]
+	if (files.every((file) => fs.existsSync(path.join(dest, file)))) return "already downloaded"
+
+	const zipPath = path.join(os.tmpdir(), "smf-zhmtools-v4.1.0-resource-tool.zip")
+	const extractDir = path.join(os.tmpdir(), "smf-zhmtools-v4.1.0-resource-tool-extracted")
+	try {
+		await download("https://github.com/OrfeasZ/ZHMTools/releases/download/v4.1.0/ResourceTool-win-x64.zip", zipPath)
+
+		fs.rmSync(extractDir, { recursive: true, force: true })
+		extractZip(zipPath, extractDir)
+
+		for (const file of files) {
+			const found = findFile(extractDir, file)
+			if (!found) {
+				throw new Error(
+					`Couldn't find ${file} inside ResourceTool-win-x64.zip - the release layout may have changed. Check https://github.com/OrfeasZ/ZHMTools/releases/tag/v4.1.0 by hand and place it in "extra/Third-Party/" yourself.`
+				)
+			}
+			fs.copyFileSync(found, path.join(dest, file))
+		}
+	} finally {
+		fs.rmSync(zipPath, { force: true })
+		fs.rmSync(extractDir, { recursive: true, force: true })
+	}
+
+	return "downloaded"
+}
+
+async function ensureXdelta() {
+	const target = path.join(dest, "xdelta3.exe")
+	if (fs.existsSync(target)) return "already downloaded"
+
+	const zipPath = path.join(os.tmpdir(), "smf-xdelta3-v3.2.0-windows-x86_64.zip")
+	const extractDir = path.join(os.tmpdir(), "smf-xdelta3-v3.2.0-windows-x86_64-extracted")
+	try {
+		await download("https://github.com/jmacd/xdelta/releases/download/v3.2.0/xdelta3-3.2.0-windows-x86_64.zip", zipPath)
+
+		fs.rmSync(extractDir, { recursive: true, force: true })
+		extractZip(zipPath, extractDir)
+		const found = findFile(extractDir, "xdelta3.exe")
+		if (!found) {
+			throw new Error(
+				`Couldn't find xdelta3.exe inside xdelta3-3.2.0-windows-x86_64.zip - the release layout may have changed. Check https://github.com/jmacd/xdelta/releases/tag/v3.2.0 by hand and place it in "extra/Third-Party/" yourself.`
+			)
+		}
+		fs.copyFileSync(found, target)
 	} finally {
 		fs.rmSync(zipPath, { force: true })
 		fs.rmSync(extractDir, { recursive: true, force: true })
@@ -317,13 +438,13 @@ async function ensureSevenZip() {
 
 if (DEBUG) console.error(`[debug] SMF_DEBUG on - platform=${process.platform}, node=${process.version}`)
 
-// The three tools below don't depend on each other at all (different
+// The release-backed tools below don't depend on each other at all (different
 // sources, different destination files), so they fetch concurrently rather
 // than one-after-another - only fetch/extraction steps *within* each one
 // (see ensureTonyTools/ensureSevenZip above) have a real ordering
 // dependency. Each task already contains its own try/catch (never throws -
 // see the file-level comment above), so Promise.all here just waits for
-// all three to finish without any of them being able to short-circuit it.
+// all of them to finish without any of them being able to short-circuit it.
 async function task(label, placeHint, fn) {
 	try {
 		console.log(`${label}: ${await fn()}`)
@@ -335,11 +456,15 @@ async function task(label, placeHint, fn) {
 
 // Top-level await (native in ESM) replaces the old CommonJS `;(async () => { ... })()` IIFE.
 await Promise.all([
+	task("extra/Third-Party/quickentity-3.exe", 'Place it in "extra/Third-Party/" by hand.', ensureQuickEntity3),
 	task("extra/Third-Party/quickentity-rs.exe", 'Place it in "extra/Third-Party/" by hand.', ensureQuickEntityRs),
 	task(
 		"extra/Third-Party/{HMLanguageTools.exe, HMTextureTools.exe}",
 		'Place HMLanguageTools.exe and HMTextureTools.exe in "extra/Third-Party/" by hand.',
 		ensureTonyTools
 	),
+	task("extra/Third-Party/{rpkg-cli.exe, quickentity_ffi.dll, assimp.dll, hash_list.hmla}", 'Place the RPKG CLI release files in "extra/Third-Party/" by hand.', ensureRpkgTools),
+	task("extra/Third-Party/{ResourceTool.exe, ResourceLib_HM2.dll, ResourceLib_HM2016.dll, ResourceLib_HM3.dll}", 'Place the ZHMTools ResourceTool release files in "extra/Third-Party/" by hand.', ensureZhmTools),
+	task("extra/Third-Party/xdelta3.exe", 'Place xdelta3.exe in "extra/Third-Party/" by hand.', ensureXdelta),
 	task("extra/Third-Party/7z.exe", 'Place a 7-Zip build at "extra/Third-Party/7z.exe" by hand.', ensureSevenZip)
 ])

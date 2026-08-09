@@ -59,11 +59,27 @@ if (fs.existsSync(electronInstallScript)) {
 	console.warn('"electron" not found in node_modules - skipping its binary download. Run `npm install`/`bun install` first.')
 }
 
-// Only run steps 1-2 on postinstall if extra/Third-Party already has more than the
-// tools committed to git in it (a rough "has setup already run here" check -
-// a fresh clone only has the committed subset).
+// Only run steps 1-2 on postinstall if every setup-time artifact is present. A fresh clone has
+// none of the release-backed tools below because they are intentionally ignored rather than
+// duplicated in git history.
 const thirdPartyDir = path.join(__dirname, "..", "extra", "Third-Party")
-const alreadyFetched = ["7z.exe", "HMLanguageTools.exe", "HMTextureTools.exe", "quickentity-rs.exe"].every((f) => fs.existsSync(path.join(thirdPartyDir, f)))
+const alreadyFetched = [
+	"7z.exe",
+	"HMLanguageTools.exe",
+	"HMTextureTools.exe",
+	"quickentity-3.exe",
+	"quickentity-rs.exe",
+	"rpkg-cli.exe",
+	"quickentity_ffi.dll",
+	"assimp.dll",
+	"hash_list.hmla",
+	"hash_list.txt",
+	"ResourceTool.exe",
+	"ResourceLib_HM2.dll",
+	"ResourceLib_HM2016.dll",
+	"ResourceLib_HM3.dll",
+	"xdelta3.exe"
+].every((f) => fs.existsSync(path.join(thirdPartyDir, f)))
 
 if (process.argv.includes("--postinstall") && alreadyFetched) {
 	console.log("extra/Third-Party/ already looks populated, skipping postinstall setup. Run 'npm run setup' to force.")

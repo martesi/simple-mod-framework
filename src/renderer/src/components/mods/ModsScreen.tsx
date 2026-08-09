@@ -53,6 +53,7 @@ export function ModsScreen() {
 
   const [settingsModId, setSettingsModId] = useState<string | null>(null)
   const [removeCandidate, setRemoveCandidate] = useState<ModEntry | null>(null)
+  const [removingModId, setRemovingModId] = useState<string | null>(null)
 
   const deployActive = useAppStore(selectDeployActive)
 
@@ -95,12 +96,19 @@ export function ModsScreen() {
   }
 
   async function confirmRemove() {
-    if (!removeCandidate) return
-    const result = await removeMod(removeCandidate.id)
-    if (!result.ok) {
-      toast.error(result.reason ?? t`Couldn't remove the mod.`)
+    const candidate = removeCandidate
+    if (!candidate || removingModId) return
+
+    setRemovingModId(candidate.id)
+    try {
+      const result = await removeMod(candidate.id)
+      if (!result.ok) {
+        toast.error(result.reason ?? t`Couldn't remove the mod.`)
+      }
+      setRemoveCandidate((current) => (current?.id === candidate.id ? null : current))
+    } finally {
+      setRemovingModId((current) => (current === candidate.id ? null : current))
     }
-    setRemoveCandidate(null)
   }
 
   return (
@@ -204,11 +212,12 @@ export function ModsScreen() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setRemoveCandidate(null)}>
+            <Button variant="secondary" disabled={!!removingModId} onClick={() => setRemoveCandidate(null)}>
               <Trans>Cancel</Trans>
             </Button>
-            <Button variant="destructive" onClick={confirmRemove}>
-              <Trans>Delete the mod</Trans>
+            <Button variant="destructive" disabled={!!removingModId} onClick={confirmRemove}>
+              {removingModId ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {removingModId ? <Trans>Deleting…</Trans> : <Trans>Delete the mod</Trans>}
             </Button>
           </DialogFooter>
         </DialogContent>

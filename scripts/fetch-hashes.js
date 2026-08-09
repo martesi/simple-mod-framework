@@ -4,12 +4,13 @@
 // hashes via electron-builder.yml's extraResources instead, which now just
 // copies this same folder wholesale, hash_list.txt included).
 //
-// Relies on 7z.exe already being present at extra/Third-Party/7z.exe
-// (fetched by scripts/fetch-third-party.js) - so this must run after that
-// script, same as scripts/setup.js already orders them.
+// On Windows this relies on 7z.exe already being present at extra/Third-Party/7z.exe
+// (fetched by scripts/fetch-third-party.js). On other platforms, use a native 7-Zip CLI
+// because the bundled 7z.exe is a Windows binary that must be run through Wine by the app.
+// Either way, this must run after fetch-third-party.js, as scripts/setup.js orders them.
 //
 // Usage: node scripts/fetch-hashes.js
-import { execSync } from "child_process"
+import { execFileSync } from "child_process"
 import fs from "fs"
 import https from "https"
 import os from "os"
@@ -23,6 +24,18 @@ const tmp = path.join(os.tmpdir(), "latest-hashes.7z")
 const dest = path.join(__dirname, "..", "extra", "Third-Party")
 
 fs.mkdirSync(dest, { recursive: true })
+
+function findNativeSevenZip() {
+	for (const candidate of ["7zz", "7z", "7za"]) {
+		try {
+			execFileSync(candidate, ["i"], { stdio: "ignore" })
+			return candidate
+		} catch {
+			// not on PATH (or not runnable) - try the next candidate
+		}
+	}
+	return null
+}
 
 function download(url, dest, cb) {
 	const file = fs.createWriteStream(dest)
@@ -43,9 +56,7 @@ function download(url, dest, cb) {
 	})
 }
 
-const sevenZip = process.platform === "win32"
-	? path.join(__dirname, "..", "extra", "Third-Party", "7z.exe")
-	: "7z"
+const sevenZip = process.platform === "win32" ? path.join(dest, "7z.exe") : findNativeSevenZip()
 
 console.log("Fetching hitman-hashes...")
 download(url, tmp, (err) => {
@@ -54,7 +65,8 @@ download(url, tmp, (err) => {
 		process.exit(1)
 	}
 	try {
-		execSync(`"${sevenZip}" x "${tmp}" -o"${dest}" -y`, { stdio: "inherit" })
+		if (!sevenZip) throw new Error('no "7zz", "7z", or "7za" found on PATH - run this from `nix develop .#e2e` or install a native 7-Zip CLI')
+		execFileSync(sevenZip, ["x", tmp, `-o${dest}`, "-y"], { stdio: "inherit" })
 		fs.unlinkSync(tmp)
 		console.log(`Extracted hitman-hashes to ${dest}`)
 	} catch (e) {

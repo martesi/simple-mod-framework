@@ -17,11 +17,11 @@ directories:
 files:
   - '!**/*'
   - 'out/**/*'
-# The rpkg-cli/ResourceTool.exe/etc. binaries (committed) plus the tools
-# scripts/fetch-third-party.js downloads and the hitman-hashes data
-# scripts/fetch-hashes.js downloads - both go straight into extra/Third-Party
-# too, so a single entry below picks up all of it, tracked and untracked
-# alike - and cleanMicrosoftThumbs.dat (see gameDetect.ts's Microsoft Store
+# The release-backed rpkg-cli/ResourceTool.exe/etc. binaries that
+# scripts/fetch-third-party.js downloads, the remaining committed tools, and
+# the hitman-hashes data scripts/fetch-hashes.js downloads all go straight into
+# extra/Third-Party, so a single entry below picks up all of it, tracked and
+# untracked alike - and cleanMicrosoftThumbs.dat (see gameDetect.ts's Microsoft Store
 # thumbs.dat fallback) - mirroring the old Mod Manager's own extraResources
 # setup (LEI-131). extraResources always lands outside app.asar, at
 # process.resourcesPath - see paths.ts's resolveAppPaths(), which points dev

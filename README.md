@@ -33,6 +33,36 @@ it with electron-builder into `dist/`. `bun run typecheck`/`bun run lint` run st
 `postinstall`/`bun run setup` fetch the bundled third-party tools into `extra/Third-Party` (RPKG
 CLI, hash lists, etc.) that the app needs at runtime.
 
+### Third-party tools and provenance
+
+The app invokes several Windows tools from `extra/Third-Party`. The table below records the
+upstream project or release used for each one. “Fetched” means `bun run setup` downloads it when it
+is absent; the other files are kept in the repository because their exact compatibility or
+provenance still matters to the framework.
+
+| Files | Upstream | Release/source used | Provisioning and notes |
+| --- | --- | --- | --- |
+| `quickentity-rs.exe` | [atampy25/quickentity-rs](https://github.com/atampy25/quickentity-rs) | [3.1](https://github.com/atampy25/quickentity-rs/releases/tag/3.1) | Fetched from the latest release by `scripts/fetch-third-party.js`. |
+| `HMLanguageTools.exe`, `HMTextureTools.exe` | [AnthonyFuller/TonyTools](https://github.com/AnthonyFuller/TonyTools) | [`TonyTools.zip`](https://github.com/AnthonyFuller/TonyTools/releases/latest) | Fetched and extracted by `scripts/fetch-third-party.js`; `TonyTools-LICENSE` is included. |
+| `7z.exe` | [ip7z/7zip](https://github.com/ip7z/7zip) | Latest `*-extra.7z` package, currently [26.02](https://github.com/ip7z/7zip/releases/tag/26.02) | Fetched by `scripts/fetch-third-party.js` as the standalone `7za.exe`, then stored under the filename expected by the app; see `7z-LICENSE`. |
+| `hash_list.txt` | [glacier-modding/Hitman-Hashes](https://github.com/glacier-modding/Hitman-Hashes) | Latest [`latest-hashes.7z`](https://github.com/glacier-modding/Hitman-Hashes/releases/latest), currently v375 | Downloaded and extracted by `scripts/fetch-hashes.js`. The checked-in `baseGameEntities.txt` and `baseGameSoundbanks.txt` are not included in this release and remain tracked. |
+| `rpkg-cli.exe`, `quickentity_ffi.dll`, `assimp.dll`, `hash_list.hmla` | [glacier-modding/RPKG-Tool](https://github.com/glacier-modding/RPKG-Tool) | [`v2.34.0` CLI release](https://github.com/glacier-modding/RPKG-Tool/releases/tag/v2.34.0) | Fetched and extracted by `scripts/fetch-third-party.js`. The archive also contains ResourceLib copies; the shared ResourceLib files listed below are selected for the ResourceTool build. |
+| `ResourceTool.exe`, `ResourceLib_HM2.dll`, `ResourceLib_HM2016.dll`, `ResourceLib_HM3.dll` | [OrfeasZ/ZHMTools](https://github.com/OrfeasZ/ZHMTools) | [`v4.1.0` Windows ResourceTool release](https://github.com/OrfeasZ/ZHMTools/releases/tag/v4.1.0) | Fetched and extracted from `ResourceTool-win-x64.zip`; the upstream license is the LGPL text in `COPYING.LESSER`. |
+| `quickentity-3.exe` | Related to [atampy25/quickentity-rs](https://github.com/atampy25/quickentity-rs) | [3.0 release](https://github.com/atampy25/quickentity-rs/releases/tag/3.0) | Fetched by `scripts/fetch-third-party.js` from the 3.0 release and renamed to the filename used by the app. The upstream asset is named `quickentity-rs.exe`. |
+| `h6xtea.exe` | [HHCHunter/HITMAN](https://github.com/HHCHunter/HITMAN/blob/master/h6xtea/h6xtea/h6xtea.exe) | The checked-in file is byte-identical to the linked file | [glacier-modding/hitman-xtea.rs](https://github.com/glacier-modding/hitman-xtea.rs) is a related Zlib-licensed Rust implementation, but it has not been verified as the same executable or command-line interface. |
+| `xdelta3.exe` | [jmacd/xdelta](https://github.com/jmacd/xdelta) | [`v3.2.0` Windows x64 release](https://github.com/jmacd/xdelta/releases/tag/v3.2.0) | Fetched and extracted from `xdelta3-3.2.0-windows-x86_64.zip`; `xdelta3-LICENSE` is included. |
+| `OREStool.exe` | No public repository or release could be confirmed | A Discord message with source appended is the only known reference: [message](https://discord.com/channels/555224628251852811/815577522958893096/858685324103778344) | Remains checked in. Treat its provenance as unverified until a public source or release is available. |
+
+This table reflects the upstream audit performed on 2026-08-09; check the linked release pages
+before changing a tool version.
+
+The public releases are the compatibility reference for updates. CI therefore builds the SMF
+application against these audited artifacts instead of compiling every tool from source. Several
+tools do have public source, but `quickentity-3.exe`, the exact `h6xtea.exe` build, and `OREStool.exe`
+do not currently have a reproducible public build path. A future source-build job can verify tools
+such as QuickEntity, RPKG-Tool, ZHMTools, and xdelta separately, but it should not replace the
+release artifacts until its output and behavior have been compared with the versions above.
+
 ### Developing on WSL
 
 The officially supported target is Windows, so on a WSL host you want to run the real Windows

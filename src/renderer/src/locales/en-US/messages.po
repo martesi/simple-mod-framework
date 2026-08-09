@@ -41,11 +41,11 @@ msgstr "{0} — {1} ({2}/{3})"
 
 #. placeholder {0}: enabledIds.length
 #. placeholder {1}: mods.length
-#: src/renderer/src/components/mods/ModsScreen.tsx:144
+#: src/renderer/src/components/mods/ModsScreen.tsx:152
 msgid "{0} enabled · {1} total"
 msgstr "{0} enabled · {1} total"
 
-#: src/renderer/src/components/mods/ModRow.tsx:133
+#: src/renderer/src/components/mods/ModRow.tsx:125
 msgid "A deploy is running — mods can't be removed until it finishes."
 msgstr "A deploy is running — mods can't be removed until it finishes."
 
@@ -58,7 +58,7 @@ msgid "Accent color"
 msgstr "Accent color"
 
 #: src/renderer/src/components/mods/AddModDialog.tsx:37
-#: src/renderer/src/components/mods/ModsScreen.tsx:123
+#: src/renderer/src/components/mods/ModsScreen.tsx:131
 msgid "Add a mod"
 msgstr "Add a mod"
 
@@ -70,7 +70,7 @@ msgstr "Advanced"
 msgid "Appearance"
 msgstr "Appearance"
 
-#: src/renderer/src/components/mods/ModsScreen.tsx:126
+#: src/renderer/src/components/mods/ModsScreen.tsx:134
 msgid "Apply changes"
 msgstr "Apply changes"
 
@@ -79,7 +79,7 @@ msgid "Applying your mods"
 msgstr "Applying your mods"
 
 #. placeholder {0}: removeCandidate?.isFrameworkMod ? removeCandidate.manifest?.name : removeCandidate?.rpkgModName
-#: src/renderer/src/components/mods/ModsScreen.tsx:200
+#: src/renderer/src/components/mods/ModsScreen.tsx:208
 msgid "Are you sure you want to permanently remove <0>{0}</0>? You can't undo this."
 msgstr "Are you sure you want to permanently remove <0>{0}</0>? You can't undo this."
 
@@ -99,25 +99,25 @@ msgstr "Blue"
 msgid "Browse"
 msgstr "Browse"
 
-#: src/renderer/src/components/mods/ModRow.tsx:94
+#: src/renderer/src/components/mods/ModRow.tsx:86
 msgid "Build failed"
 msgstr "Build failed"
 
 #. placeholder {0}: cacheProgress.scanned
 #. placeholder {1}: cacheProgress.total
-#: src/renderer/src/components/mods/ModsScreen.tsx:134
+#: src/renderer/src/components/mods/ModsScreen.tsx:142
 msgid "Building mod cache — scanned {0} of {1} mods…"
 msgstr "Building mod cache — scanned {0} of {1} mods…"
 
-#: src/renderer/src/components/mods/ModsScreen.tsx:138
+#: src/renderer/src/components/mods/ModsScreen.tsx:146
 msgid "Building mod cache — this can take a moment the first time, or after switching mod folders…"
 msgstr "Building mod cache — this can take a moment the first time, or after switching mod folders…"
 
-#: src/renderer/src/components/mods/ModRow.tsx:87
+#: src/renderer/src/components/mods/ModRow.tsx:79
 msgid "Building…"
 msgstr "Building…"
 
-#: src/renderer/src/store/app-store.ts:389
+#: src/renderer/src/store/app-store.ts:402
 msgid "Cache database rebuilt from scratch."
 msgstr "Cache database rebuilt from scratch."
 
@@ -126,11 +126,11 @@ msgstr "Cache database rebuilt from scratch."
 msgid "Cache path"
 msgstr "Cache path"
 
-#: src/renderer/src/components/mods/ModRow.tsx:127
+#: src/renderer/src/components/mods/ModRow.tsx:119
 msgid "Can't remove while a deploy is running"
 msgstr "Can't remove while a deploy is running"
 
-#: src/renderer/src/components/mods/ModsScreen.tsx:208
+#: src/renderer/src/components/mods/ModsScreen.tsx:216
 #: src/renderer/src/components/settings/SettingsScreen.tsx:180
 msgid "Cancel"
 msgstr "Cancel"
@@ -151,8 +151,12 @@ msgstr "Choose a platform"
 msgid "Choose the game platform before continuing."
 msgstr "Choose the game platform before continuing."
 
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:68
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:186
+#: src/renderer/src/components/settings/GamePlatformSelect.tsx:31
+msgid "Choose the storefront before deploying."
+msgstr "Choose the storefront before deploying."
+
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:69
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:187
 msgid "Click to preview"
 msgstr "Click to preview"
 
@@ -164,11 +168,11 @@ msgstr "Click to preview"
 msgid "Copying into Mods…"
 msgstr "Copying into Mods…"
 
-#: src/renderer/src/store/app-store.ts:383
+#: src/renderer/src/store/app-store.ts:396
 msgid "Couldn't rebuild the cache database."
 msgstr "Couldn't rebuild the cache database."
 
-#: src/renderer/src/components/mods/ModsScreen.tsx:101
+#: src/renderer/src/components/mods/ModsScreen.tsx:106
 msgid "Couldn't remove the mod."
 msgstr "Couldn't remove the mod."
 
@@ -176,13 +180,17 @@ msgstr "Couldn't remove the mod."
 msgid "Dark"
 msgstr "Dark"
 
-#: src/renderer/src/components/mods/ModsScreen.tsx:197
+#: src/renderer/src/components/mods/ModsScreen.tsx:205
 msgid "Delete mod"
 msgstr "Delete mod"
 
-#: src/renderer/src/components/mods/ModsScreen.tsx:211
+#: src/renderer/src/components/mods/ModsScreen.tsx:220
 msgid "Delete the mod"
 msgstr "Delete the mod"
+
+#: src/renderer/src/components/mods/ModsScreen.tsx:220
+msgid "Deleting…"
+msgstr "Deleting…"
 
 #: src/renderer/src/components/mods/DeployToast.tsx:94
 msgid "Deploy failed"
@@ -213,7 +221,7 @@ msgstr "Dismiss"
 #~ msgstr "Documentation"
 
 #: src/renderer/src/components/mods/AddModDialog.tsx:101
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:510
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:511
 msgid "Done"
 msgstr "Done"
 
@@ -241,12 +249,12 @@ msgstr "Extracting RPKG mods"
 msgid "Failed"
 msgstr "Failed"
 
-#: src/renderer/src/components/mods/ModsScreen.tsx:114
+#: src/renderer/src/components/mods/ModsScreen.tsx:122
 msgid "Filter mods…"
 msgstr "Filter mods…"
 
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:199
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:426
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:200
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:427
 msgid "Filter options…"
 msgstr "Filter options…"
 
@@ -258,7 +266,7 @@ msgstr "Finalizing"
 msgid "Finish"
 msgstr "Finish"
 
-#: src/renderer/src/components/mods/ModRow.tsx:79
+#: src/renderer/src/components/mods/ModRow.tsx:71
 msgid "Framework"
 msgstr "Framework"
 
@@ -297,7 +305,7 @@ msgstr "Light"
 msgid "Loading Mod Manager…"
 msgstr "Loading Mod Manager…"
 
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:207
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:208
 msgid "Locate current option"
 msgstr "Locate current option"
 
@@ -305,7 +313,7 @@ msgstr "Locate current option"
 msgid "Microsoft Store / Xbox"
 msgstr "Microsoft Store / Xbox"
 
-#: src/renderer/src/store/app-store.ts:366
+#: src/renderer/src/store/app-store.ts:379
 msgid "Mod cache rebuilt."
 msgstr "Mod cache rebuilt."
 
@@ -314,13 +322,13 @@ msgstr "Mod cache rebuilt."
 msgid "Mod path"
 msgstr "Mod path"
 
-#: src/renderer/src/components/mods/ModRow.tsx:105
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:403
+#: src/renderer/src/components/mods/ModRow.tsx:97
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:404
 msgid "Mod settings"
 msgstr "Mod settings"
 
 #: src/renderer/src/components/layout/NavRail.tsx:12
-#: src/renderer/src/components/mods/ModsScreen.tsx:110
+#: src/renderer/src/components/mods/ModsScreen.tsx:118
 msgid "Mods"
 msgstr "Mods"
 
@@ -349,18 +357,18 @@ msgid "No mods found in this folder yet - double-check the path if you expected 
 msgstr "No mods found in this folder yet - double-check the path if you expected some."
 
 #. placeholder {0}: search.trim()
-#: src/renderer/src/components/mods/ModsScreen.tsx:152
+#: src/renderer/src/components/mods/ModsScreen.tsx:160
 msgid "No mods match \"{0}\"."
 msgstr "No mods match \"{0}\"."
 
 #. placeholder {0}: checkboxSearch.trim()
 #. placeholder {0}: search.trim()
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:222
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:437
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:223
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:438
 msgid "No options match \"{0}\"."
 msgstr "No options match \"{0}\"."
 
-#: src/renderer/src/components/mods/ModRow.tsx:114
+#: src/renderer/src/components/mods/ModRow.tsx:106
 msgid "Open mod page in browser"
 msgstr "Open mod page in browser"
 
@@ -368,7 +376,7 @@ msgstr "Open mod page in browser"
 #~ msgid "Open update link in browser"
 #~ msgstr "Open update link in browser"
 
-#: src/renderer/src/components/mods/ModRow.tsx:82
+#: src/renderer/src/components/mods/ModRow.tsx:74
 msgid "Options"
 msgstr "Options"
 
@@ -396,7 +404,7 @@ msgstr "Point to your game's root folder (the one containing Retail and Runtime)
 msgid "Queued…"
 msgstr "Queued…"
 
-#: src/renderer/src/components/mods/ModsScreen.tsx:117
+#: src/renderer/src/components/mods/ModsScreen.tsx:125
 msgid "Re-scan the Mods folder and re-read every manifest from disk"
 msgstr "Re-scan the Mods folder and re-read every manifest from disk"
 
@@ -404,7 +412,7 @@ msgstr "Re-scan the Mods folder and re-read every manifest from disk"
 msgid "Rebuild"
 msgstr "Rebuild"
 
-#: src/renderer/src/components/mods/ModsScreen.tsx:119
+#: src/renderer/src/components/mods/ModsScreen.tsx:127
 msgid "Rebuild cache"
 msgstr "Rebuild cache"
 
@@ -418,7 +426,7 @@ msgstr "Rebuild cache database"
 msgid "Red"
 msgstr "Red"
 
-#: src/renderer/src/components/mods/ModRow.tsx:127
+#: src/renderer/src/components/mods/ModRow.tsx:119
 msgid "Remove mod"
 msgstr "Remove mod"
 
@@ -426,11 +434,11 @@ msgstr "Remove mod"
 #~ msgid "Report an issue"
 #~ msgstr "Report an issue"
 
-#: src/renderer/src/components/mods/ModRow.tsx:79
+#: src/renderer/src/components/mods/ModRow.tsx:71
 msgid "RPKG"
 msgstr "RPKG"
 
-#: src/renderer/src/components/mods/ModRow.tsx:53
+#: src/renderer/src/components/mods/ModRow.tsx:45
 msgid "RPKG-only mod"
 msgstr "RPKG-only mod"
 
@@ -471,7 +479,7 @@ msgstr "Setup wizard"
 msgid "Show raw log"
 msgstr "Show raw log"
 
-#: src/renderer/src/components/mods/ModRow.tsx:97
+#: src/renderer/src/components/mods/ModRow.tsx:89
 msgid "Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database."
 msgstr "Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database."
 
@@ -486,10 +494,6 @@ msgstr "Steam"
 #: src/renderer/src/components/settings/SetupWizard.tsx:330
 msgid "The folder the manager scans for mods to load."
 msgstr "The folder the manager scans for mods to load."
-
-#: src/renderer/src/components/settings/GamePlatformSelect.tsx:31
-msgid "Choose the storefront before deploying."
-msgstr "Choose the storefront before deploying."
 
 #: src/renderer/src/components/settings/SettingsScreen.tsx:111
 msgid "Theme"
@@ -507,7 +511,7 @@ msgstr "This folder doesn't exist yet - it'll be created when you finish setup."
 msgid "This may take a moment…"
 msgstr "This may take a moment…"
 
-#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:412
+#: src/renderer/src/components/mods/ModSettingsDrawer.tsx:413
 msgid "This mod has no configurable options."
 msgstr "This mod has no configurable options."
 
