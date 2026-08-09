@@ -237,7 +237,7 @@ export default async function deploy(
 					path.join(config.modsPath, instruction.cacheFolder)
 				)
 
-				// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+				// eslint-disable-next-line @typescript-eslint/no-require-imports
 				const modScript = (await require(compiledScriptPath)) as ModScript
 
 				fs.ensureDirSync(path.join(paths.dataRoot, "scriptTempFolder"))
@@ -433,8 +433,7 @@ export default async function deploy(
 
 			fs.ensureDirSync(path.join(paths.dataRoot, "staging", `chunk${content.chunk}`))
 
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let entityContent: any
+				let entityContent: any
 
 			const sentryContentFileTransaction = [
 				"entity.json",
@@ -1913,7 +1912,7 @@ export default async function deploy(
 					path.join(config.modsPath, instruction.cacheFolder)
 				)
 
-				// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+				// eslint-disable-next-line @typescript-eslint/no-require-imports
 				const modScript = (await require(compiledScriptPath)) as ModScript
 
 				fs.ensureDirSync(path.join(paths.dataRoot, "scriptTempFolder"))

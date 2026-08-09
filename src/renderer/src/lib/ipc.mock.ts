@@ -1,4 +1,6 @@
 import { OptionType, type Config, type DefaultPaths, type Manifest, type ModEntry } from "./manifest-types"
+import type { GamePathPreview } from "./ipc"
+import type { GamePlatform } from "./manifest-types"
 import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
 
 /**
@@ -172,7 +174,9 @@ function defaultConfig(mods: ModEntry[]): Config {
     gamePath: "",
     cachePath: "",
     modPath: "",
-    language: "en-US"
+    language: "en-US",
+    gamePlatform: undefined,
+    gamePlatformChoiceRequired: false
   }
 }
 
@@ -212,13 +216,14 @@ class MockSmfApi implements SmfApi {
     // after a beat, same "believable" spirit as the rest of this mock. `persist: false` (the setup
     // wizard - see ipc.ts's doc comment) skips the write and hands back a preview instead, mirroring
     // the real backend's toUiConfig-against-a-hypothetical-gamePath trick.
-    pickGameDirectory: async (persist = true): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
+    pickGameDirectory: async (persist = true, selectedPlatform?: GamePlatform): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
       await delay(300)
       const gamePath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN 3"
+      const gamePlatform = selectedPlatform ?? "steam"
       if (!persist) {
-        return { ok: true, config: { ...structuredClone(this.cfg), gamePath, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath) } }
+        return { ok: true, config: { ...structuredClone(this.cfg), gamePath, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath), gamePlatform, gamePlatformChoiceRequired: false } }
       }
-      this.cfg = { ...this.cfg, gamePath, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath) }
+      this.cfg = { ...this.cfg, gamePath, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath), gamePlatform, gamePlatformChoiceRequired: false }
       saveConfig(this.cfg)
       return { ok: true, config: structuredClone(this.cfg) }
     },
@@ -229,7 +234,7 @@ class MockSmfApi implements SmfApi {
     getDefaultPaths: async (): Promise<DefaultPaths> => {
       await delay(50)
       return {
-        gamePath: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN3",
+        gamePath: "C:\\Games\\HITMAN3",
         cachePath: "C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\cache",
         modPath: "C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\Mods"
       }
@@ -238,9 +243,9 @@ class MockSmfApi implements SmfApi {
     // Mirrors the real backend's config:previewPaths - both cachePath and modPath move with the
     // hypothetical gamePath (settings.ts's resolveTempDir()/resolveModsDir() both derive from the
     // game root by default).
-    previewPaths: async (gamePath: string): Promise<{ cachePath: string; modPath: string }> => {
+    previewPaths: async (gamePath: string, gamePlatform?: "steam" | "epic" | "microsoft"): Promise<GamePathPreview> => {
       await delay(50)
-      return { cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath) }
+      return { ok: true, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath), gamePlatform: gamePlatform ?? "steam", gamePlatformChoiceRequired: false }
     }
   }
 

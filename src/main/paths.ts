@@ -2,9 +2,9 @@ import { resolve } from "node:path"
 import { app } from "electron"
 
 /**
- * Filesystem roots this process uses - mirrors {@link CoreOptions.paths} in
- * `src/core.ts` (dataRoot: writable, staging/cache/settings.json/Mods/Deploy.log;
- * toolsRoot: read-only, bundled Third-Party/ tools + cleanMicrosoftThumbs.dat).
+ * Filesystem roots this process uses. `dataRoot` contains machine-level settings; the resolved
+ * temp/mod roots are derived separately from those settings and passed to the relevant subsystems.
+ * `toolsRoot` contains the bundled Third-Party/ tools and cleanMicrosoftThumbs.dat.
  *
  * Unlike the old `Mod Manager/src/main/index.ts`, this never calls
  * `process.chdir()` - every consumer gets an absolute path up front instead
@@ -23,7 +23,7 @@ import { app } from "electron"
  * install anymore (see settings.ts).
  */
 export interface AppPaths {
-  /** Writable: settings.json, Mods/, Deploy.log, cache/, staging/, temp/. */
+  /** Writable app-data root containing settings.json and other machine-level state. */
   dataRoot: string
   /** Read-only: bundled Third-Party/ tools, cleanMicrosoftThumbs.dat. */
   toolsRoot: string

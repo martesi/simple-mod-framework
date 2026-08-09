@@ -13,7 +13,7 @@ import { useVirtualList } from "@/lib/useVirtualList"
 import type { ModEntry } from "@/lib/manifest-types"
 
 import { SortableModRow } from "./SortableModRow"
-import { MOD_ROW_HEIGHT } from "./ModRow"
+import { MOD_ROW_HEIGHT } from "./mod-layout"
 import { AddModDialog } from "./AddModDialog"
 import { ModSettingsDrawer } from "./ModSettingsDrawer"
 

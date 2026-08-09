@@ -3,6 +3,7 @@ import { mkdirSync, rmSync } from "node:fs"
 import { dirname, join } from "node:path"
 import type { DiskManifest } from "./diskManifest"
 import type { GamePathInfo } from "./gameDetect"
+import { isGamePlatform } from "../shared/game"
 
 /**
  * LEI-141's single consolidated cache store, replacing `cache/map.json`, `cache/analysis/<id>.json`,
@@ -30,7 +31,7 @@ let currentDbPath: string | undefined
  * code. Content artifacts deliberately have no version row here: their slots are content-addressed
  * and can be retained across a metadata rebuild.
  */
-export const CACHE_VERSION = "1"
+export const CACHE_VERSION = "2"
 const CACHE_VERSION_META_KEY = "cacheVersion"
 
 /**
@@ -206,7 +207,7 @@ export function getStoredGameInfo(): StoredGameInfo | undefined {
 		gamePath: row.gamePath,
 		retailPath: row.retailPath,
 		runtimePath: row.runtimePath,
-		platform: row.platform as GamePathInfo["platform"],
+		platform: isGamePlatform(row.platform) ? row.platform : undefined,
 		unrecognisedBuild: !!row.unrecognisedBuild,
 		detectedAt: row.detectedAt
 	}
@@ -220,7 +221,7 @@ export function setStoredGameInfo(gamePath: string, info: GamePathInfo): void {
 			 ON CONFLICT(id) DO UPDATE SET gamePath = excluded.gamePath, retailPath = excluded.retailPath, runtimePath = excluded.runtimePath,
 				platform = excluded.platform, unrecognisedBuild = excluded.unrecognisedBuild, detectedAt = excluded.detectedAt`
 		)
-		.run(gamePath, info.retailPath, info.runtimePath, info.platform, info.unrecognisedBuild ? 1 : 0, Date.now())
+		.run(gamePath, info.retailPath, info.runtimePath, info.platform ?? "", info.unrecognisedBuild ? 1 : 0, Date.now())
 }
 
 export function clearStoredGameInfo(): void {

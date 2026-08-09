@@ -49,7 +49,7 @@
  *   itself - swap it out once LEI-136 lands one.
  */
 
-import type { Config, DefaultPaths, ModEntry } from "./manifest-types"
+import type { Config, DefaultPaths, GamePlatform, ModEntry } from "./manifest-types"
 
 export type ModTaskStatus = "queued" | "extracting" | "validating" | "installing" | "done" | "error"
 
@@ -100,6 +100,10 @@ export interface ModBuildInfo {
   error?: string
 }
 
+export type GamePathPreview =
+  | { ok: true; cachePath: string; modPath: string; gamePlatform?: GamePlatform; gamePlatformChoiceRequired: boolean }
+  | { ok: false; error: string }
+
 export type Unsubscribe = () => void
 
 export interface SmfApi {
@@ -108,7 +112,7 @@ export interface SmfApi {
     /** Shallow-merges into the live config. Never blocked by an in-flight deploy. */
     merge(patch: Partial<Config>): Promise<Config>
     /**
-     * Opens a native `dialog.showOpenDialog` folder picker for the game's Retail folder, validates
+     * Opens a native `dialog.showOpenDialog` folder picker for the game's root/Retail folder, validates
      * the pick the same way `src/main.ts` always has (chunk0.rpkg/HITMAN3.exe), derives
      * runtimePath/platform from it, and - when `persist` is true (the default, Settings' own Browse
      * button) - persists `gamePath` server-side in one step (LEI-133), reflected on `config.get()`'s
@@ -118,11 +122,11 @@ export interface SmfApi {
      * read `.config.cachePath`/`.config.modPath` off it for a live preview without anything hitting
      * disk yet. `error` is `""` (not surfaced) if the user just canceled the dialog.
      */
-    pickGameDirectory(persist?: boolean): Promise<{ ok: true; config: Config } | { ok: false; error: string }>
+    pickGameDirectory(persist?: boolean, gamePlatform?: GamePlatform): Promise<{ ok: true; config: Config } | { ok: false; error: string }>
     /** Example paths for the Settings/wizard placeholder text - see settings.ts's `resolveDefaultUiPaths()` doc comment for why these come from main rather than being hardcoded in the renderer. */
     getDefaultPaths(): Promise<DefaultPaths>
-    /** What cachePath/modPath would resolve to for a hypothetical (not-yet-saved) `gamePath` - see settings.ts's `resolveTempDir()`. The setup wizard's game-root step uses this to preview the cache step's game-root-relative default without persisting anything. */
-    previewPaths(gamePath: string): Promise<{ cachePath: string; modPath: string }>
+    /** What paths and storefront state would resolve to for a hypothetical (not-yet-saved) `gamePath` - see settings.ts's `resolveTempDir()` and gameDetect.ts. The setup wizard uses this to validate typed paths without persisting anything. */
+    previewPaths(gamePath: string, gamePlatform?: GamePlatform): Promise<GamePathPreview>
   }
 
   /** Plain OS-level helpers with no config/validation semantics of their own. */

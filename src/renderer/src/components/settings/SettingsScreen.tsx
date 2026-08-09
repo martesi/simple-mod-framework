@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { ACCENTS, resolveDark, type Accent, type ThemeMode } from "@/lib/theme"
 import { LANGUAGES, LANGUAGE_ITEMS } from "@/lib/languages"
 import { PathInputRow } from "./PathInputRow"
+import { GamePlatformSelect } from "./GamePlatformSelect"
 
 export function SettingsScreen() {
   const { t } = useLingui()
@@ -18,6 +19,7 @@ export function SettingsScreen() {
   const setThemeMode = useAppStore((s) => s.setThemeMode)
   const setAccent = useAppStore((s) => s.setAccent)
   const setGamePath = useAppStore((s) => s.setGamePath)
+  const setGamePlatform = useAppStore((s) => s.setGamePlatform)
   const setCachePath = useAppStore((s) => s.setCachePath)
   const setModPath = useAppStore((s) => s.setModPath)
   const setLanguage = useAppStore((s) => s.setLanguage)
@@ -69,6 +71,7 @@ export function SettingsScreen() {
           </div>
           <PathInputRow value={config.gamePath} placeholder={defaultPaths.gamePath} onChange={setGamePath} onBrowse={browseGamePath} />
         </div>
+        <GamePlatformSelect value={config.gamePlatform} required={config.gamePlatformChoiceRequired} disabled={!config.gamePath} onChange={setGamePlatform} />
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">
             <Trans>Cache path</Trans>

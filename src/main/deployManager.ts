@@ -7,7 +7,7 @@ import type { AppSettings } from "./settings"
 import { loadSettings, resolveModsDir } from "./settings"
 import type { ModsConfig } from "./modsConfig"
 import { loadModsConfig } from "./modsConfig"
-import { deriveGamePathInfo } from "./gameDetect"
+import { deriveGamePathInfo, gamePathDetectionError, hasKnownGamePlatform } from "./gameDetect"
 import { finishModBuildFailed, getMod, getModBuild } from "./db"
 import type { DeployWorkerMessage, DeployWorkerRequest } from "./deployWorker"
 import type { DeployProgress, DeploySnapshot } from "../renderer/src/lib/ipc"
@@ -231,14 +231,14 @@ export class DeployManager {
     // gamePath is only ever re-derived (and re-persisted to cache.db) when it's set or changed -
     // see gameDetect.ts's one-shot `deriveGamePathInfo()`. This call is a cache hit in the
     // overwhelmingly common case (gamePath unchanged since it was last picked).
-    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths) : ({ ok: false, error: "" } as const)
-    if (!detection.ok) {
+    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths, settings.gamePlatform) : ({ ok: false, error: "" } as const)
+    if (!hasKnownGamePlatform(detection)) {
       queueMicrotask(() => {
         this.emit({
           stage: "finalizing",
           stageIndex: STAGE_INDEX.finalizing,
           stageTotal: STAGE_TOTAL,
-          logLine: detection.error || "No valid game folder is set - open Settings and pick your game's root folder first.",
+          logLine: gamePathDetectionError(detection),
           done: true,
           ok: false
         })
@@ -359,13 +359,13 @@ export class DeployManager {
   }
 
   private spawnDeployWorker(snapshot: DeploySnapshot, settings: AppSettings, modsConfig: ModsConfig): void {
-    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths) : ({ ok: false, error: "" } as const)
-    if (!detection.ok) {
+    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths, settings.gamePlatform) : ({ ok: false, error: "" } as const)
+    if (!hasKnownGamePlatform(detection)) {
       this.emit({
         stage: "finalizing",
         stageIndex: STAGE_INDEX.finalizing,
         stageTotal: STAGE_TOTAL,
-        logLine: detection.error || "No valid game folder is set - open Settings and pick your game's root folder first.",
+        logLine: gamePathDetectionError(detection),
         done: true,
         ok: false
       })
@@ -556,9 +556,12 @@ export class DeployManager {
    */
   private _runBuildWorker(modId: string, generation: number): Promise<{ ok: boolean; error?: string }> {
     const settings: AppSettings = loadSettings(this.paths)
-    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths) : ({ ok: false, error: "" } as const)
-    if (!detection.ok) {
-      return Promise.resolve({ ok: false, error: detection.error || "No valid game folder is set - open Settings and pick your game's root folder first." })
+    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths, settings.gamePlatform) : ({ ok: false, error: "" } as const)
+    if (!hasKnownGamePlatform(detection)) {
+      return Promise.resolve({
+        ok: false,
+        error: gamePathDetectionError(detection)
+      })
     }
 
     const modsConfig: ModsConfig = loadModsConfig(resolveModsDir(this.paths, settings))

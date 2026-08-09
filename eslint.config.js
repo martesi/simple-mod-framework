@@ -46,5 +46,13 @@ export default defineConfig(
 		rules: {
 			"react-refresh/only-export-components": "warn"
 		}
+	},
+	{
+		// These shadcn-style files intentionally export compound primitive aliases (Root, Trigger,
+		// Value, etc.) alongside their wrapper components. Fast Refresh treats those aliases as
+		// non-component exports, but splitting every primitive into a separate file would make the
+		// component API harder to use without changing runtime behavior.
+		files: ["src/renderer/src/components/ui/**/*.{ts,tsx}"],
+		rules: { "react-refresh/only-export-components": "off" }
 	}
 )

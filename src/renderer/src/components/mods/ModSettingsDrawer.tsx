@@ -12,7 +12,8 @@ import { useVirtualList } from "@/lib/useVirtualList"
 import { cn } from "@/lib/utils"
 import { OptionType, type ManifestOption, type ModEntry } from "@/lib/manifest-types"
 import { openImageViewer, closeImageViewer, type PreviewableOption, type LocateTarget } from "./imageViewer"
-import { HoverImagePreview, clampHoverPosition } from "./HoverImagePreview"
+import { HoverImagePreview } from "./HoverImagePreview"
+import { clampHoverPosition } from "./hover-image-preview-utils"
 
 /** How long the cursor must stay on a thumbnail before the larger hover preview appears - short enough to feel responsive, long enough that scanning across many thumbnails doesn't flash a popup on every one. */
 const HOVER_PREVIEW_DELAY_MS = 250

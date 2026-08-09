@@ -24,7 +24,7 @@ import type { Span } from "./core/deploy"
 import type { AppPaths } from "./paths"
 import type { AppSettings } from "./settings"
 import { resolveModsDir, resolveTempDir } from "./settings"
-import type { GamePathInfo } from "./gameDetect"
+import type { KnownGamePathInfo } from "./gameDetect"
 import type { ModsConfig } from "./modsConfig"
 import { getMod, getModBuild, listMods, openDb } from "./db"
 import { validateDeployCompatibility, type DeployCompatibilityInstruction } from "./deployCompatibility"
@@ -72,7 +72,7 @@ function loadCompatibilityInstructions(loadOrder: readonly string[]): { ok: true
  * itself is persisted - `createCore()` still runs them through `path.resolve(dataRoot, ...)`
  * internally, but since they're already absolute that's a no-op (see `src/core.ts`).
  */
-export function buildFrameworkConfig(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: GamePathInfo): Config {
+export function buildFrameworkConfig(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: KnownGamePathInfo): Config {
 	return {
 		retailPath: game.retailPath,
 		runtimePath: game.runtimePath,
@@ -95,6 +95,8 @@ export function buildFrameworkConfig(paths: AppPaths, settings: AppSettings, mod
 		knownMods: modsConfig.modOrder,
 		loadOrder: modsConfig.loadOrder,
 		modOptions: modsConfig.modOptions,
+		// The framework core keeps its own enum type; GamePlatform is the shared wire-level union
+		// and has the same string values after the known-platform guard in DeployManager.
 		platform: game.platform as Config["platform"]
 	}
 }
@@ -179,7 +181,7 @@ function noopSpan(): Span {
  * time this function runs at all, the queue-aware deploy gate (`deployManager.ts`) has already
  * confirmed every mod in the load order has a `ready` build - `deploy()` itself just reads them.
  */
-export async function runFullDeploy(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: GamePathInfo, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+export async function runFullDeploy(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: KnownGamePathInfo, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
 	const tempDir = resolveTempDir(paths, settings)
 	openDb(path.join(tempDir, "cache.db"))
 
@@ -243,7 +245,7 @@ export async function runFullDeploy(paths: AppPaths, settings: AppSettings, mods
  * deploy critical path" is meant to call whenever a mod is added/updated or its selected options
  * change - LEI-133's job is just to make sure the handler exists and runs in-process.
  */
-export async function runAnalyseMod(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: GamePathInfo, modId: string, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
+export async function runAnalyseMod(paths: AppPaths, settings: AppSettings, modsConfig: ModsConfig, game: KnownGamePathInfo, modId: string, onLog: (line: DeployPipelineLogLine) => void): Promise<DeployPipelineResult> {
 	const tempDir = resolveTempDir(paths, settings)
 	openDb(path.join(tempDir, "cache.db"))
 

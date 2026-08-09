@@ -1,4 +1,5 @@
 import type { Config, DefaultPaths, ModEntry } from "./manifest-types"
+import type { GamePathPreview } from "./ipc"
 import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
 
 /**
@@ -15,9 +16,9 @@ export function createElectronSmfApi(): SmfApi {
     config: {
       get: () => bridge.config.get() as Promise<Config>,
       merge: (patch) => bridge.config.merge(patch) as Promise<Config>,
-      pickGameDirectory: (persist) => bridge.config.pickGameDirectory(persist) as Promise<{ ok: true; config: Config } | { ok: false; error: string }>,
+      pickGameDirectory: (persist, gamePlatform) => bridge.config.pickGameDirectory(persist, gamePlatform) as Promise<{ ok: true; config: Config } | { ok: false; error: string }>,
       getDefaultPaths: () => bridge.config.getDefaultPaths() as Promise<DefaultPaths>,
-      previewPaths: (gamePath) => bridge.config.previewPaths(gamePath) as Promise<{ cachePath: string; modPath: string }>
+      previewPaths: (gamePath, gamePlatform) => bridge.config.previewPaths(gamePath, gamePlatform) as Promise<GamePathPreview>
     },
 
     system: {

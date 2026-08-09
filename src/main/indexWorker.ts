@@ -3,9 +3,10 @@ import { join } from "node:path"
 import { parentPort } from "node:worker_threads"
 import JSON5 from "json5"
 import type { DiskManifest } from "./diskManifest"
-import { validateModFolder, isRpkgOnlyModFolder } from "./validateMod"
+import { validateModFolder } from "./validateMod"
 import { FRAMEWORK_VERSION } from "./frameworkVersion"
 import { invalidManifestFallback, normalizeManifest } from "./manifestCompatibility"
+import { MANAGED_FOLDER, majorVersion } from "./modIndexConstants"
 
 /**
  * Worker-thread counterpart to ModIndex.rebuildChunked(). Runs the full Mods/ directory walk
@@ -21,16 +22,6 @@ import { invalidManifestFallback, normalizeManifest } from "./manifestCompatibil
  * The returned entries match the `IndexedMod` shape ModIndex uses internally so the main process
  * can load them directly into its in-memory map without re-reading any files.
  */
-
-const MANAGED_FOLDER = "Managed by SMF, do not touch"
-
-/** What CURRENT_FRAMEWORK_VERSION is in modIndex.ts - duplicated here so the worker is self-contained. */
-const CURRENT_FRAMEWORK_VERSION = FRAMEWORK_VERSION
-
-function majorOf(version: string): number {
-  const n = Number.parseInt(version.split(".")[0], 10)
-  return Number.isFinite(n) ? n : 0
-}
 
 export interface SerializedIndexEntry {
   folder: string
@@ -76,15 +67,14 @@ port.on("message", ({ modsDir }: IndexWorkerRequest) => {
         try {
           const manifest: DiskManifest = normalizeManifest(JSON5.parse(readFileSync(manifestPath, "utf8")))
           const { valid, error } = validateModFolder(full, manifest)
-          const outdated = majorOf(manifest.frameworkVersion) < majorOf(CURRENT_FRAMEWORK_VERSION)
+          const outdated = majorVersion(manifest.frameworkVersion) < majorVersion(FRAMEWORK_VERSION)
           entries.push({ folder, id: manifest.id, isFrameworkMod: true, manifest, valid, validationError: error, outdated })
         } catch {
           try {
             const fallback = invalidManifestFallback(JSON5.parse(readFileSync(manifestPath, "utf8")), folder)
             entries.push({ folder, id: folder, isFrameworkMod: true, manifest: fallback, valid: false, validationError: "Manifest is incompatible with this framework version or has invalid fields." })
           } catch {
-            const isMaybeRpkg = isRpkgOnlyModFolder(full)
-            entries.push({ folder, id: folder, isFrameworkMod: false, ...(isMaybeRpkg ? {} : {}) })
+            entries.push({ folder, id: folder, isFrameworkMod: false })
           }
         }
       } else {

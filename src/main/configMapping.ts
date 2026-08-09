@@ -3,6 +3,8 @@ import type { AppSettings } from "./settings"
 import { resolveModsDir, resolveTempDir } from "./settings"
 import type { AppPaths } from "./paths"
 import type { ModsConfig } from "./modsConfig"
+import type { GamePathInfo } from "./gameDetect"
+import { isGamePlatform } from "../shared/game"
 
 /**
  * Translates between this app's two on-disk config sources - `settings.ts`'s machine-level
@@ -12,12 +14,14 @@ import type { ModsConfig } from "./modsConfig"
  * field actually lives in a different file on disk than its `themeMode` field - `toUiConfig()`/
  * `fromUiPatch()` are the only place that split is visible.
  *
- * `gamePath` is a straight passthrough (LEI-133): both sides mean "the folder containing the
- * game's Retail executable" - `retailPath` is just `gamePath` resolved to an absolute path (see
- * `gameDetect.ts`'s `deriveGamePathInfo()`), so the UI never needs to know that name at all.
- * `runtimePath`/`platform` are derived the same way and are UI-invisible (deploy-only concerns).
+ * `gamePath` is a straight passthrough (LEI-133): it accepts either the game's root or its
+ * `Retail` subfolder, while `retailPath` is the normalized absolute path used by deployment.
+ * `runtimePath` remains deploy-only, but the effective storefront is exposed so an unrecognised
+ * build can be resolved by an explicit user choice.
  */
-export function toUiConfig(settings: AppSettings, modsConfig: ModsConfig, paths: AppPaths): Config {
+export function toUiConfig(settings: AppSettings, modsConfig: ModsConfig, paths: AppPaths, gameInfo?: Pick<GamePathInfo, "platform" | "unrecognisedBuild">): Config {
+	const selectedPlatform = isGamePlatform(settings.gamePlatform) ? settings.gamePlatform : undefined
+	const gamePlatform = gameInfo?.platform ?? selectedPlatform
 	return {
 		loadOrder: modsConfig.loadOrder,
 		modOrder: modsConfig.modOrder,
@@ -41,7 +45,9 @@ export function toUiConfig(settings: AppSettings, modsConfig: ModsConfig, paths:
 		// relative string "Mods", which PathInputRow would otherwise render verbatim as literal text
 		// instead of a real location).
 		modPath: resolveModsDir(paths, settings),
-		language: settings.language ?? "en-US"
+		language: settings.language ?? "en-US",
+		gamePlatform,
+		gamePlatformChoiceRequired: Boolean(gameInfo?.unrecognisedBuild && !gamePlatform)
 	}
 }
 
@@ -67,6 +73,7 @@ export function fromUiPatch(patch: Partial<Config>): ConfigPatchSplit {
 	if (patch.accent !== undefined) settingsPatch.accent = patch.accent
 	if (patch.cachePath !== undefined) settingsPatch.tempPath = patch.cachePath
 	if (patch.language !== undefined) settingsPatch.language = patch.language
+	if (isGamePlatform(patch.gamePlatform)) settingsPatch.gamePlatform = patch.gamePlatform
 
 	// `gamePath` itself always round-trips as typed - `ipcHandlers.ts`'s `config:merge` handler is
 	// the one that additionally triggers a (one-shot, cache.db-persisted) re-derive of

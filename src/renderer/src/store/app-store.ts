@@ -3,7 +3,7 @@ import { toast } from "sonner"
 import { t } from "@lingui/core/macro"
 import { getSmfApi } from "@/lib/ipc"
 import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate } from "@/lib/ipc"
-import type { Config, DefaultPaths, ModEntry } from "@/lib/manifest-types"
+import type { Config, DefaultPaths, GamePlatform, ModEntry } from "@/lib/manifest-types"
 import { WIZARD_STEPS } from "@/lib/wizard-steps"
 
 export interface AddTask extends ModTaskUpdate {
@@ -53,6 +53,19 @@ async function refreshModsAndConfig(fetchMods: () => Promise<ModEntry[]>): Promi
  * scoped rather than in AppState since it's pure plumbing, not state any component should read.
  */
 let modPathDebounceTimer: ReturnType<typeof setTimeout> | undefined
+let gamePathDebounceTimer: ReturnType<typeof setTimeout> | undefined
+let cachePathDebounceTimer: ReturnType<typeof setTimeout> | undefined
+let gameConfigMutationVersion = 0
+
+function clearGamePathDebounce(): void {
+  if (gamePathDebounceTimer) clearTimeout(gamePathDebounceTimer)
+  gamePathDebounceTimer = undefined
+}
+
+function clearCachePathDebounce(): void {
+  if (cachePathDebounceTimer) clearTimeout(cachePathDebounceTimer)
+  cachePathDebounceTimer = undefined
+}
 
 interface AppState {
   loaded: boolean
@@ -116,6 +129,7 @@ interface AppState {
   setReportErrors(value: boolean): void
 
   setGamePath(path: string): void
+  setGamePlatform(platform: GamePlatform): void
   setCachePath(path: string): void
   setModPath(path: string): Promise<void>
   setLanguage(language: string): void
@@ -129,7 +143,7 @@ interface AppState {
   wizardBack(): void
   wizardNext(): void
   /** Batches every field the wizard staged into one commit - see the implementation's doc comment. */
-  commitWizard(draft: { gamePath: string; cachePath: string; modPath: string; language: string }): Promise<void>
+  commitWizard(draft: { gamePath: string; gamePlatform?: GamePlatform; gamePlatformChoiceRequired?: boolean; cachePath: string; modPath: string; language: string }): Promise<void>
 }
 
 /**
@@ -436,15 +450,53 @@ export const useAppStore = create<AppState>((set, get) => ({
   setGamePath(gamePath) {
     const { config } = get()
     if (!config) return
-    set({ config: { ...config, gamePath } })
-    getSmfApi().config.merge({ gamePath })
+    const mutationVersion = ++gameConfigMutationVersion
+    const previousCachePath = config.cachePath
+    const previousModPath = config.modPath
+    set({ config: { ...config, gamePath, gamePlatform: undefined, gamePlatformChoiceRequired: false } })
+
+    clearGamePathDebounce()
+    gamePathDebounceTimer = setTimeout(() => {
+      gamePathDebounceTimer = undefined
+      void getSmfApi()
+        .config.merge({ gamePath })
+        .then((freshConfig) => {
+          if (mutationVersion !== gameConfigMutationVersion) return
+          set((s) => {
+            if (!s.config || s.config.gamePath !== gamePath) return {}
+            const nextConfig = { ...s.config, gamePath: freshConfig.gamePath, gamePlatform: freshConfig.gamePlatform, gamePlatformChoiceRequired: freshConfig.gamePlatformChoiceRequired }
+            if (s.config.cachePath === previousCachePath) nextConfig.cachePath = freshConfig.cachePath
+            if (s.config.modPath === previousModPath) nextConfig.modPath = freshConfig.modPath
+            return { config: nextConfig }
+          })
+        })
+    }, 400)
+  },
+
+  setGamePlatform(gamePlatform) {
+    const { config } = get()
+    if (!config) return
+    const pathWasPending = gamePathDebounceTimer !== undefined
+    clearGamePathDebounce()
+    const mutationVersion = ++gameConfigMutationVersion
+    set({ config: { ...config, gamePlatform } })
+    void getSmfApi()
+      .config.merge(pathWasPending ? { gamePath: config.gamePath, gamePlatform } : { gamePlatform })
+      .then((freshConfig) => {
+        if (mutationVersion !== gameConfigMutationVersion) return
+        set((s) => (s.config ? { config: { ...s.config, gamePath: freshConfig.gamePath, gamePlatform: freshConfig.gamePlatform, gamePlatformChoiceRequired: freshConfig.gamePlatformChoiceRequired } } : {}))
+      })
   },
 
   setCachePath(cachePath) {
     const { config } = get()
     if (!config) return
     set({ config: { ...config, cachePath } })
-    getSmfApi().config.merge({ cachePath })
+    clearCachePathDebounce()
+    cachePathDebounceTimer = setTimeout(() => {
+      cachePathDebounceTimer = undefined
+      void getSmfApi().config.merge({ cachePath })
+    }, 400)
   },
 
   /**
@@ -489,7 +541,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async browseGamePath() {
-    const result = await getSmfApi().config.pickGameDirectory()
+    clearGamePathDebounce()
+    const mutationVersion = ++gameConfigMutationVersion
+    const currentPlatform = get().config?.gamePlatform
+    const result = await getSmfApi().config.pickGameDirectory(true, currentPlatform)
+    if (mutationVersion !== gameConfigMutationVersion) return
     if (result.ok) {
       set({ config: result.config })
     } else if (result.error) {
@@ -499,8 +555,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async browseCachePath() {
+    clearCachePathDebounce()
     const picked = await getSmfApi().system.pickDirectory({ title: "Select a cache folder" })
-    if (picked) get().setCachePath(picked)
+    if (!picked) return
+    const { config } = get()
+    if (!config) return
+    set({ config: { ...config, cachePath: picked } })
+    void getSmfApi().config.merge({ cachePath: picked })
   },
 
   async browseModPath() {

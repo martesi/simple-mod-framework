@@ -114,7 +114,6 @@ const deepMerge = function (x: any, y: any) {
 
 const BLOB_MARKER = "__smfBlob__"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function blobToJSON(blob: Blob): Promise<any> {
 	return {
 		[BLOB_MARKER]: true,
@@ -123,7 +122,6 @@ async function blobToJSON(blob: Blob): Promise<any> {
 	}
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function jsonToBlob(value: any): Blob {
 	return new Blob([Buffer.from(value.data, "base64")], value.type ? { type: value.type } : undefined)
 }
@@ -138,7 +136,6 @@ export async function serialiseDeployInstruction(deployInstruction: DeployInstru
 
 	const blobs = await Promise.all(deployInstruction.blobs.map(async (entry) => (entry.source === "virtual" ? { ...entry, content: await blobToJSON(entry.content) } : entry)))
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const rpkgTypes: any = {}
 	for (const [chunk, data] of Object.entries(deployInstruction.rpkgTypes)) {
 		rpkgTypes[chunk] = data.type === "base" && data.chunkMeta instanceof Blob ? { type: "base", chunkMeta: await blobToJSON(data.chunkMeta) } : data
@@ -149,15 +146,11 @@ export async function serialiseDeployInstruction(deployInstruction: DeployInstru
 
 /** Inverse of {@link serialiseDeployInstruction}. */
 export function deserialiseDeployInstruction(serialised: string): DeployInstruction {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const parsed: any = JSON.parse(serialised)
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const restoreBlob = (value: any) => (value && typeof value === "object" && value[BLOB_MARKER] ? jsonToBlob(value) : value)
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	parsed.content = parsed.content.map((entry: any) => (entry.source === "virtual" ? { ...entry, content: restoreBlob(entry.content) } : entry))
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	parsed.blobs = parsed.blobs.map((entry: any) => (entry.source === "virtual" ? { ...entry, content: restoreBlob(entry.content) } : entry))
 
 	for (const chunk of Object.keys(parsed.rpkgTypes)) {
@@ -414,7 +407,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 					path.join(config.modsPath, modFolder)
 				)
 
-				// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+				// eslint-disable-next-line @typescript-eslint/no-require-imports
 				const modScript = (await require(compiledScriptPath)) as ModScript
 
 				fs.ensureDirSync(path.join(paths.dataRoot, "scriptTempFolder"))

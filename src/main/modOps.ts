@@ -44,15 +44,15 @@ function chunkNameFor(filePath: string): string {
  * `emit`. Ported from `Mod Manager/src/routes/modList/+page.svelte`'s
  * `addMod()`/`installRPKGMod()`, with two deliberate changes:
  *
- *   - runs against a per-task staging folder (`tmp/<taskId>/`) instead of a
+ *   - runs against a per-task staging folder (`<tempDir>/tmp/<taskId>/`) instead of a
  *     single shared `./staging` - the old app only ever had one add running
  *     at a time (a modal blocked a second), but this contract's `beginAdd`
  *     is explicitly non-blocking per file (see ipc.ts's doc comment), so two
  *     concurrent adds must not stomp on the same staging directory.
  *   - never shells out through a hand-built command string (see archive.ts).
  */
-export async function runAddModTask(paths: AppPaths, modsDir: string, index: ModIndex, taskId: string, sourceFilePath: string, sourceFileName: string, emit: TaskEmit): Promise<void> {
-  const staging = join(paths.dataRoot, "tmp", taskId)
+export async function runAddModTask(paths: AppPaths, tempDir: string, modsDir: string, index: ModIndex, taskId: string, sourceFilePath: string, sourceFileName: string, emit: TaskEmit): Promise<void> {
+	const staging = join(tempDir, "tmp", taskId)
 
   try {
     emit({ status: "queued" })

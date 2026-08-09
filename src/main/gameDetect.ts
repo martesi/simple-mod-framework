@@ -3,8 +3,12 @@ import { accessSync, constants as fsConstants, copyFileSync, existsSync, readFil
 import { join, resolve } from "node:path"
 import type { AppPaths } from "./paths"
 import { getStoredGameInfo, setStoredGameInfo, type StoredGameInfo } from "./db"
+import { isGamePlatform, type GamePlatform } from "../shared/game"
 
-export type GamePlatform = "steam" | "epic" | "microsoft"
+export type { GamePlatform } from "../shared/game"
+
+export const UNKNOWN_GAME_PLATFORM_ERROR = "This game build is not recognised. Choose Steam, Epic, or Microsoft in Settings before deploying."
+export const INVALID_GAME_PATH_ERROR = "No valid game folder is set - open Settings and pick your game's root folder first."
 
 /**
  * md5 hashes of known game builds, keyed to which storefront they belong to. Ported from
@@ -27,16 +31,27 @@ function md5File(path: string): string {
 }
 
 export interface GamePathInfo {
-	/** The picked "Retail" folder itself, resolved to an absolute path. */
+	/** The install's normalized `Retail` folder, resolved to an absolute path. */
 	retailPath: string
 	/** Sibling `Runtime/` folder (Steam/Epic) or the nested `Retail/Runtime/` folder (Microsoft Store) - whichever this install actually has. */
 	runtimePath: string
-	platform: GamePlatform
-	/** True if the game build's hash wasn't recognised and `platform` is the patched Steam fallback - mirrors `src/main.ts`'s own "Unknown game version" handling. */
+	/** The detected storefront, or the user's explicit selection for an unrecognised build. */
+	platform?: GamePlatform
+	/** True if the game build's hash was not recognised by this app's bundled hash table. */
 	unrecognisedBuild: boolean
 }
 
 export type GamePathDetection = ({ ok: true } & GamePathInfo) | { ok: false; error: string }
+
+export type KnownGamePathInfo = GamePathInfo & { platform: GamePlatform }
+
+export function hasKnownGamePlatform(detection: GamePathDetection): detection is { ok: true } & KnownGamePathInfo {
+	return detection.ok && detection.platform !== undefined
+}
+
+export function gamePathDetectionError(detection: GamePathDetection): string {
+	return detection.ok ? UNKNOWN_GAME_PLATFORM_ERROR : detection.error || INVALID_GAME_PATH_ERROR
+}
 
 /**
  * LEI-141: game/distributor detection is now one-shot. `deriveGamePathInfoUncached()` below (the
@@ -52,22 +67,32 @@ export type GamePathDetection = ({ ok: true } & GamePathInfo) | { ok: false; err
  * (updating the stored row) if `gamePath` doesn't match what was last detected, or nothing's stored
  * yet. Once detected, a result is **never rechecked** just because time passed or the game updated
  * underneath it - the framework only cares about distributor (Steam/Epic/Microsoft), and mods only
- * ever declare `supportedPlatforms` in that sense, not a version. (Caveat, unconfirmed and out of
- * scope for this change: some mods may in practice not be as distributor-agnostic as the manifest
- * schema assumes. Also unconfirmed/out of scope: an unrecognised-hash pick silently defaults to
- * `"steam"` - see `GAME_HASHES` below - and with detection now one-shot, a wrong guess at pick-time
- * persists for the life of this cache.db instead of being re-derived fresh next deploy.)
+ * ever declare `supportedPlatforms` in that sense, not a version. An unrecognised build is retained
+ * as an incomplete detection until the user explicitly chooses its storefront; it is never silently
+ * treated as Steam.
  */
-export function deriveGamePathInfo(pickedPath: string, paths: AppPaths): GamePathDetection {
+
+export function deriveGamePathInfo(pickedPath: string, paths: AppPaths, selectedPlatform?: GamePlatform): GamePathDetection {
+	const normalizedGamePath = resolve(pickedPath)
+	const explicitPlatform = isGamePlatform(selectedPlatform) ? selectedPlatform : undefined
 	const stored = getStoredGameInfo()
-	if (stored && stored.gamePath === pickedPath) {
+	if (stored && stored.gamePath === normalizedGamePath) {
+		const platform = stored.platform ?? (stored.unrecognisedBuild ? explicitPlatform : undefined)
+		if (platform !== stored.platform) {
+			const info: GamePathInfo = { retailPath: stored.retailPath, runtimePath: stored.runtimePath, platform, unrecognisedBuild: stored.unrecognisedBuild }
+			setStoredGameInfo(normalizedGamePath, info)
+			return { ok: true, ...info }
+		}
+
 		return { ok: true, retailPath: stored.retailPath, runtimePath: stored.runtimePath, platform: stored.platform, unrecognisedBuild: stored.unrecognisedBuild }
 	}
 
-	const detection = deriveGamePathInfoUncached(pickedPath, paths)
+	const detection = deriveGamePathInfoUncached(normalizedGamePath, paths)
 	if (detection.ok) {
-		const { ok: _ok, ...info } = detection
-		setStoredGameInfo(pickedPath, info)
+		const { ok: _ok, ...detected } = detection
+		const info: GamePathInfo = { ...detected, platform: detected.platform ?? (detected.unrecognisedBuild ? explicitPlatform : undefined) }
+		setStoredGameInfo(normalizedGamePath, info)
+		return { ok: true, ...info }
 	}
 
 	return detection
@@ -83,7 +108,7 @@ export function getCachedGameInfo(): StoredGameInfo | undefined {
  * actual filesystem checks and MD5 hash lookup. Called at most once per distinct `gamePath` (see
  * {@link deriveGamePathInfo} above) instead of on every deploy/analyseMod/picker call.
  */
-export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths): GamePathDetection {
+export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths, options: { prepareMicrosoftThumbs?: boolean } = {}): GamePathDetection {
 	let retailPath = resolve(pickedPath)
 
 	// Easy mistake: picking the game's root folder (e.g. ".../common/HITMAN3") instead of the
@@ -92,15 +117,24 @@ export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths):
 	// below would otherwise misread as "Runtime nested inside the picked folder", sending it looking
 	// for a MicrosoftGame.Config that was never going to exist. Quietly step down into "Retail" first,
 	// same self-heal spirit as the old core.ts's post-hoc runtimePath fix.
-	if (!existsSync(join(retailPath, "HITMAN3.exe")) && existsSync(join(retailPath, "Retail", "HITMAN3.exe"))) {
+	if (
+		!existsSync(join(retailPath, "HITMAN3.exe")) &&
+		(existsSync(join(retailPath, "Retail", "HITMAN3.exe")) || existsSync(join(retailPath, "Retail", "Runtime", "chunk0.rpkg")))
+	) {
 		retailPath = join(retailPath, "Retail")
 	}
 
 	const siblingRuntimePath = resolve(retailPath, "..", "Runtime")
 	const nestedRuntimePath = join(retailPath, "Runtime")
 
-	const isMicrosoftLayout = existsSync(join(nestedRuntimePath, "chunk0.rpkg"))
+	const hasNestedRuntime = existsSync(join(nestedRuntimePath, "chunk0.rpkg"))
+	const microsoftConfigPath = join(retailPath, "..", "MicrosoftGame.Config")
+	const isMicrosoftLayout = hasNestedRuntime && existsSync(microsoftConfigPath)
 	const runtimePath = isMicrosoftLayout ? nestedRuntimePath : siblingRuntimePath
+
+	if (hasNestedRuntime && !existsSync(microsoftConfigPath) && !existsSync(join(retailPath, "HITMAN3.exe"))) {
+		return { ok: false, error: `MicrosoftGame.Config couldn't be found at "${microsoftConfigPath}".` }
+	}
 
 	if (!isMicrosoftLayout && !existsSync(join(retailPath, "HITMAN3.exe"))) {
 		return {
@@ -111,10 +145,6 @@ export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths):
 
 	if (!existsSync(runtimePath)) {
 		return { ok: false, error: `The Runtime folder couldn't be found at "${runtimePath}".` }
-	}
-
-	if (isMicrosoftLayout && !existsSync(join(retailPath, "..", "MicrosoftGame.Config"))) {
-		return { ok: false, error: `MicrosoftGame.Config couldn't be found at "${join(retailPath, "..", "MicrosoftGame.Config")}".` }
 	}
 
 	// Only the Microsoft Store layout needs this check (matches src/main.ts:118-124) - thumbs.dat
@@ -131,19 +161,25 @@ export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths):
 		}
 	}
 
-	const hash = isMicrosoftLayout ? md5File(join(retailPath, "..", "MicrosoftGame.Config")) : md5File(join(retailPath, "HITMAN3.exe"))
+	let hash: string
+	try {
+		hash = isMicrosoftLayout ? md5File(join(retailPath, "..", "MicrosoftGame.Config")) : md5File(join(retailPath, "HITMAN3.exe"))
+	} catch {
+		return { ok: false, error: `The game build file couldn't be read under "${retailPath}".` }
+	}
 	const recognisedPlatform = GAME_HASHES[hash]
-	// An unrecognised hash (e.g. after a game update) falls back to Steam instead of failing the
-	// pick outright, matching src/main.ts's own patched fallback - see PATCH_NOTICE.md there.
-	const platform = recognisedPlatform ?? "steam"
 
-	if (isMicrosoftLayout) {
+	if (isMicrosoftLayout && options.prepareMicrosoftThumbs !== false) {
 		const cleanThumbsSrc = join(paths.toolsRoot, "cleanMicrosoftThumbs.dat")
 		const cleanThumbsDest = join(paths.dataRoot, "cleanThumbs.dat")
 		if (!existsSync(cleanThumbsDest) && existsSync(cleanThumbsSrc)) {
-			copyFileSync(cleanThumbsSrc, cleanThumbsDest)
+			try {
+				copyFileSync(cleanThumbsSrc, cleanThumbsDest)
+			} catch {
+				return { ok: false, error: `The manager couldn't prepare a clean thumbs.dat copy at "${cleanThumbsDest}".` }
+			}
 		}
 	}
 
-	return { ok: true, retailPath, runtimePath, platform, unrecognisedBuild: !recognisedPlatform }
+	return { ok: true, retailPath, runtimePath, platform: recognisedPlatform, unrecognisedBuild: !recognisedPlatform }
 }

@@ -76,7 +76,7 @@ async function main() {
 		// --module commonjs gets by default now anyway), and "nodenext" would additionally require
 		// `--module` to also be node16/nodenext, which would change this test's deliberately-CJS
 		// output.
-		[tscBin, "--module", "commonjs", "--target", "es2019", "--esModuleInterop", "--moduleResolution", "bundler", "--skipLibCheck", "--outDir", buildDir, path.join(root, "src", "main", "core", "typescript.ts")],
+		[tscBin, "--ignoreConfig", "--module", "commonjs", "--target", "es2019", "--esModuleInterop", "--moduleResolution", "bundler", "--skipLibCheck", "--outDir", buildDir, path.join(root, "src", "main", "core", "typescript.ts")],
 		{ stdio: "inherit" }
 	)
 

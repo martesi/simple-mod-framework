@@ -12,10 +12,14 @@ import { getSmfApi } from "@/lib/ipc"
 import { cn } from "@/lib/utils"
 import { LANGUAGES, LANGUAGE_ITEMS } from "@/lib/languages"
 import { WIZARD_STEPS } from "@/lib/wizard-steps"
+import type { GamePlatform } from "@/lib/manifest-types"
 import { PathInputRow } from "./PathInputRow"
+import { GamePlatformSelect } from "./GamePlatformSelect"
 
 interface WizardDraft {
   gamePath: string
+  gamePlatform?: GamePlatform
+  gamePlatformChoiceRequired: boolean
   cachePath: string
   modPath: string
   language: string
@@ -146,7 +150,7 @@ export function SetupWizard() {
   if (wizard.open !== prevWizardOpen) {
     setPrevWizardOpen(wizard.open)
     if (wizard.open && config) {
-      setDraft({ gamePath: config.gamePath, cachePath: config.cachePath, modPath: config.modPath, language: config.language })
+      setDraft({ gamePath: config.gamePath, gamePlatform: config.gamePlatform, gamePlatformChoiceRequired: config.gamePlatformChoiceRequired, cachePath: config.cachePath, modPath: config.modPath, language: config.language })
       setCacheDirty(false)
       setModDirty(false)
       setModPreview(null)
@@ -191,9 +195,18 @@ export function SetupWizard() {
   const dismissable = !!config.gamePath
 
   async function handleBrowseGamePath() {
-    const result = await getSmfApi().config.pickGameDirectory(false)
+    const result = await getSmfApi().config.pickGameDirectory(false, draft?.gamePlatform)
     if (result.ok) {
-      setDraft((d) => d && { ...d, gamePath: result.config.gamePath, cachePath: cacheDirty ? d.cachePath : result.config.cachePath, modPath: modDirty ? d.modPath : result.config.modPath })
+      setDraft((d) =>
+        d && {
+          ...d,
+          gamePath: result.config.gamePath,
+          gamePlatform: result.config.gamePlatform,
+          gamePlatformChoiceRequired: result.config.gamePlatformChoiceRequired,
+          cachePath: cacheDirty ? d.cachePath : result.config.cachePath,
+          modPath: modDirty ? d.modPath : result.config.modPath
+        }
+      )
     } else if (result.error) {
       // An empty error means the user just canceled the dialog - nothing to say.
       toast.error(result.error)
@@ -226,8 +239,25 @@ export function SetupWizard() {
       // under the game root) and modPath (resolveModsDir()'s ".smf/mods" folder, same idea) would
       // resolve to now, without persisting anything. Only overwrites a field the user hasn't
       // manually edited yet (see cacheDirty/modDirty's doc comment).
-      const preview = await getSmfApi().config.previewPaths(draft.gamePath)
-      setDraft((d) => d && { ...d, cachePath: cacheDirty ? d.cachePath : preview.cachePath, modPath: modDirty ? d.modPath : preview.modPath })
+      const preview = await getSmfApi().config.previewPaths(draft.gamePath, draft.gamePlatform)
+      if (!preview.ok) {
+        toast.error(preview.error)
+        return
+      }
+      if (preview.gamePlatformChoiceRequired) {
+        setDraft((d) => d && { ...d, gamePlatform: preview.gamePlatform, gamePlatformChoiceRequired: true })
+        toast.error(t`Choose the game platform before continuing.`)
+        return
+      }
+      setDraft((d) =>
+        d && {
+          ...d,
+          gamePlatform: preview.gamePlatform,
+          gamePlatformChoiceRequired: false,
+          cachePath: cacheDirty ? d.cachePath : preview.cachePath,
+          modPath: modDirty ? d.modPath : preview.modPath
+        }
+      )
     } else if (stepKey === "language") {
       // "Save & finish" - see this component's own doc comment for why every field waits until here.
       setCommitting(true)
@@ -257,14 +287,24 @@ export function SetupWizard() {
       break
     case "game":
       body = (
-        <WizardPathStep
-          title={t`Game root`}
-          description={t`Point to your game's root folder (the one containing Retail and Runtime).`}
-          value={draft.gamePath}
-          placeholder={defaultPaths.gamePath}
-          onChange={(gamePath) => setDraft((d) => d && { ...d, gamePath })}
-          onBrowse={handleBrowseGamePath}
-        />
+        <>
+          <WizardPathStep
+            title={t`Game root`}
+            description={t`Point to your game's root folder (the one containing Retail and Runtime).`}
+            value={draft.gamePath}
+            placeholder={defaultPaths.gamePath}
+            onChange={(gamePath) => setDraft((d) => d && { ...d, gamePath, gamePlatform: undefined, gamePlatformChoiceRequired: false })}
+            onBrowse={handleBrowseGamePath}
+          />
+          <div className="mt-4">
+            <GamePlatformSelect
+              value={draft.gamePlatform}
+              required={draft.gamePlatformChoiceRequired}
+              disabled={!draft.gamePath}
+              onChange={(gamePlatform) => setDraft((d) => d && { ...d, gamePlatform, gamePlatformChoiceRequired: false })}
+            />
+          </div>
+        </>
       )
       break
     case "cache":

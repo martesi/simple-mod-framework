@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { basename, isAbsolute, join, resolve } from "node:path"
 import JSON5 from "json5"
 import type { AppPaths } from "./paths"
+import { isGamePlatform, type GamePlatform } from "../shared/game"
 
 /**
  * This app's persisted settings - one JSON file in `app.getPath('userData')` (see paths.ts),
@@ -18,6 +19,8 @@ import type { AppPaths } from "./paths"
 export interface AppSettings {
 	/** The folder containing the game's Retail executable (or its parent - `deriveGamePathInfo()` self-heals that) - the one thing the user picks via `config:pickGameDirectory`, or types directly into Settings. */
 	gamePath: string
+	/** Explicit storefront selection used only when the bundled build hash cannot identify it. */
+	gamePlatform?: GamePlatform
 
 	/**
 	 * Explicit override for where mods are stored. Unset means "use the computed default" - under
@@ -93,7 +96,8 @@ export function loadSettings(paths: AppPaths): AppSettings {
 	}
 
 	const parsed = JSON5.parse(readFileSync(file, "utf8"))
-	const settings: AppSettings = { ...defaultSettings(), ...parsed }
+	const settings: AppSettings = { ...defaultSettings(), ...(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}) }
+	if (!isGamePlatform(settings.gamePlatform)) delete settings.gamePlatform
 	cachedSettings = settings
 	return settings
 }
@@ -103,10 +107,14 @@ export function saveSettings(paths: AppPaths, settings: AppSettings): void {
 	cachedSettings = settings
 }
 
-/** Shallow-merge a patch into settings.json and return the resulting full settings - mirrors the old `mergeDiskConfig()`. */
+/** Shallow-merge a patch into settings.json and return the resulting full settings - `undefined` explicitly removes an optional setting. */
 export function mergeSettings(paths: AppPaths, patch: Partial<AppSettings>): AppSettings {
 	const current = loadSettings(paths)
-	const next: AppSettings = { ...current, ...patch }
+	const next = { ...current }
+	for (const [key, value] of Object.entries(patch)) {
+		if (value === undefined) delete (next as Record<string, unknown>)[key]
+		else (next as Record<string, unknown>)[key] = value
+	}
 	saveSettings(paths, next)
 	return next
 }
@@ -199,7 +207,7 @@ export function readLegacyModListFields(paths: AppPaths): { loadOrder?: string[]
 
 export function resolveDefaultUiPaths(paths: AppPaths, settings?: AppSettings): DefaultUiPaths {
 	const programFiles = process.env["ProgramFiles(x86)"] ?? process.env["ProgramFiles"] ?? "C:\\Program Files (x86)"
-	const exampleGamePath = join(programFiles, "Steam", "steamapps", "common", "HITMAN3")
+	const exampleGamePath = join(programFiles, "HITMAN3")
 	return {
 		gamePath: exampleGamePath,
 		cachePath: settings ? resolveTempDir(paths, settings) : resolve(paths.dataRoot),

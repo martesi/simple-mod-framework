@@ -10,9 +10,9 @@ export interface SmfBridge {
   config: {
     get(): Promise<unknown>
     merge(patch: unknown): Promise<unknown>
-    pickGameDirectory(persist?: boolean): Promise<unknown>
+    pickGameDirectory(persist?: boolean, gamePlatform?: string): Promise<unknown>
     getDefaultPaths(): Promise<unknown>
-    previewPaths(gamePath: string): Promise<unknown>
+    previewPaths(gamePath: string, gamePlatform?: string): Promise<unknown>
   }
   system: {
     pickDirectory(options?: { title?: string }): Promise<string | null>

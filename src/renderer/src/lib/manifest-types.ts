@@ -1,6 +1,8 @@
 import type { HttpsUrl } from "../../../shared/urls"
+import type { GamePlatform } from "../../../shared/game"
 
 export type { HttpsUrl } from "../../../shared/urls"
+export type { GamePlatform } from "../../../shared/game"
 
 /**
  * Mirrors the shapes in `src/types.ts` at the repo root (the framework core's
@@ -72,7 +74,7 @@ export interface Config {
   reportErrors?: boolean
   themeMode: "light" | "dark" | "system"
   accent: "neutral" | "blue" | "violet" | "green" | "red"
-  /** Folder containing the game's Retail executable. */
+  /** The game's root folder or its Retail subfolder. */
   gamePath: string
   /** Where extracted RPKG data and intermediate build files are stored. */
   cachePath: string
@@ -80,6 +82,10 @@ export interface Config {
   modPath: string
   /** In-game text language code (e.g. "en-US") mods should target. */
   language: string
+  /** Effective storefront, detected from the game or explicitly selected for an unrecognised build. */
+  gamePlatform?: GamePlatform
+  /** True when deployment is blocked until the user chooses the storefront. */
+  gamePlatformChoiceRequired: boolean
 }
 
 /**

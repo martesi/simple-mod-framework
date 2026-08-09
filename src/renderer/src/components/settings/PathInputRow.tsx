@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 /**
  * A path text field + "Browse" button, shared by SettingsScreen's Paths card
  * and SetupWizard's per-path steps. The text field round-trips to the real
- * settings.json (LEI-134), and Browse now opens a real native
+ * settings.json after a short input debounce (LEI-134), and Browse now opens a real native
  * `dialog.showOpenDialog` folder picker (LEI-133) via `onBrowse` - the game
  * path uses `smf.config.pickGameDirectory()` (validated + derives
  * runtimePath/platform), cache/mod paths use the plain `smf.system.pickDirectory()`.

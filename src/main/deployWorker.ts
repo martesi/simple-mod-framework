@@ -2,7 +2,7 @@ import { parentPort } from "node:worker_threads"
 import type { AppPaths } from "./paths"
 import type { AppSettings } from "./settings"
 import type { ModsConfig } from "./modsConfig"
-import type { GamePathInfo } from "./gameDetect"
+import type { KnownGamePathInfo } from "./gameDetect"
 import { runFullDeploy, runAnalyseMod, type DeployPipelineLogLine } from "./deployPipeline"
 
 /**
@@ -25,8 +25,8 @@ import { runFullDeploy, runAnalyseMod, type DeployPipelineLogLine } from "./depl
  */
 
 export type DeployWorkerRequest =
-  | { id: number; type: "deploy"; paths: AppPaths; settings: AppSettings; modsConfig: ModsConfig; game: GamePathInfo }
-  | { id: number; type: "analyseMod"; paths: AppPaths; settings: AppSettings; modsConfig: ModsConfig; game: GamePathInfo; modId: string }
+  | { id: number; type: "deploy"; paths: AppPaths; settings: AppSettings; modsConfig: ModsConfig; game: KnownGamePathInfo }
+  | { id: number; type: "analyseMod"; paths: AppPaths; settings: AppSettings; modsConfig: ModsConfig; game: KnownGamePathInfo; modId: string }
   | { id: number; type: "cancel" }
 
 export type DeployWorkerMessage =

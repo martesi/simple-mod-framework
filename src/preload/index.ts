@@ -18,9 +18,9 @@ const smf = {
   config: {
     get: () => ipcRenderer.invoke("config:get"),
     merge: (patch: unknown) => ipcRenderer.invoke("config:merge", patch),
-    pickGameDirectory: (persist?: boolean) => ipcRenderer.invoke("config:pickGameDirectory", persist),
+    pickGameDirectory: (persist?: boolean, gamePlatform?: string) => ipcRenderer.invoke("config:pickGameDirectory", persist, gamePlatform),
     getDefaultPaths: () => ipcRenderer.invoke("config:getDefaultPaths"),
-    previewPaths: (gamePath: string) => ipcRenderer.invoke("config:previewPaths", gamePath)
+    previewPaths: (gamePath: string, gamePlatform?: string) => ipcRenderer.invoke("config:previewPaths", gamePath, gamePlatform)
   },
 
   system: {

@@ -47,19 +47,12 @@ export function getCurrentCore(): Core {
 	return currentCore
 }
 
-// eslint-disable-next-line prefer-const
 export let FrameworkVersion: string
-// eslint-disable-next-line prefer-const
 export let isDevBuild: boolean
-// eslint-disable-next-line prefer-const
 export let rpkgInstance: RPKGInstance
-// eslint-disable-next-line prefer-const
 export let config: Config
-// eslint-disable-next-line prefer-const
 export let logger: Logger
-// eslint-disable-next-line prefer-const
 export let options: ResolvedCoreOptions
-// eslint-disable-next-line prefer-const
 export let paths: Core["paths"]
 
 export function registerCleanup(fn: CleanupCallback): void {

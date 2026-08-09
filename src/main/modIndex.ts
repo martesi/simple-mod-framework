@@ -11,6 +11,7 @@ import { deleteMod, getMeta, type DbModRow, listMods, replaceModsIndex, setMeta 
 import { toHttpsUrl } from "../shared/urls"
 import { FRAMEWORK_VERSION } from "./frameworkVersion"
 import { invalidManifestFallback, normalizeManifest } from "./manifestCompatibility"
+import { MANAGED_FOLDER, majorVersion } from "./modIndexConstants"
 
 /**
  * Resolves the on-disk path to indexWorker.cjs bundled next to this file - mirrors
@@ -49,7 +50,7 @@ function resolveIndexWorkerPath(): string {
 export const CURRENT_FRAMEWORK_VERSION = FRAMEWORK_VERSION
 
 /** Exported for ipcHandlers.ts's mods:previewFolder - a candidate mod folder is never itself a mod. */
-export const MANAGED_FOLDER = "Managed by SMF, do not touch"
+export { MANAGED_FOLDER } from "./modIndexConstants"
 
 /** Exported so indexWorker.ts can use the same shape and main can load the result directly. */
 export interface IndexedMod {
@@ -70,11 +71,6 @@ export interface IndexedMod {
   valid?: boolean
   validationError?: string
   outdated?: boolean
-}
-
-function majorOf(version: string): number {
-  const n = Number.parseInt(version.split(".")[0], 10)
-  return Number.isFinite(n) ? n : 0
 }
 
 function toUiManifest(m: DiskManifest): Manifest {
@@ -364,7 +360,7 @@ export class ModIndex {
   /** Runs the disk-touching validity/outdated checks once - see IndexedMod's doc comment for why this is cached rather than called from list(). */
   private validate(folder: string, manifest: DiskManifest): { valid: boolean; validationError?: string; outdated: boolean } {
     const { valid, error } = validateModFolder(folder, manifest)
-    const outdated = majorOf(manifest.frameworkVersion) < majorOf(CURRENT_FRAMEWORK_VERSION)
+	const outdated = majorVersion(manifest.frameworkVersion) < majorVersion(CURRENT_FRAMEWORK_VERSION)
     return { valid, validationError: error, outdated }
   }
 

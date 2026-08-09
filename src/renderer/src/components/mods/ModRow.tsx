@@ -11,15 +11,7 @@ import { toHttpsUrl } from "@/lib/external-url"
 import type { ModEntry } from "@/lib/manifest-types"
 import { OptionType } from "@/lib/manifest-types"
 import type { ModBuildInfo } from "@/lib/ipc"
-
-/**
- * A fixed, deterministic row height (rather than letting content/padding size it intrinsically) -
- * ModsScreen.tsx's virtualized list needs to know exactly how tall an off-screen row *would* be to
- * compute the visible scroll range and size the spacer divs above/below it without ever having to
- * mount and measure one. Keep this in sync with the actual rendered height below (px-[18px], the
- * two-line name/description block, items-center) if that markup changes.
- */
-export const MOD_ROW_HEIGHT = 72
+import { MOD_ROW_HEIGHT } from "./mod-layout"
 
 export interface ModRowProps {
   mod: ModEntry

@@ -1,15 +1,16 @@
 import { BrowserWindow, dialog, ipcMain } from "electron"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import type { AppPaths } from "./paths"
 import { loadSettings, mergeSettings, readLegacyModListFields, resolveDefaultUiPaths, resolveModsDir, resolveTempDir } from "./settings"
 import { addNewlyKnownMods, invalidateModsConfigCache, loadModsConfig, mergeModsConfig, migrateFromLegacySettings } from "./modsConfig"
 import { fromUiPatch, toUiConfig } from "./configMapping"
-import { deriveGamePathInfo } from "./gameDetect"
+import { deriveGamePathInfo, deriveGamePathInfoUncached } from "./gameDetect"
+import { clearStoredGameInfo, getStoredGameInfo, setStoredGameInfo, clearAllContentCache, closeDb, openDb, listModBuilds } from "./db"
+import { isGamePlatform, type GamePlatform } from "../shared/game"
 import { ModIndex, MANAGED_FOLDER } from "./modIndex"
 import { setModImageRoot } from "./modImages"
 import { removeModFolder, runAddModTask, type TaskEmit } from "./modOps"
 import { DeployManager } from "./deployManager"
-import { clearAllContentCache, closeDb, openDb, listModBuilds } from "./db"
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs"
 import type { Config, DefaultPaths } from "../renderer/src/lib/manifest-types"
 import type { ModBuildInfo } from "../renderer/src/lib/ipc"
@@ -42,6 +43,16 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 		openDb(join(resolveTempDir(paths, settings), "cache.db"))
 	}
 
+	function currentGameInfo(settings: ReturnType<typeof loadSettings>): ReturnType<typeof getStoredGameInfo> {
+		if (!settings.gamePath) return undefined
+		const stored = getStoredGameInfo()
+		return stored?.gamePath === resolve(settings.gamePath) ? stored : undefined
+	}
+
+	function toConfig(settings: ReturnType<typeof loadSettings>): Config {
+		return toUiConfig(settings, getModsConfig(), paths, currentGameInfo(settings))
+	}
+
 	ensureDb()
 
 	// One-time upgrade path for installs that had load order/options sitting in the old
@@ -51,6 +62,17 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 
 	const index = new ModIndex(getModsDir)
 	setModImageRoot(getModsDir)
+
+	function registerIndexedMods(): ReturnType<typeof index.list> {
+		const list = index.list()
+		addNewlyKnownMods(getModsDir(), list)
+		return list
+	}
+
+	async function rebuildCurrentModIndex(onProgress?: (scanned: number, total: number) => void): Promise<ReturnType<typeof index.list>> {
+		await index.rebuildInWorker(onProgress)
+		return registerIndexedMods()
+	}
 
 	function broadcast(channel: string, payload: unknown): void {
 		for (const win of BrowserWindow.getAllWindows()) {
@@ -69,7 +91,11 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 
 	ipcMain.handle("config:get", (): Config => {
 		ensureDb()
-		return toUiConfig(loadSettings(paths), getModsConfig(), paths)
+		const settings = loadSettings(paths)
+		if (settings.gamePath && !currentGameInfo(settings)) {
+			deriveGamePathInfo(settings.gamePath, paths, settings.gamePlatform)
+		}
+		return toConfig(settings)
 	})
 
 	ipcMain.handle("config:getDefaultPaths", (): DefaultPaths => resolveDefaultUiPaths(paths, loadSettings(paths)))
@@ -82,14 +108,27 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 	 * before it, which this gives it via the same resolver `config:get`/`config:merge` already use,
 	 * just fed a hypothetical `gamePath` instead of whatever's on disk.
 	 */
-	ipcMain.handle("config:previewPaths", (_event, gamePath: string): { cachePath: string; modPath: string } => {
+	ipcMain.handle("config:previewPaths", (_event, gamePath: string, gamePlatform?: GamePlatform) => {
 		const preview = resolveDefaultUiPaths(paths, { ...loadSettings(paths), gamePath })
-		return { cachePath: preview.cachePath, modPath: preview.modPath }
+		const detection = deriveGamePathInfoUncached(gamePath, paths, { prepareMicrosoftThumbs: false })
+		if (!detection.ok) return { ok: false, error: detection.error }
+
+		const explicitPlatform = isGamePlatform(gamePlatform) ? gamePlatform : undefined
+		const effectivePlatform = detection.platform ?? explicitPlatform
+		return {
+			ok: true,
+			cachePath: preview.cachePath,
+			modPath: preview.modPath,
+			gamePlatform: effectivePlatform,
+			gamePlatformChoiceRequired: effectivePlatform === undefined
+		}
 	})
 
 	ipcMain.handle("config:merge", async (_event, patch: Partial<Config>): Promise<Config> => {
+		const settingsBefore = loadSettings(paths)
 		const modsDirBefore = patch.modPath !== undefined ? getModsDir() : undefined
-		const gamePathBefore = loadSettings(paths).gamePath
+		const gamePathBefore = settingsBefore.gamePath
+		const tempDirBefore = resolveTempDir(paths, settingsBefore)
 
 		const { settingsPatch, modsConfigPatch } = fromUiPatch(patch)
 
@@ -106,7 +145,9 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 				.map(([modId]) => modId)
 		}
 
-		const settings = mergeSettings(paths, settingsPatch)
+		const gamePathChanged = settingsPatch.gamePath !== undefined && settingsPatch.gamePath !== gamePathBefore
+		const settings = mergeSettings(paths, gamePathChanged && settingsPatch.gamePlatform === undefined ? { ...settingsPatch, gamePlatform: undefined } : settingsPatch)
+		const tempDirChanged = resolveTempDir(paths, settings) !== tempDirBefore
 
 		if (Object.keys(modsConfigPatch).length) {
 			mergeModsConfig(getModsDir(), modsConfigPatch)
@@ -127,16 +168,29 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 		// against whatever's stored in cache.db and only actually re-hashes/re-persists in that case -
 		// see gameDetect.ts). Also re-resolves the temp dir's *default* location against the new game
 		// root (no-op if `tempPath` is explicitly set - see resolveTempDir()'s doc comment).
-		if (settingsPatch.gamePath !== undefined && settingsPatch.gamePath !== gamePathBefore) {
-			if (settings.gamePath) deriveGamePathInfo(settings.gamePath, paths)
+		if (gamePathChanged || tempDirChanged || settingsPatch.gamePlatform !== undefined) {
 			ensureDb()
+			if (settings.gamePath) deriveGamePathInfo(settings.gamePath, paths, settings.gamePlatform)
+			else clearStoredGameInfo()
+		}
+
+		// A game-root/default-temp change or an explicit cache-path change moves cache.db. The
+		// in-memory index belongs to the old database, so repopulate the new one before any later
+		// deploy/build request tries to resolve a mod from it. This also makes an existing cache path
+		// safe to reuse for a different Mods folder: the index is rebuilt from the current folder rather
+		// than trusting rows that may belong to another install.
+		if (gamePathChanged || tempDirChanged) {
+			const list = await rebuildCurrentModIndex((scanned, total) => broadcast("mods:cacheProgress", { scanned, total }))
+			for (const mod of list) {
+				if (mod.isFrameworkMod) triggerEagerBuild(mod.id)
+			}
 		}
 
 		for (const modId of changedOptionModIds) {
 			if (index.has(modId)) triggerEagerBuild(modId)
 		}
 
-		return toUiConfig(settings, getModsConfig(), paths)
+		return toConfig(settings)
 	})
 
 	// The one real directory-picker dialog (LEI-133) - validates the pick the same way
@@ -147,10 +201,9 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 	// `persist` (default true, Settings' own Browse button) writes `gamePath` to settings.json
 	// immediately, same as it always has. The setup wizard passes `false`: it stages every field
 	// locally and only actually persists once, at "Save & finish" (see SetupWizard.tsx's doc
-	// comment) - `deriveGamePathInfo`'s own cache.db write still runs either way (it's a validation
-	// cache keyed on the picked path, not a settings.json field - harmless even if the user goes on
-	// to pick a different path before finishing).
-	ipcMain.handle("config:pickGameDirectory", async (event, persist: boolean = true): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
+	// comment) - preview mode deliberately avoids writing the cache or preparing Microsoft thumbs;
+	// only the final persisted selection updates derived state.
+	ipcMain.handle("config:pickGameDirectory", async (event, persist: boolean = true, selectedPlatform?: GamePlatform): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
 		const win = BrowserWindow.fromWebContents(event.sender)
 		const result = await dialog.showOpenDialog(win ?? undefined!, {
 			title: "Select your game's root folder",
@@ -162,22 +215,26 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 			return { ok: false, error: "" }
 		}
 
-		const detection = deriveGamePathInfo(result.filePaths[0], paths)
+		const detection = deriveGamePathInfoUncached(result.filePaths[0], paths, { prepareMicrosoftThumbs: persist })
 		if (!detection.ok) {
 			return { ok: false, error: detection.error }
 		}
+		const explicitPlatform = isGamePlatform(selectedPlatform) ? selectedPlatform : undefined
+		const effectiveDetection = detection.platform !== undefined || explicitPlatform === undefined ? detection : { ...detection, platform: explicitPlatform }
 
 		if (!persist) {
 			// A preview, same shape as the persisted path below (toUiConfig against a hypothetical
 			// gamePath) so the wizard can read `.config.cachePath`/`.config.modPath` off it exactly the
 			// same way it would the real thing.
-			return { ok: true, config: toUiConfig({ ...loadSettings(paths), gamePath: result.filePaths[0] }, getModsConfig(), paths) }
+			return { ok: true, config: toUiConfig({ ...loadSettings(paths), gamePath: result.filePaths[0], gamePlatform: effectiveDetection.platform }, getModsConfig(), paths, effectiveDetection) }
 		}
 
-		const settings = mergeSettings(paths, { gamePath: result.filePaths[0] })
+		const settings = mergeSettings(paths, { gamePath: result.filePaths[0], gamePlatform: effectiveDetection.platform })
 		ensureDb()
+		const { ok: _ok, ...info } = effectiveDetection
+		setStoredGameInfo(resolve(result.filePaths[0]), info)
 
-		return { ok: true, config: toUiConfig(settings, getModsConfig(), paths) }
+		return { ok: true, config: toConfig(settings) }
 	})
 
 	// A plain, unvalidated directory picker for the mod/temp path fields - unlike the game
@@ -224,25 +281,22 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 			await index.loadOrRebuild((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
 		}
 
-		const list = index.list()
+		const list = registerIndexedMods()
 		// Covers the case mods:rebuildIndex's own comment doesn't: mods that were already sitting in
 		// the Mods folder the very first time this app ever launches (e.g. migrated from the old Mod
 		// Manager) go through ModIndex's lazy rebuild-on-first-list (see modIndex.ts's ensureBuilt()),
 		// never modOps.ts's install path - so without this same write-through here, "enable" would be
 		// broken for every pre-existing mod on a fresh install, not just newly-added ones.
-		addNewlyKnownMods(getModsDir(), list)
 		return list
 	})
 
 	ipcMain.handle("mods:rebuildIndex", async (event) => {
 		ensureDb()
-		await index.rebuildInWorker((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
-		const list = index.list()
+		const list = await rebuildCurrentModIndex((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
 		// Same write-through mods:beginAdd's install paths do (see modsConfig.ts's addNewlyKnownMods()
 		// calls) - a rebuild can surface mods that were dropped into the Mods folder outside this app
 		// entirely, and those need registering in modOrder too or they'll hit the exact same
 		// can't-enable-it bug a normally-installed mod would without it.
-		addNewlyKnownMods(getModsDir(), list)
 		return list
 	})
 
@@ -265,7 +319,7 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 			}
 		}
 
-		void runAddModTask(paths, getModsDir(), index, taskId, file.path, file.name, emit)
+		void runAddModTask(paths, resolveTempDir(paths, loadSettings(paths)), getModsDir(), index, taskId, file.path, file.name, emit)
 	})
 
 	ipcMain.handle("mods:remove", (_event, modId: string): { ok: boolean; reason?: string } => {
@@ -337,7 +391,6 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 		}
 
 		const settings = loadSettings(paths)
-		const modsDir = getModsDir()
 		const dbPath = join(resolveTempDir(paths, settings), "cache.db")
 
 		// LEI-145: drain in-flight build workers before closing the DB. Without this, a worker mid-
@@ -362,13 +415,12 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 		openDb(dbPath)
 		clearAllContentCache()
 
-		if (settings.gamePath) deriveGamePathInfo(settings.gamePath, paths)
+		if (settings.gamePath) deriveGamePathInfo(settings.gamePath, paths, settings.gamePlatform)
 
 		index.forceReload()
 		await index.loadOrRebuild((scanned, total) => event.sender.send("mods:cacheProgress", { scanned, total }))
 
-		const list = index.list()
-		addNewlyKnownMods(modsDir, list)
+		const list = registerIndexedMods()
 
 		for (const mod of list) {
 			if (mod.isFrameworkMod) triggerEagerBuild(mod.id)
