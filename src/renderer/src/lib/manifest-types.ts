@@ -82,7 +82,7 @@ export interface Config {
   modPath: string
   /** In-game text language code (e.g. "en-US") mods should target. */
   language: string
-  /** Effective storefront, detected from the game or explicitly selected for an unrecognised build. */
+  /** Effective storefront, inferred from the game files or explicitly selected by the user. */
   gamePlatform?: GamePlatform
   /** True when deployment is blocked until the user chooses the storefront. */
   gamePlatformChoiceRequired: boolean

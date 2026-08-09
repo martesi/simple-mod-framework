@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto"
-import { accessSync, constants as fsConstants, copyFileSync, existsSync, readFileSync } from "node:fs"
+import { accessSync, constants as fsConstants, copyFileSync, existsSync } from "node:fs"
 import { join, resolve } from "node:path"
 import type { AppPaths } from "./paths"
 import { getStoredGameInfo, setStoredGameInfo, type StoredGameInfo } from "./db"
@@ -7,38 +6,19 @@ import { isGamePlatform, type GamePlatform } from "../shared/game"
 
 export type { GamePlatform } from "../shared/game"
 
-export const UNKNOWN_GAME_PLATFORM_ERROR = "This game build is not recognised. Choose Steam, Epic, or Microsoft in Settings before deploying."
+export const UNKNOWN_GAME_PLATFORM_ERROR = "The game's storefront could not be inferred. Choose Steam, Epic, or Microsoft in Settings before deploying."
 export const INVALID_GAME_PATH_ERROR = "No valid game folder is set - open Settings and pick your game's root folder first."
 
-/**
- * md5 hashes of known game builds, keyed to which storefront they belong to. Ported from
- * `src/main.ts`'s `gameHashes` table (the CLI's own copy of the same detection) rather than
- * imported, to keep this app's path/platform detection self-contained the same way
- * `validateMod.ts` and (pre-LEI-133) `diskConfig.ts` already do - see settings.ts's doc comment.
- */
-const GAME_HASHES: Record<string, GamePlatform> = {
-	"b894cfa2f11b6db52db587a21de688b2": "epic", // base game
-	"6ce4ebfdd9e22e179206281d818850f5": "epic", // ansel unlock
-	"4f1b7753a40359bde5d4aa013257c5f1": "steam", // base game
-	"406865e7486cbc3b77a5f22fd73fbe00": "steam", // ansel unlock
-
-	// Gamepass/store protects the EXE from reading so we can't hash it, instead we hash the game config
-	"cfdf300263b03d625099226882eafe84": "microsoft"
-}
-
-function md5File(path: string): string {
-	return createHash("md5").update(readFileSync(path)).digest("hex")
-}
+const STEAM_MARKERS = ["steam_api64.dll", "steam_api.dll"]
+const EPIC_MARKERS = ["EOSSDK-Win64-Shipping.dll", "EOSSDK-Win32-Shipping.dll"]
 
 export interface GamePathInfo {
 	/** The install's normalized `Retail` folder, resolved to an absolute path. */
 	retailPath: string
 	/** Sibling `Runtime/` folder (Steam/Epic) or the nested `Retail/Runtime/` folder (Microsoft Store) - whichever this install actually has. */
 	runtimePath: string
-	/** The detected storefront, or the user's explicit selection for an unrecognised build. */
+	/** The inferred storefront, or the user's explicit selection. */
 	platform?: GamePlatform
-	/** True if the game build's hash was not recognised by this app's bundled hash table. */
-	unrecognisedBuild: boolean
 }
 
 export type GamePathDetection = ({ ok: true } & GamePathInfo) | { ok: false; error: string }
@@ -55,11 +35,10 @@ export function gamePathDetectionError(detection: GamePathDetection): string {
 
 /**
  * LEI-141: game/distributor detection is now one-shot. `deriveGamePathInfoUncached()` below (the
- * validate-and-derive step LEI-133 introduced) still does the real filesystem/hash work, but it's
+ * validate-and-derive step LEI-133 introduced) still does the real filesystem/layout work, but it's
  * now only ever actually invoked when `gamePath` is set or changed - not "every time
  * retailPath/runtimePath/platform are needed" as LEI-133 originally had it (deploy start, analyseMod,
- * the picker - all used to redundantly re-derive, and `deriveGamePathInfo`/`computeGameHash` in the
- * pre-LEI-141 version of this file both independently MD5-hashed the same exe every single deploy).
+ * the picker - all used to redundantly re-derive the same install layout on every deploy).
  *
  * The *result* is persisted to `cache.db`'s `game_info` row (`db.ts`) instead - `deriveGamePathInfo()`
  * below is the cached entry point everything else should call: it returns the stored result
@@ -67,9 +46,8 @@ export function gamePathDetectionError(detection: GamePathDetection): string {
  * (updating the stored row) if `gamePath` doesn't match what was last detected, or nothing's stored
  * yet. Once detected, a result is **never rechecked** just because time passed or the game updated
  * underneath it - the framework only cares about distributor (Steam/Epic/Microsoft), and mods only
- * ever declare `supportedPlatforms` in that sense, not a version. An unrecognised build is retained
- * as an incomplete detection until the user explicitly chooses its storefront; it is never silently
- * treated as Steam.
+ * ever declare `supportedPlatforms` in that sense, not a version. The user-selected platform always
+ * takes precedence over the best-effort filesystem hint.
  */
 
 export function deriveGamePathInfo(pickedPath: string, paths: AppPaths, selectedPlatform?: GamePlatform): GamePathDetection {
@@ -77,20 +55,20 @@ export function deriveGamePathInfo(pickedPath: string, paths: AppPaths, selected
 	const explicitPlatform = isGamePlatform(selectedPlatform) ? selectedPlatform : undefined
 	const stored = getStoredGameInfo()
 	if (stored && stored.gamePath === normalizedGamePath) {
-		const platform = stored.platform ?? (stored.unrecognisedBuild ? explicitPlatform : undefined)
+		const platform = explicitPlatform ?? stored.platform
 		if (platform !== stored.platform) {
-			const info: GamePathInfo = { retailPath: stored.retailPath, runtimePath: stored.runtimePath, platform, unrecognisedBuild: stored.unrecognisedBuild }
+			const info: GamePathInfo = { retailPath: stored.retailPath, runtimePath: stored.runtimePath, platform }
 			setStoredGameInfo(normalizedGamePath, info)
 			return { ok: true, ...info }
 		}
 
-		return { ok: true, retailPath: stored.retailPath, runtimePath: stored.runtimePath, platform: stored.platform, unrecognisedBuild: stored.unrecognisedBuild }
+		return { ok: true, retailPath: stored.retailPath, runtimePath: stored.runtimePath, platform: stored.platform }
 	}
 
 	const detection = deriveGamePathInfoUncached(normalizedGamePath, paths)
 	if (detection.ok) {
 		const { ok: _ok, ...detected } = detection
-		const info: GamePathInfo = { ...detected, platform: detected.platform ?? (detected.unrecognisedBuild ? explicitPlatform : undefined) }
+		const info: GamePathInfo = { ...detected, platform: explicitPlatform ?? detected.platform }
 		setStoredGameInfo(normalizedGamePath, info)
 		return { ok: true, ...info }
 	}
@@ -98,14 +76,14 @@ export function deriveGamePathInfo(pickedPath: string, paths: AppPaths, selected
 	return detection
 }
 
-/** Whatever was last detected and persisted, with no attempt to re-derive or validate it's still current - for callers (e.g. a rebuild-from-scratch check) that just want to know "do we already have a game pick recorded" without paying for a re-derive. */
+/** Whatever was last detected and persisted, with no attempt to re-derive or validate it's still current. */
 export function getCachedGameInfo(): StoredGameInfo | undefined {
 	return getStoredGameInfo()
 }
 
 /**
  * The real validate-and-derive step (LEI-133's original `deriveGamePathInfo`, unchanged) - does the
- * actual filesystem checks and MD5 hash lookup. Called at most once per distinct `gamePath` (see
+ * actual filesystem checks and storefront hints. Called at most once per distinct `gamePath` (see
  * {@link deriveGamePathInfo} above) instead of on every deploy/analyseMod/picker call.
  */
 export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths, options: { prepareMicrosoftThumbs?: boolean } = {}): GamePathDetection {
@@ -161,14 +139,6 @@ export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths, 
 		}
 	}
 
-	let hash: string
-	try {
-		hash = isMicrosoftLayout ? md5File(join(retailPath, "..", "MicrosoftGame.Config")) : md5File(join(retailPath, "HITMAN3.exe"))
-	} catch {
-		return { ok: false, error: `The game build file couldn't be read under "${retailPath}".` }
-	}
-	const recognisedPlatform = GAME_HASHES[hash]
-
 	if (isMicrosoftLayout && options.prepareMicrosoftThumbs !== false) {
 		const cleanThumbsSrc = join(paths.toolsRoot, "cleanMicrosoftThumbs.dat")
 		const cleanThumbsDest = join(paths.dataRoot, "cleanThumbs.dat")
@@ -181,5 +151,25 @@ export function deriveGamePathInfoUncached(pickedPath: string, paths: AppPaths, 
 		}
 	}
 
-	return { ok: true, retailPath, runtimePath, platform: recognisedPlatform, unrecognisedBuild: !recognisedPlatform }
+	return { ok: true, retailPath, runtimePath, platform: inferPlatform(pickedPath, retailPath, isMicrosoftLayout) }
+}
+
+/**
+ * Returns a best-effort storefront hint. These markers are deliberately advisory: the wizard and
+ * Settings always let the user override them, and no game-build/version table needs maintenance.
+ */
+function inferPlatform(pickedPath: string, retailPath: string, isMicrosoftLayout: boolean): GamePlatform | undefined {
+	if (isMicrosoftLayout) return "microsoft"
+
+	const hasSteamMarker = STEAM_MARKERS.some((marker) => existsSync(join(retailPath, marker)))
+	const hasEpicMarker = EPIC_MARKERS.some((marker) => existsSync(join(retailPath, marker)))
+	if (hasSteamMarker !== hasEpicMarker) return hasSteamMarker ? "steam" : "epic"
+	if (hasSteamMarker && hasEpicMarker) return undefined
+
+	const paths = [pickedPath, retailPath].map((value) => value.toLowerCase().replaceAll("\\", "/"))
+	const hasSteamPath = paths.some((value) => /(^|\/)steamapps(\/|$)/.test(value))
+	const hasEpicPath = paths.some((value) => /(^|\/)epic games(\/|$)/.test(value))
+	if (hasSteamPath !== hasEpicPath) return hasSteamPath ? "steam" : "epic"
+
+	return undefined
 }

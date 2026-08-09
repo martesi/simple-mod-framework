@@ -19,7 +19,7 @@ import { isGamePlatform, type GamePlatform } from "../shared/game"
 export interface AppSettings {
 	/** The folder containing the game's Retail executable (or its parent - `deriveGamePathInfo()` self-heals that) - the one thing the user picks via `config:pickGameDirectory`, or types directly into Settings. */
 	gamePath: string
-	/** Explicit storefront selection used only when the bundled build hash cannot identify it. */
+	/** Explicit storefront selection; overrides the best-effort filesystem hint. */
 	gamePlatform?: GamePlatform
 
 	/**

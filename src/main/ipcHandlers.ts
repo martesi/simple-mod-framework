@@ -114,7 +114,7 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 		if (!detection.ok) return { ok: false, error: detection.error }
 
 		const explicitPlatform = isGamePlatform(gamePlatform) ? gamePlatform : undefined
-		const effectivePlatform = detection.platform ?? explicitPlatform
+		const effectivePlatform = explicitPlatform ?? detection.platform
 		return {
 			ok: true,
 			cachePath: preview.cachePath,
@@ -165,7 +165,7 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 		}
 
 		// gamePath just changed: one-shot re-derive (deriveGamePathInfo() itself notices the mismatch
-		// against whatever's stored in cache.db and only actually re-hashes/re-persists in that case -
+		// against whatever's stored in cache.db and only actually re-checks layout/file hints in that case -
 		// see gameDetect.ts). Also re-resolves the temp dir's *default* location against the new game
 		// root (no-op if `tempPath` is explicitly set - see resolveTempDir()'s doc comment).
 		if (gamePathChanged || tempDirChanged || settingsPatch.gamePlatform !== undefined) {
@@ -220,7 +220,7 @@ export function registerIpcHandlers(paths: AppPaths): DeployManager {
 			return { ok: false, error: detection.error }
 		}
 		const explicitPlatform = isGamePlatform(selectedPlatform) ? selectedPlatform : undefined
-		const effectiveDetection = detection.platform !== undefined || explicitPlatform === undefined ? detection : { ...detection, platform: explicitPlatform }
+		const effectiveDetection = explicitPlatform !== undefined ? { ...detection, platform: explicitPlatform } : detection
 
 		if (!persist) {
 			// A preview, same shape as the persisted path below (toUiConfig against a hypothetical

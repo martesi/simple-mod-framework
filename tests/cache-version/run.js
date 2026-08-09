@@ -75,8 +75,7 @@ try {
     db.setStoredGameInfo("/game", {
       retailPath: "/game/Retail",
       runtimePath: "/game/Runtime",
-      platform: "steam",
-      unrecognisedBuild: false
+      platform: "steam"
     })
     db.upsertMod({
       id: "example.mod",

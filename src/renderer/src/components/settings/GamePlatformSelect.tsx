@@ -28,7 +28,7 @@ export function GamePlatformSelect({ value, required, disabled, onChange }: { va
         </SelectContent>
       </Select>
       <div className="mt-1.5 text-[12px] text-text-3">
-        {required ? <Trans>The game build was not recognised. Choose the storefront explicitly before deploying.</Trans> : value ? <Trans>This storefront will be used when checking the game install.</Trans> : <Trans>Choose a game folder first.</Trans>}
+        {required ? <Trans>Choose the storefront before deploying.</Trans> : value ? <Trans>This storefront will be used when checking the game install.</Trans> : <Trans>Choose a game folder first.</Trans>}
       </div>
     </div>
   )

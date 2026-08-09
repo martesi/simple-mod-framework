@@ -16,12 +16,12 @@ import { isGamePlatform } from "../shared/game"
  *
  * `gamePath` is a straight passthrough (LEI-133): it accepts either the game's root or its
  * `Retail` subfolder, while `retailPath` is the normalized absolute path used by deployment.
- * `runtimePath` remains deploy-only, but the effective storefront is exposed so an unrecognised
- * build can be resolved by an explicit user choice.
+ * `runtimePath` remains deploy-only, but the effective storefront is exposed so the best-effort
+ * filesystem hint can be confirmed or overridden by an explicit user choice.
  */
-export function toUiConfig(settings: AppSettings, modsConfig: ModsConfig, paths: AppPaths, gameInfo?: Pick<GamePathInfo, "platform" | "unrecognisedBuild">): Config {
+export function toUiConfig(settings: AppSettings, modsConfig: ModsConfig, paths: AppPaths, gameInfo?: Pick<GamePathInfo, "platform">): Config {
 	const selectedPlatform = isGamePlatform(settings.gamePlatform) ? settings.gamePlatform : undefined
-	const gamePlatform = gameInfo?.platform ?? selectedPlatform
+	const gamePlatform = selectedPlatform ?? gameInfo?.platform
 	return {
 		loadOrder: modsConfig.loadOrder,
 		modOrder: modsConfig.modOrder,
@@ -47,7 +47,7 @@ export function toUiConfig(settings: AppSettings, modsConfig: ModsConfig, paths:
 		modPath: resolveModsDir(paths, settings),
 		language: settings.language ?? "en-US",
 		gamePlatform,
-		gamePlatformChoiceRequired: Boolean(gameInfo?.unrecognisedBuild && !gamePlatform)
+		gamePlatformChoiceRequired: Boolean(gameInfo && !gamePlatform)
 	}
 }
 

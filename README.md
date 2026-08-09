@@ -9,9 +9,10 @@ The app is where you point at your game install, drop in mod archives (`.zip`/`.
 ## Getting started (using the framework)
 
 1. Install the app (see [Development](#development) below to build it, or grab a release build).
-2. On first launch, the setup wizard asks for your HITMAN 3 install folder ("game root"). Mods and
-   the working temp folder default to `<gameRoot>/.smf/mods` and `.../.smf/tmp`. If the installed
-   build cannot be identified automatically, choose its storefront before deploying.
+2. On first launch, the setup wizard asks for your HITMAN 3 install folder ("game root") and its
+   storefront. The manager suggests a storefront from the install when possible, and you can
+   override it. Mods and the working temp folder default to `<gameRoot>/.smf/mods` and
+   `.../.smf/tmp`.
 3. Drag mod archives or `.rpkg` files onto the window (or use "Add mod") to install them.
 4. Reorder mods to control load order, toggle the ones you want enabled, and expand a mod's
    settings to pick its options.

@@ -488,8 +488,8 @@ msgid "The folder the manager scans for mods to load."
 msgstr "The folder the manager scans for mods to load."
 
 #: src/renderer/src/components/settings/GamePlatformSelect.tsx:31
-msgid "The game build was not recognised. Choose the storefront explicitly before deploying."
-msgstr "The game build was not recognised. Choose the storefront explicitly before deploying."
+msgid "Choose the storefront before deploying."
+msgstr "Choose the storefront before deploying."
 
 #: src/renderer/src/components/settings/SettingsScreen.tsx:111
 msgid "Theme"

@@ -31,7 +31,7 @@ let currentDbPath: string | undefined
  * code. Content artifacts deliberately have no version row here: their slots are content-addressed
  * and can be retained across a metadata rebuild.
  */
-export const CACHE_VERSION = "2"
+export const CACHE_VERSION = "3"
 const CACHE_VERSION_META_KEY = "cacheVersion"
 
 /**
@@ -57,7 +57,9 @@ function migrate(db: DatabaseSync): void {
 			retailPath TEXT NOT NULL,
 			runtimePath TEXT NOT NULL,
 			platform TEXT NOT NULL,
-			unrecognisedBuild INTEGER NOT NULL,
+			-- Kept for compatibility with cache.db files created by v2; platform inference no longer
+			-- depends on a build hash, and new rows always write 0 here.
+			unrecognisedBuild INTEGER NOT NULL DEFAULT 0,
 			detectedAt INTEGER NOT NULL
 		);
 
@@ -191,14 +193,14 @@ export function setMeta(key: string, value: string): void {
 /* ---------------------------------------------------------------------------------------------- */
 
 export interface StoredGameInfo extends GamePathInfo {
-	/** The `gamePath` this detection was run against - lets callers notice `gamePath` changed and re-detect, without ever re-hashing on a plain "is it still the same" check. */
+	/** The `gamePath` this detection was run against - lets callers notice `gamePath` changed and re-derive hints. */
 	gamePath: string
 	detectedAt: number
 }
 
 export function getStoredGameInfo(): StoredGameInfo | undefined {
-	const row = getDb().prepare("SELECT * FROM game_info WHERE id = 1").get() as unknown as
-		| { gamePath: string; retailPath: string; runtimePath: string; platform: string; unrecognisedBuild: number; detectedAt: number }
+	const row = getDb().prepare("SELECT gamePath, retailPath, runtimePath, platform, detectedAt FROM game_info WHERE id = 1").get() as unknown as
+		| { gamePath: string; retailPath: string; runtimePath: string; platform: string; detectedAt: number }
 		| undefined
 
 	if (!row) return undefined
@@ -208,7 +210,6 @@ export function getStoredGameInfo(): StoredGameInfo | undefined {
 		retailPath: row.retailPath,
 		runtimePath: row.runtimePath,
 		platform: isGamePlatform(row.platform) ? row.platform : undefined,
-		unrecognisedBuild: !!row.unrecognisedBuild,
 		detectedAt: row.detectedAt
 	}
 }
@@ -220,8 +221,8 @@ export function setStoredGameInfo(gamePath: string, info: GamePathInfo): void {
 			 VALUES (1, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(id) DO UPDATE SET gamePath = excluded.gamePath, retailPath = excluded.retailPath, runtimePath = excluded.runtimePath,
 				platform = excluded.platform, unrecognisedBuild = excluded.unrecognisedBuild, detectedAt = excluded.detectedAt`
-		)
-		.run(gamePath, info.retailPath, info.runtimePath, info.platform ?? "", info.unrecognisedBuild ? 1 : 0, Date.now())
+			)
+		.run(gamePath, info.retailPath, info.runtimePath, info.platform ?? "", 0, Date.now())
 }
 
 export function clearStoredGameInfo(): void {

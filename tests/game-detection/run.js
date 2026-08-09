@@ -1,4 +1,4 @@
-// Focused regression tests for game-layout normalization, unknown-build handling, and the
+// Focused regression tests for game-layout normalization, filesystem storefront hints, and the
 // explicit storefront choice persisted in cache.db. These compile only the dependency-light
 // detection/database modules, so no Electron shell or real game install is required.
 import assert from "node:assert/strict"
@@ -65,16 +65,25 @@ try {
 
   db.openDb(path.join(dataRoot, "cache.db"))
 
-  check("unknown Steam/Epic builds remain unresolved instead of defaulting to Steam", () => {
+  check("a PC install without a reliable hint remains unresolved instead of defaulting to Steam", () => {
     const result = gameDetect.deriveGamePathInfoUncached(gameRoot, { dataRoot, toolsRoot: path.join(scratchDir, "tools") })
     assert.equal(result.ok, true)
     assert.equal(result.platform, undefined)
-    assert.equal(result.unrecognisedBuild, true)
     assert.equal(result.retailPath, path.resolve(retail))
     assert.equal(result.runtimePath, path.resolve(runtime))
   })
 
+  check("storefront DLL markers provide a best-effort default", () => {
+    fs.writeFileSync(path.join(retail, "steam_api64.dll"), "steam")
+    assert.equal(gameDetect.deriveGamePathInfoUncached(gameRoot, { dataRoot, toolsRoot: path.join(scratchDir, "tools") }).platform, "steam")
+    fs.rmSync(path.join(retail, "steam_api64.dll"))
+
+    fs.writeFileSync(path.join(retail, "EOSSDK-Win64-Shipping.dll"), "epic")
+    assert.equal(gameDetect.deriveGamePathInfoUncached(gameRoot, { dataRoot, toolsRoot: path.join(scratchDir, "tools") }).platform, "epic")
+  })
+
   check("an explicit storefront choice is persisted and reused", () => {
+    fs.rmSync(path.join(retail, "EOSSDK-Win64-Shipping.dll"))
     const first = gameDetect.deriveGamePathInfo(gameRoot, { dataRoot, toolsRoot: path.join(scratchDir, "tools") }, "epic")
     assert.equal(first.ok, true)
     assert.equal(first.platform, "epic")
@@ -83,6 +92,10 @@ try {
     const cached = gameDetect.deriveGamePathInfo(gameRoot, { dataRoot, toolsRoot: path.join(scratchDir, "tools") })
     assert.equal(cached.ok, true)
     assert.equal(cached.platform, "epic")
+
+    const overridden = gameDetect.deriveGamePathInfo(gameRoot, { dataRoot, toolsRoot: path.join(scratchDir, "tools") }, "steam")
+    assert.equal(overridden.ok, true)
+    assert.equal(overridden.platform, "steam")
   })
 
   check("a Microsoft Store root is normalized to Retail before layout detection", () => {
@@ -96,8 +109,7 @@ try {
 
     const result = gameDetect.deriveGamePathInfoUncached(microsoftRoot, { dataRoot, toolsRoot: path.join(scratchDir, "tools") })
     assert.equal(result.ok, true)
-    assert.equal(result.platform, undefined)
-    assert.equal(result.unrecognisedBuild, true)
+    assert.equal(result.platform, "microsoft")
     assert.equal(result.retailPath, path.resolve(microsoftRetail))
     assert.equal(result.runtimePath, path.resolve(microsoftRetail, "Runtime"))
   })
