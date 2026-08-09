@@ -258,7 +258,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 			}
 		}
 
-		manifest.scripts && scripts.push(manifest.scripts)
+		if (manifest.scripts) scripts.push(manifest.scripts)
 
 		if (config.modOptions[manifest.id] && manifest.options && manifest.options.length) {
 			await logger.verbose("Merging mod options")
@@ -286,30 +286,30 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 					}
 				}
 
-				manifest.localisation || (manifest.localisation = {} as ManifestOptionData["localisation"])
-				option.localisation && deepMerge(manifest.localisation, option.localisation)
+				if (!manifest.localisation) manifest.localisation = {} as ManifestOptionData["localisation"]
+				if (option.localisation) deepMerge(manifest.localisation, option.localisation)
 
-				manifest.localisationOverrides || (manifest.localisationOverrides = {})
-				option.localisationOverrides && deepMerge(manifest.localisationOverrides, option.localisationOverrides)
+				if (!manifest.localisationOverrides) manifest.localisationOverrides = {}
+				if (option.localisationOverrides) deepMerge(manifest.localisationOverrides, option.localisationOverrides)
 
-				manifest.localisedLines || (manifest.localisedLines = {})
-				option.localisedLines && deepMerge(manifest.localisedLines, option.localisedLines)
+				if (!manifest.localisedLines) manifest.localisedLines = {}
+				if (option.localisedLines) deepMerge(manifest.localisedLines, option.localisedLines)
 
-				manifest.dependencies || (manifest.dependencies = [])
-				option.dependencies && manifest.dependencies.push(...option.dependencies)
+				if (!manifest.dependencies) manifest.dependencies = []
+				if (option.dependencies) manifest.dependencies.push(...option.dependencies)
 
 				mergeDeployCompatibilityOptionData(manifest, option)
 
-				manifest.packagedefinition || (manifest.packagedefinition = [])
-				option.packagedefinition && manifest.packagedefinition.push(...option.packagedefinition)
+				if (!manifest.packagedefinition) manifest.packagedefinition = []
+				if (option.packagedefinition) manifest.packagedefinition.push(...option.packagedefinition)
 
-				manifest.thumbs || (manifest.thumbs = [])
-				option.thumbs && manifest.thumbs.push(...option.thumbs)
+				if (!manifest.thumbs) manifest.thumbs = []
+				if (option.thumbs) manifest.thumbs.push(...option.thumbs)
 
-				manifest.peacockPlugins || (manifest.peacockPlugins = [])
-				option.peacockPlugins && manifest.peacockPlugins.push(...option.peacockPlugins)
+				if (!manifest.peacockPlugins) manifest.peacockPlugins = []
+				if (option.peacockPlugins) manifest.peacockPlugins.push(...option.peacockPlugins)
 
-				option.scripts && scripts.push(option.scripts)
+				if (option.scripts) scripts.push(option.scripts)
 			}
 		}
 
@@ -414,7 +414,7 @@ export default async function analyseMod(mod: string): Promise<DeployInstruction
 					path.join(config.modsPath, modFolder)
 				)
 
-				// eslint-disable-next-line @typescript-eslint/no-var-requires
+				// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 				const modScript = (await require(compiledScriptPath)) as ModScript
 
 				fs.ensureDirSync(path.join(paths.dataRoot, "scriptTempFolder"))

@@ -237,7 +237,7 @@ export default async function deploy(
 					path.join(config.modsPath, instruction.cacheFolder)
 				)
 
-				// eslint-disable-next-line @typescript-eslint/no-var-requires
+				// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 				const modScript = (await require(compiledScriptPath)) as ModScript
 
 				fs.ensureDirSync(path.join(paths.dataRoot, "scriptTempFolder"))
@@ -493,8 +493,8 @@ export default async function deploy(
 				  } // Don't track raw files, only special file types
 			configureSentryScope(sentryContentFileTransaction)
 
-			content.source === "disk" && logger.verbose(`Staging ${content.type} file ${content.path}`)
-			content.source === "virtual" && logger.verbose(`Staging virtual ${content.type} file ${content.identifier}`)
+			if (content.source === "disk") void logger.verbose(`Staging ${content.type} file ${content.path}`)
+			if (content.source === "virtual") void logger.verbose(`Staging virtual ${content.type} file ${content.identifier}`)
 
 			switch (content.type) {
 				case "entity.json": {
@@ -1913,7 +1913,7 @@ export default async function deploy(
 					path.join(config.modsPath, instruction.cacheFolder)
 				)
 
-				// eslint-disable-next-line @typescript-eslint/no-var-requires
+				// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
 				const modScript = (await require(compiledScriptPath)) as ModScript
 
 				fs.ensureDirSync(path.join(paths.dataRoot, "scriptTempFolder"))

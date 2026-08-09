@@ -98,7 +98,9 @@ async function processPatch({
 		} else {
 			try {
 				fs.ensureDirSync(path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP"))
-			} catch {}
+			} catch {
+				// The directory may already exist; copying the cached files is still safe.
+			}
 			await Promise.all([
 				fs.copyFile(path.join(paths.dataRoot, "staging", chunkFolder, `${tempHash}.TEMP`), path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP`)), // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
 				fs.copyFile(path.join(paths.dataRoot, "staging", chunkFolder, `${tempHash}.TEMP.meta`), path.join(paths.dataRoot, assignedTemporaryDirectory, tempRPKG, "TEMP", `${tempHash}.TEMP.meta`))
@@ -111,7 +113,9 @@ async function processPatch({
 		} else {
 			try {
 				fs.ensureDirSync(path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU"))
-			} catch {}
+			} catch {
+				// The directory may already exist; copying the cached files is still safe.
+			}
 			await Promise.all([
 				fs.copyFile(path.join(paths.dataRoot, "staging", chunkFolder, `${tbluHash}.TBLU`), path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU`)), // Use the staging one (for mod compat - one mod can extract, patch and build, then the next can patch that one instead)
 				fs.copyFile(path.join(paths.dataRoot, "staging", chunkFolder, `${tbluHash}.TBLU.meta`), path.join(paths.dataRoot, assignedTemporaryDirectory, tbluRPKG, "TBLU", `${tbluHash}.TBLU.meta`))

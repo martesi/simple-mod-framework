@@ -161,10 +161,11 @@ function SelectGroupSection({
   // PreviewableOption's doc comment), so a pending request first clears any active search filter
   // and waits for the next render (once `filteredOptions` is back to the full list) before it's
   // safe to scroll - otherwise it could land on the wrong row, or one that's currently hidden.
-  useEffect(() => {
-    if (!locate) return
-    if (search) {
-      setSearch("")
+	useEffect(() => {
+		if (!locate) return
+		if (search) {
+			// eslint-disable-next-line react-hooks/set-state-in-effect
+			setSearch("")
       return
     }
     scrollToIndex(locate.rowIndex, { align: "center" })
@@ -296,8 +297,10 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
   // Re-sync the draft from whatever's actually committed whenever a (possibly different) mod's
   // drawer opens - `mod` goes null -> value each time ModsScreen.tsx opens it, even for the same
   // mod id twice in a row, so this always reflects the latest on-disk state at open time.
-  useEffect(() => {
-    setDraft(mod ? (config?.modOptions[mod.id] ?? []) : [])
+	useEffect(() => {
+		// This effect resets transient drawer state when the opened mod changes.
+		// eslint-disable-next-line react-hooks/set-state-in-effect
+		setDraft(mod ? (config?.modOptions[mod.id] ?? []) : [])
     closeImageViewer()
     setCheckboxActiveKey(null)
     setCheckboxSearch("")
@@ -336,10 +339,11 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
   // pending request clears the checkbox search box first and waits a render for
   // `filteredCheckboxes` to go back to the full list before it's safe to scroll - same two-step
   // pattern as the per-group locate effect in SelectGroupSection, and for the same reason.
-  useEffect(() => {
-    if (!checkboxLocate) return
-    if (checkboxSearch) {
-      setCheckboxSearch("")
+	useEffect(() => {
+		if (!checkboxLocate) return
+		if (checkboxSearch) {
+			// eslint-disable-next-line react-hooks/set-state-in-effect
+			setCheckboxSearch("")
       return
     }
     scrollCheckboxToIndex(checkboxLocate.rowIndex, { align: "center" })
