@@ -1,8 +1,8 @@
-import type { HttpsUrl } from "../../../shared/urls"
-import type { GamePlatform } from "../../../shared/game"
+import type { GamePlatform } from '../../../shared/game'
+import type { HttpsUrl } from '../../../shared/urls'
 
-export type { HttpsUrl } from "../../../shared/urls"
-export type { GamePlatform } from "../../../shared/game"
+export type { GamePlatform } from '../../../shared/game'
+export type { HttpsUrl } from '../../../shared/urls'
 
 /**
  * Mirrors the shapes in `src/types.ts` at the repo root (the framework core's
@@ -15,9 +15,9 @@ export type { GamePlatform } from "../../../shared/game"
  */
 
 export enum OptionType {
-  checkbox = "checkbox",
-  select = "select",
-  conditional = "conditional"
+  checkbox = 'checkbox',
+  select = 'select',
+  conditional = 'conditional',
 }
 
 export type ManifestOption = {
@@ -72,8 +72,8 @@ export interface Config {
   modOptions: Record<string, string[]>
   developerMode: boolean
   reportErrors?: boolean
-  themeMode: "light" | "dark" | "system"
-  accent: "neutral" | "blue" | "violet" | "green" | "red"
+  themeMode: 'light' | 'dark' | 'system'
+  accent: 'neutral' | 'blue' | 'violet' | 'green' | 'red'
   /** The game's root folder or its Retail subfolder. */
   gamePath: string
   /** Where extracted RPKG data and intermediate build files are stored. */

@@ -6,11 +6,11 @@ export type HttpsUrl = `https://${string}`
  * and Electron's `shell.openExternal` accepts more schemes than the manager should ever open.
  */
 export function toHttpsUrl(value: unknown): HttpsUrl | undefined {
-  if (typeof value !== "string") return undefined
+  if (typeof value !== 'string') return undefined
 
   try {
     const url = new URL(value)
-    return url.protocol === "https:" ? (url.href as HttpsUrl) : undefined
+    return url.protocol === 'https:' ? (url.href as HttpsUrl) : undefined
   } catch {
     return undefined
   }

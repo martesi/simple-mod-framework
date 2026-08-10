@@ -1,10 +1,10 @@
-import { join } from "node:path"
-import { app, dialog, shell, BrowserWindow } from "electron"
-import { electronApp, optimizer, is } from "@electron-toolkit/utils"
-import { resolveAppPaths } from "./paths"
-import { registerIpcHandlers } from "./ipcHandlers"
-import { registerModImageProtocolHandler, registerModImageSchemePrivileges } from "./modImages"
-import { toHttpsUrl } from "../shared/urls"
+import { join } from 'node:path'
+import { electronApp, is, optimizer } from '@electron-toolkit/utils'
+import { app, BrowserWindow, dialog, shell } from 'electron'
+import { toHttpsUrl } from '../shared/urls'
+import { registerIpcHandlers } from './ipcHandlers'
+import { registerModImageProtocolHandler, registerModImageSchemePrivileges } from './modImages'
+import { resolveAppPaths } from './paths'
 
 /**
  * LEI-134: this app no longer needs (and no longer grants) raw Node access
@@ -28,15 +28,15 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: join(__dirname, "../preload/index.cjs"),
+      preload: join(__dirname, '../preload/index.cjs'),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: true
-    }
+      webSecurity: true,
+    },
   })
 
-  mainWindow.on("ready-to-show", () => {
+  mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
 
@@ -49,22 +49,22 @@ function createWindow(): void {
         console.warn("Couldn't open external URL:", error)
       })
     }
-    return { action: "deny" }
+    return { action: 'deny' }
   })
 
-  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
-    mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"])
+  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    mainWindow.loadFile(join(__dirname, "../renderer/index.html"))
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
 let forceQuit = false
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId("com.atampy26.simple-mod-framework.mod-manager")
+  electronApp.setAppUserModelId('com.atampy26.simple-mod-framework.mod-manager')
 
-  app.on("browser-window-created", (_, window) => {
+  app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
@@ -80,18 +80,18 @@ app.whenReady().then(() => {
   // doesn't make quitting mid-deploy safe - it just makes sure the user is told before it happens,
   // same as the in-app Cancel action being locked out past "Finalizing deploy" rather than
   // silently allowed.
-  app.on("before-quit", (event) => {
+  app.on('before-quit', (event) => {
     if (forceQuit || !deployManager.isActive()) return
     event.preventDefault()
 
     dialog
       .showMessageBox(BrowserWindow.getAllWindows()[0] ?? null, {
-        type: "warning",
-        buttons: ["Quit anyway", "Cancel"],
+        type: 'warning',
+        buttons: ['Quit anyway', 'Cancel'],
         defaultId: 1,
         cancelId: 1,
-        message: "Deploy in progress",
-        detail: "Quitting now may leave your game files in a partially-patched state. Quit anyway?"
+        message: 'Deploy in progress',
+        detail: 'Quitting now may leave your game files in a partially-patched state. Quit anyway?',
       })
       .then(({ response }) => {
         if (response === 0) {
@@ -103,13 +103,13 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  app.on("activate", function () {
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
     app.quit()
   }
 })

@@ -1,4 +1,4 @@
-import { Fancybox } from "@fancyapps/ui/dist/fancybox/fancybox"
+import { Fancybox } from '@fancyapps/ui/dist/fancybox/fancybox'
 
 /**
  * The minimum needed to scroll/flash an option's row - locate() in ModSettingsDrawer.tsx only ever
@@ -7,7 +7,7 @@ import { Fancybox } from "@fancyapps/ui/dist/fancybox/fancybox"
  */
 export interface LocateTarget {
   key: string
-  section: { type: "checkbox" } | { type: "group"; name: string }
+  section: { type: 'checkbox' } | { type: 'group'; name: string }
   rowIndex: number // index within that section's *unfiltered* source array
 }
 
@@ -60,20 +60,24 @@ export function openImageViewer(
                   click: () => {
                     const item = currentItem()
                     Fancybox.close()
-                    if (item) opts.onLocate!(item)
-                  }
-                }
+                    if (item) opts.onLocate?.(item)
+                  },
+                },
               }
             : {},
           // Only offered from a multi-item gallery (see callers) - locating only makes sense when
           // the user might have scrolled away from the option's row in the underlying list.
-          display: { left: ["counter"], middle: [], right: opts.onLocate ? ["thumbs", "locate", "close"] : ["thumbs", "close"] }
-        }
+          display: {
+            left: ['counter'],
+            middle: [],
+            right: opts.onLocate ? ['thumbs', 'locate', 'close'] : ['thumbs', 'close'],
+          },
+        },
       },
       on: {
-        "Carousel.change": () => opts.onActiveChange?.(currentItem()?.key ?? null),
-        close: () => opts.onActiveChange?.(null)
-      }
+        'Carousel.change': () => opts.onActiveChange?.(currentItem()?.key ?? null),
+        close: () => opts.onActiveChange?.(null),
+      },
     }
   )
 }

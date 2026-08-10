@@ -24,29 +24,29 @@
  */
 
 export class DeployCancelledError extends Error {
-	constructor() {
-		super("Deploy cancelled")
-		this.name = "DeployCancelledError"
-	}
+  constructor() {
+    super('Deploy cancelled')
+    this.name = 'DeployCancelledError'
+  }
 }
 
 let cancelRequested = false
 let finalizeEntered = false
 
 export function requestCancel(): void {
-	cancelRequested = true
+  cancelRequested = true
 }
 
 export function enterFinalizePhase(): void {
-	finalizeEntered = true
+  finalizeEntered = true
 }
 
 export function isCancelActive(): boolean {
-	return cancelRequested && !finalizeEntered
+  return cancelRequested && !finalizeEntered
 }
 
 export function throwIfCancelled(): void {
-	if (isCancelActive()) {
-		throw new DeployCancelledError()
-	}
+  if (isCancelActive()) {
+    throw new DeployCancelledError()
+  }
 }

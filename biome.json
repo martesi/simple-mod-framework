@@ -1,0 +1,44 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
+  "files": {
+    "includes": [
+      "**/*.{js,jsx,ts,tsx,json,jsonc}",
+      "!dist",
+      "!out",
+      "!src/renderer/src/locales",
+      "!src/main/core/quickentity*.js",
+      "!**/node_modules",
+      "!**/.git",
+      "!extra/Third-Party/.wineprefix"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "asNeeded",
+      "trailingCommas": "es5"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": "off",
+      "style": { "noNonNullAssertion": "off" },
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noNonNullAssertedOptionalChain": "off",
+        "noArrayIndexKey": "off",
+        "noControlCharactersInRegex": "off",
+        "noImplicitAnyLet": "off",
+        "useIterableCallbackReturn": "off"
+      }
+    }
+  }
+}

@@ -1,22 +1,20 @@
-import { randomUUID } from "node:crypto"
-import { cpus } from "node:os"
-import { resolve } from "node:path"
-import { Worker } from "node:worker_threads"
-import type { AppPaths } from "./paths"
-import type { AppSettings } from "./settings"
-import { loadSettings, resolveModsDir } from "./settings"
-import type { ModsConfig } from "./modsConfig"
-import { loadModsConfig } from "./modsConfig"
-import { deriveGamePathInfo, gamePathDetectionError, hasKnownGamePlatform } from "./gameDetect"
-import { finishModBuildFailed, getMod, getModBuild } from "./db"
-import type { DeployWorkerMessage, DeployWorkerRequest } from "./deployWorker"
-import type { DeployProgress, DeploySnapshot } from "../renderer/src/lib/ipc"
-import type { DeployPipelineLogLine } from "./deployPipeline"
-import { hasDeployCompatibilityMetadata } from "./deployCompatibility"
+import { randomUUID } from 'node:crypto'
+import { cpus } from 'node:os'
+import { resolve } from 'node:path'
+import { Worker } from 'node:worker_threads'
+import type { DeployProgress, DeploySnapshot } from '../renderer/src/lib/ipc'
+import { finishModBuildFailed, getMod, getModBuild } from './db'
+import { hasDeployCompatibilityMetadata } from './deployCompatibility'
+import type { DeployPipelineLogLine } from './deployPipeline'
+import type { DeployWorkerMessage, DeployWorkerRequest } from './deployWorker'
+import { deriveGamePathInfo, gamePathDetectionError, hasKnownGamePlatform } from './gameDetect'
+import type { ModsConfig } from './modsConfig'
+import { loadModsConfig } from './modsConfig'
+import type { AppPaths } from './paths'
+import type { AppSettings } from './settings'
+import { loadSettings, resolveModsDir } from './settings'
 
-export interface DeployProgressEmit {
-  (progress: DeployProgress): void
-}
+export type DeployProgressEmit = (progress: DeployProgress) => void
 
 /**
  * Resolves the on-disk path to deployWorker.cjs next to this bundle at runtime. Mirrors the same
@@ -28,7 +26,7 @@ export interface DeployProgressEmit {
 function resolveDeployWorkerPath(): string {
   let currentDir = __dirname
   while (true) {
-    for (const name of ["deployWorker.cjs", "deployWorker.js"]) {
+    for (const name of ['deployWorker.cjs', 'deployWorker.js']) {
       const candidate = resolve(currentDir, name)
       try {
         require.resolve(candidate)
@@ -37,16 +35,22 @@ function resolveDeployWorkerPath(): string {
         // Try next candidate
       }
     }
-    const parentDir = resolve(currentDir, "..")
+    const parentDir = resolve(currentDir, '..')
     if (parentDir === currentDir) {
       break
     }
     currentDir = parentDir
   }
-  return resolve(__dirname, "deployWorker.cjs")
+  return resolve(__dirname, 'deployWorker.cjs')
 }
 
-const STAGE_INDEX = { "waiting-for-cache-build": 0, sorting: 1, extracting: 2, patching: 3, finalizing: 4 } as const
+const STAGE_INDEX = {
+  'waiting-for-cache-build': 0,
+  sorting: 1,
+  extracting: 2,
+  patching: 3,
+  finalizing: 4,
+} as const
 const STAGE_TOTAL = 5
 
 /** How long the queue-aware deploy gate waits for every mod's eager build to reach `ready` before giving up and reporting a failed deploy. Generous on purpose - a big collection's first-ever build wave (e.g. right after a `cache.db` rebuild-from-scratch) can legitimately take a while. */
@@ -87,7 +91,7 @@ export class DeployManager {
   private waitCancelled = false
 
   /** Mirrors the active deploy worker's current stage (kept in sync in `spawnDeployWorker`'s message handler) so `cancel()` can reject once the worker has entered the safe-window lockout, without waiting on a round trip to the worker itself. Null whenever no worker-backed deploy is active. */
-  private activeStage: DeployProgress["stage"] | null = null
+  private activeStage: DeployProgress['stage'] | null = null
 
   /**
    * LEI-144: in-process dedup registry. `triggerBuild()` stores each mod's in-flight Promise here
@@ -151,7 +155,7 @@ export class DeployManager {
    */
   cancel(snapshotId: string): { ok: boolean; error?: string } {
     if (!this.active || this.active.snapshotId !== snapshotId) {
-      return { ok: false, error: "No matching active deploy." }
+      return { ok: false, error: 'No matching active deploy.' }
     }
 
     if (!this.activeWorker || this.activeTaskId === null) {
@@ -161,14 +165,17 @@ export class DeployManager {
       return { ok: true }
     }
 
-    if (this.activeStage === "finalizing") {
+    if (this.activeStage === 'finalizing') {
       // Mirrors ipc.mock.ts's cancel(): once the worker has logged "Finalizing deploy" it's past the
       // point cancel.ts's isCancelActive() will ever honour again, so report that up front instead of
       // silently posting a message the worker is guaranteed to ignore.
-      return { ok: false, error: "Deploy is finalizing and can no longer be cancelled." }
+      return { ok: false, error: 'Deploy is finalizing and can no longer be cancelled.' }
     }
 
-    this.activeWorker.postMessage({ id: this.activeTaskId, type: "cancel" } satisfies DeployWorkerRequest)
+    this.activeWorker.postMessage({
+      id: this.activeTaskId,
+      type: 'cancel',
+    } satisfies DeployWorkerRequest)
     return { ok: true }
   }
 
@@ -187,26 +194,28 @@ export class DeployManager {
    * `resolveModFolder()` miss surfaces its own clear error later, in `deploy.ts` itself) are never
    * "not ready" - they have nothing to build in the first place.
    */
-	private findNotReadyMods(loadOrder: string[]): string[] {
+  private findNotReadyMods(loadOrder: string[]): string[] {
     const notReady: string[] = []
     for (const mod of loadOrder) {
       const row = getMod(mod)
-      if (!row || !row.isFrameworkMod) continue
+      if (!row?.isFrameworkMod) continue
       const build = getModBuild(row.id)
-      if (!build || build.status !== "ready" || !hasDeployCompatibilityMetadata(build.deployInstructionJson)) notReady.push(row.id)
-	}
+      if (build?.status !== 'ready' || !hasDeployCompatibilityMetadata(build.deployInstructionJson))
+        notReady.push(row.id)
+    }
 
     return notReady
   }
 
-	private findInvalidEnabledMods(loadOrder: string[]): string[] {
-		return loadOrder.flatMap((id) => {
-			const row = getMod(id)
-			if (!row) return [`${id} (missing from index)`]
-			if (row.isFrameworkMod && row.valid === false) return [`${id} (${row.validationError ?? "invalid manifest"})`]
-			return []
-		})
-	}
+  private findInvalidEnabledMods(loadOrder: string[]): string[] {
+    return loadOrder.flatMap((id) => {
+      const row = getMod(id)
+      if (!row) return [`${id} (missing from index)`]
+      if (row.isFrameworkMod && row.valid === false)
+        return [`${id} (${row.validationError ?? 'invalid manifest'})`]
+      return []
+    })
+  }
 
   /**
    * Takes an explicit, timestamped snapshot of the settings server-side and spawns a worker to
@@ -216,7 +225,7 @@ export class DeployManager {
    */
   start(loadOrder: string[], modsConfig: ModsConfig): DeploySnapshot {
     if (this.active) {
-      throw new Error("A deploy is already running.")
+      throw new Error('A deploy is already running.')
     }
 
     const settings: AppSettings = loadSettings(this.paths)
@@ -224,23 +233,25 @@ export class DeployManager {
     const snapshot: DeploySnapshot = {
       snapshotId: randomUUID(),
       snapshotTime: Date.now(),
-      loadOrder: [...loadOrder]
+      loadOrder: [...loadOrder],
     }
     this.active = snapshot
 
     // gamePath is only ever re-derived (and re-persisted to cache.db) when it's set or changed -
     // see gameDetect.ts's one-shot `deriveGamePathInfo()`. This call is a cache hit in the
     // overwhelmingly common case (gamePath unchanged since it was last picked).
-    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths, settings.gamePlatform) : ({ ok: false, error: "" } as const)
+    const detection = settings.gamePath
+      ? deriveGamePathInfo(settings.gamePath, this.paths, settings.gamePlatform)
+      : ({ ok: false, error: '' } as const)
     if (!hasKnownGamePlatform(detection)) {
       queueMicrotask(() => {
         this.emit({
-          stage: "finalizing",
+          stage: 'finalizing',
           stageIndex: STAGE_INDEX.finalizing,
           stageTotal: STAGE_TOTAL,
           logLine: gamePathDetectionError(detection),
           done: true,
-          ok: false
+          ok: false,
         })
         this.active = null
       })
@@ -262,25 +273,36 @@ export class DeployManager {
    * row from a crashed previous process". A local `attempted` Set replaces `triggered`'s secondary
    * role of "don't re-trigger a mod that already failed this deploy cycle."
    */
-	private async waitForBuildsThenDeploy(snapshot: DeploySnapshot, settings: AppSettings, modsConfig: ModsConfig): Promise<void> {
-		const attempted = new Set<string>()
-		const deadline = Date.now() + BUILD_WAIT_TIMEOUT_MS
-		const invalid = this.findInvalidEnabledMods(snapshot.loadOrder)
-		if (invalid.length) {
-			this.emit({ stage: "finalizing", stageIndex: STAGE_INDEX.finalizing, stageTotal: STAGE_TOTAL, logLine: `Cannot deploy invalid enabled mods: ${invalid.join(", ")}`, done: true, ok: false })
-			this.active = null
-			return
-		}
+  private async waitForBuildsThenDeploy(
+    snapshot: DeploySnapshot,
+    settings: AppSettings,
+    modsConfig: ModsConfig
+  ): Promise<void> {
+    const attempted = new Set<string>()
+    const deadline = Date.now() + BUILD_WAIT_TIMEOUT_MS
+    const invalid = this.findInvalidEnabledMods(snapshot.loadOrder)
+    if (invalid.length) {
+      this.emit({
+        stage: 'finalizing',
+        stageIndex: STAGE_INDEX.finalizing,
+        stageTotal: STAGE_TOTAL,
+        logLine: `Cannot deploy invalid enabled mods: ${invalid.join(', ')}`,
+        done: true,
+        ok: false,
+      })
+      this.active = null
+      return
+    }
 
-		let notReady = this.findNotReadyMods(snapshot.loadOrder)
+    let notReady = this.findNotReadyMods(snapshot.loadOrder)
 
     if (notReady.length) {
       this.emit({
-        stage: "waiting-for-cache-build",
-        stageIndex: STAGE_INDEX["waiting-for-cache-build"],
+        stage: 'waiting-for-cache-build',
+        stageIndex: STAGE_INDEX['waiting-for-cache-build'],
         stageTotal: STAGE_TOTAL,
-        logLine: `Waiting for ${notReady.length} mod${notReady.length === 1 ? "" : "s"} to finish building...`,
-        done: false
+        logLine: `Waiting for ${notReady.length} mod${notReady.length === 1 ? '' : 's'} to finish building...`,
+        done: false,
       })
     }
 
@@ -289,12 +311,12 @@ export class DeployManager {
 
       if (Date.now() > deadline) {
         this.emit({
-          stage: "finalizing",
+          stage: 'finalizing',
           stageIndex: STAGE_INDEX.finalizing,
           stageTotal: STAGE_TOTAL,
-          logLine: `Timed out waiting for these mods to finish building: ${notReady.join(", ")}. Check Settings for build errors, then try again.`,
+          logLine: `Timed out waiting for these mods to finish building: ${notReady.join(', ')}. Check Settings for build errors, then try again.`,
           done: true,
-          ok: false
+          ok: false,
         })
         this.active = null
         return
@@ -312,7 +334,7 @@ export class DeployManager {
         // crashed process). Give it a grace period before retriggering - a cold start with a very
         // slow tsc import could legitimately look like this for a few seconds, and we don't want to
         // double-trigger a build that's actually running in a worker we just don't know about.
-        if (build?.status === "building") {
+        if (build?.status === 'building') {
           if (Date.now() - build.startedAt < STALE_BUILD_TIMEOUT_MS) continue
           // Older than timeout with no in-flight entry - treat as orphaned, fall through to retrigger.
         }
@@ -320,7 +342,7 @@ export class DeployManager {
         // Don't re-trigger a mod that already failed during this deploy's wait cycle. A mod that
         // failed in a previous session (before this deploy started) gets one retry; `attempted` is
         // only set below, not carried across deploys.
-        if (attempted.has(modId) && build?.status === "failed") continue
+        if (attempted.has(modId) && build?.status === 'failed') continue
 
         attempted.add(modId)
         this.triggerBuild(modId).catch(() => {
@@ -347,62 +369,79 @@ export class DeployManager {
     if (!this.waitCancelled) return false
     this.waitCancelled = false
     this.emit({
-      stage: "finalizing",
+      stage: 'finalizing',
       stageIndex: STAGE_INDEX.finalizing,
       stageTotal: STAGE_TOTAL,
-      logLine: "Deploy cancelled.",
+      logLine: 'Deploy cancelled.',
       done: true,
-      ok: false
+      ok: false,
     })
     this.active = null
     return true
   }
 
-  private spawnDeployWorker(snapshot: DeploySnapshot, settings: AppSettings, modsConfig: ModsConfig): void {
-    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths, settings.gamePlatform) : ({ ok: false, error: "" } as const)
+  private spawnDeployWorker(
+    snapshot: DeploySnapshot,
+    settings: AppSettings,
+    modsConfig: ModsConfig
+  ): void {
+    const detection = settings.gamePath
+      ? deriveGamePathInfo(settings.gamePath, this.paths, settings.gamePlatform)
+      : ({ ok: false, error: '' } as const)
     if (!hasKnownGamePlatform(detection)) {
       this.emit({
-        stage: "finalizing",
+        stage: 'finalizing',
         stageIndex: STAGE_INDEX.finalizing,
         stageTotal: STAGE_TOTAL,
         logLine: gamePathDetectionError(detection),
         done: true,
-        ok: false
+        ok: false,
       })
       this.active = null
       return
     }
 
-    this.emit({ stage: "sorting", stageIndex: STAGE_INDEX.sorting, stageTotal: STAGE_TOTAL, modTotal: snapshot.loadOrder.length, logLine: "Sorting load order...", done: false })
+    this.emit({
+      stage: 'sorting',
+      stageIndex: STAGE_INDEX.sorting,
+      stageTotal: STAGE_TOTAL,
+      modTotal: snapshot.loadOrder.length,
+      logLine: 'Sorting load order...',
+      done: false,
+    })
 
     const taskId = this.nextTaskId++
     const worker = new Worker(resolveDeployWorkerPath())
     this.activeWorker = worker
     this.activeTaskId = taskId
-    this.activeStage = "sorting"
+    this.activeStage = 'sorting'
 
-    let stage: DeployProgress["stage"] = "sorting"
+    let stage: DeployProgress['stage'] = 'sorting'
 
     // LEI-146: track whether any handler has already emitted a terminal event, so the `exit`
     // handler doesn't leave the toast spinning when the worker dies without sending "done" or
     // firing "error" (e.g. OOM kill).
     let settled = false
 
-    worker.on("message", (msg: DeployWorkerMessage) => {
+    worker.on('message', (msg: DeployWorkerMessage) => {
       if (msg.id !== taskId) return // stray message from a previous run - ignore
 
-      if (msg.type === "log") {
+      if (msg.type === 'log') {
         stage = this.handleLine(snapshot, msg.line, stage)
         this.activeStage = stage
-      } else if (msg.type === "done") {
+      } else if (msg.type === 'done') {
         settled = true
         this.emit({
-          stage: "finalizing",
+          stage: 'finalizing',
           stageIndex: STAGE_INDEX.finalizing,
           stageTotal: STAGE_TOTAL,
-          logLine: msg.ok ? "Deploy finished." : msg.cancelled ? "Deploy cancelled." : `Deploy failed: ${msg.error}`,
+          logLine: msg.ok
+            ? 'Deploy finished.'
+            : msg.cancelled
+              ? 'Deploy cancelled.'
+              : `Deploy failed: ${msg.error}`,
           done: true,
-          ok: msg.ok
+          ok: msg.ok,
         })
         this.active = null
         this.activeWorker = null
@@ -412,16 +451,16 @@ export class DeployManager {
       }
     })
 
-    worker.on("error", (err) => {
+    worker.on('error', (err) => {
       if (settled) return
       settled = true
       this.emit({
-        stage: "finalizing",
+        stage: 'finalizing',
         stageIndex: STAGE_INDEX.finalizing,
         stageTotal: STAGE_TOTAL,
         logLine: `Deploy worker crashed: ${err.message}`,
         done: true,
-        ok: false
+        ok: false,
       })
       this.active = null
       this.activeWorker = null
@@ -430,7 +469,7 @@ export class DeployManager {
       void worker.terminate()
     })
 
-    worker.on("exit", (code) => {
+    worker.on('exit', (code) => {
       // LEI-146: if neither "done" nor "error" fired (e.g. OOM, uncaught exception that didn't
       // surface as an error event), emit a terminal progress event so the deploy toast resolves
       // instead of spinning forever.
@@ -442,12 +481,12 @@ export class DeployManager {
         this.activeTaskId = null
         this.activeStage = null
         this.emit({
-          stage: "finalizing",
+          stage: 'finalizing',
           stageIndex: STAGE_INDEX.finalizing,
           stageTotal: STAGE_TOTAL,
           logLine: `Deploy worker exited unexpectedly (code ${code})`,
           done: true,
-          ok: false
+          ok: false,
         })
       }
     })
@@ -456,11 +495,11 @@ export class DeployManager {
     const { ok: _ok, ...game } = detection
     const req: DeployWorkerRequest = {
       id: taskId,
-      type: "deploy",
+      type: 'deploy',
       paths: this.paths,
       settings,
       modsConfig: { ...modsConfig, loadOrder: snapshot.loadOrder },
-      game
+      game,
     }
     worker.postMessage(req)
   }
@@ -474,7 +513,7 @@ export class DeployManager {
    */
   runAnalyseMod(modId: string): Promise<{ ok: boolean; error?: string }> {
     if (this.active) {
-      return Promise.resolve({ ok: false, error: "A deploy is currently running." })
+      return Promise.resolve({ ok: false, error: 'A deploy is currently running.' })
     }
 
     return this.triggerBuild(modId)
@@ -511,7 +550,9 @@ export class DeployManager {
       // Restart in place - this modId already holds a semaphore slot (buildActiveCount was
       // incremented when the stale build started and isn't decremented here), so go straight to a
       // fresh worker instead of back through the concurrency-cap queue below.
-      const promise = this._runBuildWorker(modId, generation).finally(() => this._releaseBuildSlot(modId, generation))
+      const promise = this._runBuildWorker(modId, generation).finally(() =>
+        this._releaseBuildSlot(modId, generation)
+      )
       this.buildInFlight.set(modId, promise)
       return promise
     }
@@ -554,13 +595,18 @@ export class DeployManager {
    * Actual build worker spawn logic, separated from `triggerBuild` to keep dedup/semaphore
    * bookkeeping clean. The outer `triggerBuild` already holds the semaphore slot when this runs.
    */
-  private _runBuildWorker(modId: string, generation: number): Promise<{ ok: boolean; error?: string }> {
+  private _runBuildWorker(
+    modId: string,
+    generation: number
+  ): Promise<{ ok: boolean; error?: string }> {
     const settings: AppSettings = loadSettings(this.paths)
-    const detection = settings.gamePath ? deriveGamePathInfo(settings.gamePath, this.paths, settings.gamePlatform) : ({ ok: false, error: "" } as const)
+    const detection = settings.gamePath
+      ? deriveGamePathInfo(settings.gamePath, this.paths, settings.gamePlatform)
+      : ({ ok: false, error: '' } as const)
     if (!hasKnownGamePlatform(detection)) {
       return Promise.resolve({
         ok: false,
-        error: gamePathDetectionError(detection)
+        error: gamePathDetectionError(detection),
       })
     }
 
@@ -573,12 +619,12 @@ export class DeployManager {
 
     const req: DeployWorkerRequest = {
       id: taskId,
-      type: "analyseMod",
+      type: 'analyseMod',
       paths: this.paths,
       settings,
       modsConfig,
       game,
-      modId
+      modId,
     }
 
     return new Promise<{ ok: boolean; error?: string }>((resolvePromise, reject) => {
@@ -592,9 +638,9 @@ export class DeployManager {
       }
       const isCurrent = (): boolean => this.buildGeneration.get(modId) === generation
 
-      worker.on("message", (msg: DeployWorkerMessage) => {
+      worker.on('message', (msg: DeployWorkerMessage) => {
         if (msg.id !== taskId) return
-        if (msg.type === "done") {
+        if (msg.type === 'done') {
           settled = true
           clearWorkerEntry()
           void worker.terminate()
@@ -615,7 +661,7 @@ export class DeployManager {
       // worker to restart with newer config), skip the cache.db write: the mod isn't actually
       // failed, a fresh build for it is already running, and writing 'failed' here would flash a
       // spurious error in the UI right before the real result lands.
-      worker.on("error", (err) => {
+      worker.on('error', (err) => {
         if (settled) return
         settled = true
         clearWorkerEntry()
@@ -624,7 +670,7 @@ export class DeployManager {
         reject(err)
       })
 
-      worker.on("exit", (code) => {
+      worker.on('exit', (code) => {
         if (settled) return
         if (code !== 0) {
           settled = true
@@ -639,10 +685,20 @@ export class DeployManager {
     })
   }
 
-  private handleLine(snapshot: DeploySnapshot, { text }: DeployPipelineLogLine, stage: DeployProgress["stage"]): DeployProgress["stage"] {
+  private handleLine(
+    snapshot: DeploySnapshot,
+    { text }: DeployPipelineLogLine,
+    stage: DeployProgress['stage']
+  ): DeployProgress['stage'] {
     if (/staging rpkg mod/i.test(text)) {
-      this.emit({ stage: "extracting", stageIndex: STAGE_INDEX.extracting, stageTotal: STAGE_TOTAL, logLine: text, done: false })
-      return "extracting"
+      this.emit({
+        stage: 'extracting',
+        stageIndex: STAGE_INDEX.extracting,
+        stageTotal: STAGE_TOTAL,
+        logLine: text,
+        done: false,
+      })
+      return 'extracting'
     }
 
     const deployingMatch = text.match(/Deploying (\S+)/)
@@ -650,16 +706,16 @@ export class DeployManager {
       const currentModId = deployingMatch[1]
       const modIndex = snapshot.loadOrder.indexOf(currentModId)
       this.emit({
-        stage: "patching",
+        stage: 'patching',
         stageIndex: STAGE_INDEX.patching,
         stageTotal: STAGE_TOTAL,
         currentModId,
         modIndex: modIndex === -1 ? undefined : modIndex,
         modTotal: snapshot.loadOrder.length,
         logLine: text,
-        done: false
+        done: false,
       })
-      return "patching"
+      return 'patching'
     }
 
     if (/^Finalizing deploy|generating rpkgs/i.test(text)) {
@@ -667,12 +723,24 @@ export class DeployManager {
       // Runtime-writing stage) is the authoritative signal that cancellation is now locked out -
       // see cancel.ts. "generating rpkgs" is kept as a fallback stage match for log lines that
       // arrive without ever having matched the finalize marker (shouldn't normally happen).
-      this.emit({ stage: "finalizing", stageIndex: STAGE_INDEX.finalizing, stageTotal: STAGE_TOTAL, logLine: text, done: false })
-      return "finalizing"
+      this.emit({
+        stage: 'finalizing',
+        stageIndex: STAGE_INDEX.finalizing,
+        stageTotal: STAGE_TOTAL,
+        logLine: text,
+        done: false,
+      })
+      return 'finalizing'
     }
 
     // Anything else - keep it in the raw log without changing the stage.
-    this.emit({ stage, stageIndex: STAGE_INDEX[stage], stageTotal: STAGE_TOTAL, logLine: text, done: false })
+    this.emit({
+      stage,
+      stageIndex: STAGE_INDEX[stage],
+      stageTotal: STAGE_TOTAL,
+      logLine: text,
+      done: false,
+    })
     return stage
   }
 }

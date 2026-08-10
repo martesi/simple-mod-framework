@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron"
-import { electronAPI } from "@electron-toolkit/preload"
+import { electronAPI } from '@electron-toolkit/preload'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 /**
  * LEI-134: the real bridge, replacing the inert LEI-137 stub. No `fs`, no
@@ -16,21 +16,24 @@ import { electronAPI } from "@electron-toolkit/preload"
  */
 const smf = {
   config: {
-    get: () => ipcRenderer.invoke("config:get"),
-    merge: (patch: unknown) => ipcRenderer.invoke("config:merge", patch),
-    pickGameDirectory: (persist?: boolean, gamePlatform?: string) => ipcRenderer.invoke("config:pickGameDirectory", persist, gamePlatform),
-    getDefaultPaths: () => ipcRenderer.invoke("config:getDefaultPaths"),
-    previewPaths: (gamePath: string, gamePlatform?: string) => ipcRenderer.invoke("config:previewPaths", gamePath, gamePlatform)
+    get: () => ipcRenderer.invoke('config:get'),
+    merge: (patch: unknown) => ipcRenderer.invoke('config:merge', patch),
+    pickGameDirectory: (persist?: boolean, gamePlatform?: string) =>
+      ipcRenderer.invoke('config:pickGameDirectory', persist, gamePlatform),
+    getDefaultPaths: () => ipcRenderer.invoke('config:getDefaultPaths'),
+    previewPaths: (gamePath: string, gamePlatform?: string) =>
+      ipcRenderer.invoke('config:previewPaths', gamePath, gamePlatform),
   },
 
   system: {
-    pickDirectory: (options?: { title?: string }) => ipcRenderer.invoke("system:pickDirectory", options)
+    pickDirectory: (options?: { title?: string }) =>
+      ipcRenderer.invoke('system:pickDirectory', options),
   },
 
   mods: {
-    list: () => ipcRenderer.invoke("mods:list"),
-    rebuildIndex: () => ipcRenderer.invoke("mods:rebuildIndex"),
-    previewFolder: (dir: string) => ipcRenderer.invoke("mods:previewFolder", dir),
+    list: () => ipcRenderer.invoke('mods:list'),
+    rebuildIndex: () => ipcRenderer.invoke('mods:rebuildIndex'),
+    previewFolder: (dir: string) => ipcRenderer.invoke('mods:previewFolder', dir),
 
     beginAdd: (file: { name: string; size: number; path: string }): string => {
       // No node:crypto here on purpose - Electron's sandboxed preload loader
@@ -42,51 +45,51 @@ const smf = {
       // `crypto.randomUUID()` from the renderer itself), so it needs no
       // require at all.
       const taskId = crypto.randomUUID()
-      void ipcRenderer.invoke("mods:beginAdd", { taskId, file })
+      void ipcRenderer.invoke('mods:beginAdd', { taskId, file })
       return taskId
     },
 
     onTaskUpdate: (callback: (update: unknown) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, update: unknown) => callback(update)
-      ipcRenderer.on("mods:taskUpdate", listener)
-      return () => ipcRenderer.removeListener("mods:taskUpdate", listener)
+      ipcRenderer.on('mods:taskUpdate', listener)
+      return () => ipcRenderer.removeListener('mods:taskUpdate', listener)
     },
 
     onCacheProgress: (callback: (progress: unknown) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: unknown) => callback(progress)
-      ipcRenderer.on("mods:cacheProgress", listener)
-      return () => ipcRenderer.removeListener("mods:cacheProgress", listener)
+      ipcRenderer.on('mods:cacheProgress', listener)
+      return () => ipcRenderer.removeListener('mods:cacheProgress', listener)
     },
 
-    remove: (modId: string) => ipcRenderer.invoke("mods:remove", modId),
+    remove: (modId: string) => ipcRenderer.invoke('mods:remove', modId),
 
-    buildStatuses: () => ipcRenderer.invoke("mods:buildStatuses"),
-    rebuildCacheDb: () => ipcRenderer.invoke("mods:rebuildCacheDb")
+    buildStatuses: () => ipcRenderer.invoke('mods:buildStatuses'),
+    rebuildCacheDb: () => ipcRenderer.invoke('mods:rebuildCacheDb'),
   },
 
   deploy: {
-    start: () => ipcRenderer.invoke("deploy:start"),
+    start: () => ipcRenderer.invoke('deploy:start'),
 
     onProgress: (callback: (progress: unknown) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: unknown) => callback(progress)
-      ipcRenderer.on("deploy:progress", listener)
-      return () => ipcRenderer.removeListener("deploy:progress", listener)
+      ipcRenderer.on('deploy:progress', listener)
+      return () => ipcRenderer.removeListener('deploy:progress', listener)
     },
 
-    getActiveSnapshot: () => ipcRenderer.invoke("deploy:getActiveSnapshot"),
+    getActiveSnapshot: () => ipcRenderer.invoke('deploy:getActiveSnapshot'),
 
-    analyseMod: (modId: string) => ipcRenderer.invoke("deploy:analyseMod", modId),
+    analyseMod: (modId: string) => ipcRenderer.invoke('deploy:analyseMod', modId),
 
-    cancel: (snapshotId: string) => ipcRenderer.invoke("deploy:cancel", snapshotId)
+    cancel: (snapshotId: string) => ipcRenderer.invoke('deploy:cancel', snapshotId),
   },
 
   /** Electron 32+'s replacement for the removed `File.path` - the only way for the renderer to learn a dropped/picked file's real on-disk path without raw Node access. */
-  getPathForFile: (file: File): string => webUtils.getPathForFile(file)
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 }
 
 try {
-  contextBridge.exposeInMainWorld("electron", electronAPI)
-  contextBridge.exposeInMainWorld("smf", smf)
+  contextBridge.exposeInMainWorld('electron', electronAPI)
+  contextBridge.exposeInMainWorld('smf', smf)
 } catch (error) {
   console.error(error)
 }

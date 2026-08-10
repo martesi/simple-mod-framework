@@ -1,9 +1,9 @@
-import { DatabaseSync } from "node:sqlite"
-import { mkdirSync, rmSync } from "node:fs"
-import { dirname, join } from "node:path"
-import type { DiskManifest } from "./diskManifest"
-import type { GamePathInfo } from "./gameDetect"
-import { isGamePlatform } from "../shared/game"
+import { mkdirSync, rmSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+import { isGamePlatform } from '../shared/game'
+import type { DiskManifest } from './diskManifest'
+import type { GamePathInfo } from './gameDetect'
 
 /**
  * LEI-141's single consolidated cache store, replacing `cache/map.json`, `cache/analysis/<id>.json`,
@@ -31,8 +31,8 @@ let currentDbPath: string | undefined
  * code. Content artifacts deliberately have no version row here: their slots are content-addressed
  * and can be retained across a metadata rebuild.
  */
-export const CACHE_VERSION = "3"
-const CACHE_VERSION_META_KEY = "cacheVersion"
+export const CACHE_VERSION = '3'
+const CACHE_VERSION_META_KEY = 'cacheVersion'
 
 /**
  * Root directory for content-addressed loose artifact files (LEI-142). Set by {@link openDb} to
@@ -45,7 +45,7 @@ const CACHE_VERSION_META_KEY = "cacheVersion"
 let contentCacheRoot: string | undefined
 
 function migrate(db: DatabaseSync): void {
-	db.exec(`
+  db.exec(`
 		CREATE TABLE IF NOT EXISTS meta (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -97,15 +97,14 @@ function migrate(db: DatabaseSync): void {
 		);
 	`)
 
-	// LEI-142: drop the old blob-cache table and its index if they're still present from a
-	// LEI-141 database. Content artifacts now live as loose files under content_cache/ next to
-	// cache.db (see core/utils.ts's copyFromCache/copyToCache). This runs on every openDb() call
-	// but is a fast no-op once the table no longer exists.
-	db.exec(`
+  // LEI-142: drop the old blob-cache table and its index if they're still present from a
+  // LEI-141 database. Content artifacts now live as loose files under content_cache/ next to
+  // cache.db (see core/utils.ts's copyFromCache/copyToCache). This runs on every openDb() call
+  // but is a fast no-op once the table no longer exists.
+  db.exec(`
 		DROP INDEX IF EXISTS content_blob_cache_slot_idx;
 		DROP TABLE IF EXISTS content_blob_cache;
 	`)
-
 }
 
 /**
@@ -115,64 +114,71 @@ function migrate(db: DatabaseSync): void {
  * artifact purge. A fresh mod index and eager builds will repopulate the deleted rows.
  */
 function invalidateIncompatibleCache(db: DatabaseSync): void {
-	const version = db.prepare("SELECT value FROM meta WHERE key = ?").get(CACHE_VERSION_META_KEY) as { value: string } | undefined
-	if (version?.value === CACHE_VERSION) return
+  const version = db.prepare('SELECT value FROM meta WHERE key = ?').get(CACHE_VERSION_META_KEY) as
+    | { value: string }
+    | undefined
+  if (version?.value === CACHE_VERSION) return
 
-	db.exec("BEGIN")
-	try {
-		db.exec("DELETE FROM game_info")
-		db.exec("DELETE FROM mods")
-		db.exec("DELETE FROM mod_build")
-		db.exec("DELETE FROM rpkg_hash_cache")
-		db.exec("DELETE FROM meta")
-		db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(CACHE_VERSION_META_KEY, CACHE_VERSION)
-		db.exec("COMMIT")
-	} catch (err) {
-		if (db.isTransaction) db.exec("ROLLBACK")
-		throw err
-	}
+  db.exec('BEGIN')
+  try {
+    db.exec('DELETE FROM game_info')
+    db.exec('DELETE FROM mods')
+    db.exec('DELETE FROM mod_build')
+    db.exec('DELETE FROM rpkg_hash_cache')
+    db.exec('DELETE FROM meta')
+    db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run(
+      CACHE_VERSION_META_KEY,
+      CACHE_VERSION
+    )
+    db.exec('COMMIT')
+  } catch (err) {
+    if (db.isTransaction) db.exec('ROLLBACK')
+    throw err
+  }
 }
 
 /** Open (creating if needed) the cache.db at `dbPath` and cache the handle - safe to call repeatedly, only opens once per path per process. Also sets the content-cache root to `{dirname(dbPath)}/content_cache/`. */
 export function openDb(dbPath: string): DatabaseSync {
-	if (currentDb && currentDbPath === dbPath) return currentDb
+  if (currentDb && currentDbPath === dbPath) return currentDb
 
-	if (currentDb) {
-		currentDb.close()
-	}
+  if (currentDb) {
+    currentDb.close()
+  }
 
-	mkdirSync(dirname(dbPath), { recursive: true })
-	contentCacheRoot = join(dirname(dbPath), "content_cache")
+  mkdirSync(dirname(dbPath), { recursive: true })
+  contentCacheRoot = join(dirname(dbPath), 'content_cache')
 
-	const db = new DatabaseSync(dbPath)
-	db.exec("PRAGMA journal_mode = WAL")
-	// Eager per-mod builds run one DatabaseSync connection per worker thread, all against this same
-	// file (see deployPipeline.ts's openDb() calls) - WAL lets readers and one writer overlap, but
-	// concurrent writers still serialize on SQLite's write lock. Without a busy_timeout, a writer that
-	// loses that race gets SQLITE_BUSY ("database is locked") immediately instead of waiting for its
-	// turn, which is exactly the failure mode multiple simultaneous per-mod builds hit in practice.
-	db.exec("PRAGMA busy_timeout = 5000")
-	db.exec("PRAGMA foreign_keys = ON")
-	migrate(db)
-	invalidateIncompatibleCache(db)
+  const db = new DatabaseSync(dbPath)
+  db.exec('PRAGMA journal_mode = WAL')
+  // Eager per-mod builds run one DatabaseSync connection per worker thread, all against this same
+  // file (see deployPipeline.ts's openDb() calls) - WAL lets readers and one writer overlap, but
+  // concurrent writers still serialize on SQLite's write lock. Without a busy_timeout, a writer that
+  // loses that race gets SQLITE_BUSY ("database is locked") immediately instead of waiting for its
+  // turn, which is exactly the failure mode multiple simultaneous per-mod builds hit in practice.
+  db.exec('PRAGMA busy_timeout = 5000')
+  db.exec('PRAGMA foreign_keys = ON')
+  migrate(db)
+  invalidateIncompatibleCache(db)
 
-	currentDb = db
-	currentDbPath = dbPath
-	return db
+  currentDb = db
+  currentDbPath = dbPath
+  return db
 }
 
 export function getDb(): DatabaseSync {
-	if (!currentDb) {
-		throw new Error("cache.db not open - call openDb(dbPath) once at startup before using any db-backed helper (see main/index.ts).")
-	}
-	return currentDb
+  if (!currentDb) {
+    throw new Error(
+      'cache.db not open - call openDb(dbPath) once at startup before using any db-backed helper (see main/index.ts).'
+    )
+  }
+  return currentDb
 }
 
 export function closeDb(): void {
-	currentDb?.close()
-	currentDb = undefined
-	currentDbPath = undefined
-	contentCacheRoot = undefined
+  currentDb?.close()
+  currentDb = undefined
+  currentDbPath = undefined
+  contentCacheRoot = undefined
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -180,12 +186,18 @@ export function closeDb(): void {
 /* ---------------------------------------------------------------------------------------------- */
 
 export function getMeta(key: string): string | undefined {
-	const row = getDb().prepare("SELECT value FROM meta WHERE key = ?").get(key) as unknown as { value: string } | undefined
-	return row?.value
+  const row = getDb().prepare('SELECT value FROM meta WHERE key = ?').get(key) as unknown as
+    | { value: string }
+    | undefined
+  return row?.value
 }
 
 export function setMeta(key: string, value: string): void {
-	getDb().prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value)
+  getDb()
+    .prepare(
+      'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+    )
+    .run(key, value)
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -193,40 +205,50 @@ export function setMeta(key: string, value: string): void {
 /* ---------------------------------------------------------------------------------------------- */
 
 export interface StoredGameInfo extends GamePathInfo {
-	/** The `gamePath` this detection was run against - lets callers notice `gamePath` changed and re-derive hints. */
-	gamePath: string
-	detectedAt: number
+  /** The `gamePath` this detection was run against - lets callers notice `gamePath` changed and re-derive hints. */
+  gamePath: string
+  detectedAt: number
 }
 
 export function getStoredGameInfo(): StoredGameInfo | undefined {
-	const row = getDb().prepare("SELECT gamePath, retailPath, runtimePath, platform, detectedAt FROM game_info WHERE id = 1").get() as unknown as
-		| { gamePath: string; retailPath: string; runtimePath: string; platform: string; detectedAt: number }
-		| undefined
+  const row = getDb()
+    .prepare(
+      'SELECT gamePath, retailPath, runtimePath, platform, detectedAt FROM game_info WHERE id = 1'
+    )
+    .get() as unknown as
+    | {
+        gamePath: string
+        retailPath: string
+        runtimePath: string
+        platform: string
+        detectedAt: number
+      }
+    | undefined
 
-	if (!row) return undefined
+  if (!row) return undefined
 
-	return {
-		gamePath: row.gamePath,
-		retailPath: row.retailPath,
-		runtimePath: row.runtimePath,
-		platform: isGamePlatform(row.platform) ? row.platform : undefined,
-		detectedAt: row.detectedAt
-	}
+  return {
+    gamePath: row.gamePath,
+    retailPath: row.retailPath,
+    runtimePath: row.runtimePath,
+    platform: isGamePlatform(row.platform) ? row.platform : undefined,
+    detectedAt: row.detectedAt,
+  }
 }
 
 export function setStoredGameInfo(gamePath: string, info: GamePathInfo): void {
-	getDb()
-		.prepare(
-			`INSERT INTO game_info (id, gamePath, retailPath, runtimePath, platform, unrecognisedBuild, detectedAt)
+  getDb()
+    .prepare(
+      `INSERT INTO game_info (id, gamePath, retailPath, runtimePath, platform, unrecognisedBuild, detectedAt)
 			 VALUES (1, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(id) DO UPDATE SET gamePath = excluded.gamePath, retailPath = excluded.retailPath, runtimePath = excluded.runtimePath,
 				platform = excluded.platform, unrecognisedBuild = excluded.unrecognisedBuild, detectedAt = excluded.detectedAt`
-			)
-		.run(gamePath, info.retailPath, info.runtimePath, info.platform ?? "", 0, Date.now())
+    )
+    .run(gamePath, info.retailPath, info.runtimePath, info.platform ?? '', 0, Date.now())
 }
 
 export function clearStoredGameInfo(): void {
-	getDb().exec("DELETE FROM game_info WHERE id = 1")
+  getDb().exec('DELETE FROM game_info WHERE id = 1')
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -234,61 +256,75 @@ export function clearStoredGameInfo(): void {
 /* ---------------------------------------------------------------------------------------------- */
 
 export interface DbModRow {
-	id: string
-	folder: string
-	isFrameworkMod: boolean
-	manifest?: DiskManifest
-	valid?: boolean
-	validationError?: string
-	outdated?: boolean
+  id: string
+  folder: string
+  isFrameworkMod: boolean
+  manifest?: DiskManifest
+  valid?: boolean
+  validationError?: string
+  outdated?: boolean
 }
 
-function rowToMod(row: { id: string; folder: string; isFrameworkMod: number; manifestJson: string | null; valid: number | null; validationError: string | null; outdated: number | null }): DbModRow {
-	return {
-		id: row.id,
-		folder: row.folder,
-		isFrameworkMod: !!row.isFrameworkMod,
-		manifest: row.manifestJson ? (JSON.parse(row.manifestJson) as DiskManifest) : undefined,
-		valid: row.valid === null ? undefined : !!row.valid,
-		validationError: row.validationError ?? undefined,
-		outdated: row.outdated === null ? undefined : !!row.outdated
-	}
+function rowToMod(row: {
+  id: string
+  folder: string
+  isFrameworkMod: number
+  manifestJson: string | null
+  valid: number | null
+  validationError: string | null
+  outdated: number | null
+}): DbModRow {
+  return {
+    id: row.id,
+    folder: row.folder,
+    isFrameworkMod: !!row.isFrameworkMod,
+    manifest: row.manifestJson ? (JSON.parse(row.manifestJson) as DiskManifest) : undefined,
+    valid: row.valid === null ? undefined : !!row.valid,
+    validationError: row.validationError ?? undefined,
+    outdated: row.outdated === null ? undefined : !!row.outdated,
+  }
 }
 
 export function listMods(): DbModRow[] {
-	const rows = getDb().prepare("SELECT * FROM mods").all() as unknown as Parameters<typeof rowToMod>[0][]
-	return rows.map(rowToMod)
+  const rows = getDb().prepare('SELECT * FROM mods').all() as unknown as Parameters<
+    typeof rowToMod
+  >[0][]
+  return rows.map(rowToMod)
 }
 
 export function getMod(id: string): DbModRow | undefined {
-	const row = getDb().prepare("SELECT * FROM mods WHERE id = ?").get(id) as unknown as Parameters<typeof rowToMod>[0] | undefined
-	return row ? rowToMod(row) : undefined
+  const row = getDb().prepare('SELECT * FROM mods WHERE id = ?').get(id) as unknown as
+    | Parameters<typeof rowToMod>[0]
+    | undefined
+  return row ? rowToMod(row) : undefined
 }
 
 /** Folder-name lookup - used by the shared "resolve a load-order entry to a Mods/ folder" helper (`resolveModFolder.ts`) for RPKG-only mods, whose `id` in the load order is their folder name directly. */
 export function getModByFolder(folder: string): DbModRow | undefined {
-	const row = getDb().prepare("SELECT * FROM mods WHERE folder = ?").get(folder) as unknown as Parameters<typeof rowToMod>[0] | undefined
-	return row ? rowToMod(row) : undefined
+  const row = getDb().prepare('SELECT * FROM mods WHERE folder = ?').get(folder) as unknown as
+    | Parameters<typeof rowToMod>[0]
+    | undefined
+  return row ? rowToMod(row) : undefined
 }
 
 export function upsertMod(mod: DbModRow): void {
-	getDb()
-		.prepare(
-			`INSERT INTO mods (id, folder, isFrameworkMod, manifestJson, valid, validationError, outdated, updatedAt)
+  getDb()
+    .prepare(
+      `INSERT INTO mods (id, folder, isFrameworkMod, manifestJson, valid, validationError, outdated, updatedAt)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(id) DO UPDATE SET folder = excluded.folder, isFrameworkMod = excluded.isFrameworkMod, manifestJson = excluded.manifestJson,
 				valid = excluded.valid, validationError = excluded.validationError, outdated = excluded.outdated, updatedAt = excluded.updatedAt`
-		)
-		.run(
-			mod.id,
-			mod.folder,
-			mod.isFrameworkMod ? 1 : 0,
-			mod.manifest ? JSON.stringify(mod.manifest) : null,
-			mod.valid === undefined ? null : mod.valid ? 1 : 0,
-			mod.validationError ?? null,
-			mod.outdated === undefined ? null : mod.outdated ? 1 : 0,
-			Date.now()
-		)
+    )
+    .run(
+      mod.id,
+      mod.folder,
+      mod.isFrameworkMod ? 1 : 0,
+      mod.manifest ? JSON.stringify(mod.manifest) : null,
+      mod.valid === undefined ? null : mod.valid ? 1 : 0,
+      mod.validationError ?? null,
+      mod.outdated === undefined ? null : mod.outdated ? 1 : 0,
+      Date.now()
+    )
 }
 
 /**
@@ -300,120 +336,132 @@ export function upsertMod(mod: DbModRow): void {
  * through {@link deleteMod} instead, which does clear a specific mod's build row and content cache.
  */
 export function replaceModsIndex(rows: DbModRow[]): void {
-	const db = getDb()
-	db.exec("BEGIN")
-	try {
-		db.exec("DELETE FROM mods")
-		// LEI-148: hoist prepare() outside the loop - re-preparing on every iteration is wasteful.
-		const stmt = db.prepare(
-			`INSERT INTO mods (id, folder, isFrameworkMod, manifestJson, valid, validationError, outdated, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-		)
-		for (const row of rows) {
-			stmt.run(
-				row.id,
-				row.folder,
-				row.isFrameworkMod ? 1 : 0,
-				row.manifest ? JSON.stringify(row.manifest) : null,
-				row.valid === undefined ? null : row.valid ? 1 : 0,
-				row.validationError ?? null,
-				row.outdated === undefined ? null : row.outdated ? 1 : 0,
-				Date.now()
-			)
-		}
-		db.exec("COMMIT")
-	} catch (err) {
-		// LEI-147: guard against masking the original error when BEGIN itself threw (no active txn).
-		if (db.isTransaction) db.exec("ROLLBACK")
-		throw err
-	}
+  const db = getDb()
+  db.exec('BEGIN')
+  try {
+    db.exec('DELETE FROM mods')
+    // LEI-148: hoist prepare() outside the loop - re-preparing on every iteration is wasteful.
+    const stmt = db.prepare(
+      `INSERT INTO mods (id, folder, isFrameworkMod, manifestJson, valid, validationError, outdated, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    for (const row of rows) {
+      stmt.run(
+        row.id,
+        row.folder,
+        row.isFrameworkMod ? 1 : 0,
+        row.manifest ? JSON.stringify(row.manifest) : null,
+        row.valid === undefined ? null : row.valid ? 1 : 0,
+        row.validationError ?? null,
+        row.outdated === undefined ? null : row.outdated ? 1 : 0,
+        Date.now()
+      )
+    }
+    db.exec('COMMIT')
+  } catch (err) {
+    // LEI-147: guard against masking the original error when BEGIN itself threw (no active txn).
+    if (db.isTransaction) db.exec('ROLLBACK')
+    throw err
+  }
 }
 
 export function deleteMod(id: string): void {
-	const db = getDb()
-	db.prepare("DELETE FROM mods WHERE id = ?").run(id)
-	db.prepare("DELETE FROM mod_build WHERE modId = ?").run(id)
-	clearContentCacheForMod(id)
+  const db = getDb()
+  db.prepare('DELETE FROM mods WHERE id = ?').run(id)
+  db.prepare('DELETE FROM mod_build WHERE modId = ?').run(id)
+  clearContentCacheForMod(id)
 }
 
 export function clearAllMods(): void {
-	const db = getDb()
-	db.exec("DELETE FROM mods")
-	db.exec("DELETE FROM mod_build")
-	clearAllContentCache()
+  const db = getDb()
+  db.exec('DELETE FROM mods')
+  db.exec('DELETE FROM mod_build')
+  clearAllContentCache()
 }
 
 /* ---------------------------------------------------------------------------------------------- */
 /*                                   Per-mod eager build status                                    */
 /* ---------------------------------------------------------------------------------------------- */
 
-export type ModBuildStatus = "building" | "ready" | "failed"
+export type ModBuildStatus = 'building' | 'ready' | 'failed'
 
 export interface ModBuildRow {
-	modId: string
-	status: ModBuildStatus
-	frameworkVersion?: string
-	deployInstructionJson?: string
-	error?: string
-	startedAt: number
-	finishedAt?: number
+  modId: string
+  status: ModBuildStatus
+  frameworkVersion?: string
+  deployInstructionJson?: string
+  error?: string
+  startedAt: number
+  finishedAt?: number
 }
 
 export function getModBuild(modId: string): ModBuildRow | undefined {
-	const row = getDb().prepare("SELECT * FROM mod_build WHERE modId = ?").get(modId) as unknown as RawModBuildRow | undefined
-	return row ? rowToModBuild(row) : undefined
+  const row = getDb().prepare('SELECT * FROM mod_build WHERE modId = ?').get(modId) as unknown as
+    | RawModBuildRow
+    | undefined
+  return row ? rowToModBuild(row) : undefined
 }
 
 interface RawModBuildRow {
-	modId: string
-	status: string
-	frameworkVersion: string | null
-	deployInstructionJson: string | null
-	error: string | null
-	startedAt: number
-	finishedAt: number | null
+  modId: string
+  status: string
+  frameworkVersion: string | null
+  deployInstructionJson: string | null
+  error: string | null
+  startedAt: number
+  finishedAt: number | null
 }
 
 function rowToModBuild(row: RawModBuildRow): ModBuildRow {
-	return {
-		modId: row.modId,
-		status: row.status as ModBuildStatus,
-		frameworkVersion: row.frameworkVersion ?? undefined,
-		deployInstructionJson: row.deployInstructionJson ?? undefined,
-		error: row.error ?? undefined,
-		startedAt: row.startedAt,
-		finishedAt: row.finishedAt ?? undefined
-	}
+  return {
+    modId: row.modId,
+    status: row.status as ModBuildStatus,
+    frameworkVersion: row.frameworkVersion ?? undefined,
+    deployInstructionJson: row.deployInstructionJson ?? undefined,
+    error: row.error ?? undefined,
+    startedAt: row.startedAt,
+    finishedAt: row.finishedAt ?? undefined,
+  }
 }
 
 export function listModBuilds(): ModBuildRow[] {
-	const rows = getDb().prepare("SELECT * FROM mod_build").all() as unknown as RawModBuildRow[]
-	return rows.map(rowToModBuild)
+  const rows = getDb().prepare('SELECT * FROM mod_build').all() as unknown as RawModBuildRow[]
+  return rows.map(rowToModBuild)
 }
 
 /** Marks a mod's build as started - wipes any previous ready/failed result for this mod first (single-slot: no accumulation across rebuilds). Read-back before this commits still sees the old row disappear, then nothing, matching "an interrupted build reads back as not-ready." */
 export function beginModBuild(modId: string): void {
-	getDb().prepare("INSERT INTO mod_build (modId, status, startedAt) VALUES (?, 'building', ?) ON CONFLICT(modId) DO UPDATE SET status = 'building', startedAt = excluded.startedAt, finishedAt = NULL, error = NULL").run(modId, Date.now())
+  getDb()
+    .prepare(
+      "INSERT INTO mod_build (modId, status, startedAt) VALUES (?, 'building', ?) ON CONFLICT(modId) DO UPDATE SET status = 'building', startedAt = excluded.startedAt, finishedAt = NULL, error = NULL"
+    )
+    .run(modId, Date.now())
 }
 
-export function finishModBuildReady(modId: string, frameworkVersion: string, deployInstructionJson: string): void {
-	getDb()
-		.prepare("UPDATE mod_build SET status = 'ready', frameworkVersion = ?, deployInstructionJson = ?, error = NULL, finishedAt = ? WHERE modId = ?")
-		.run(frameworkVersion, deployInstructionJson, Date.now(), modId)
+export function finishModBuildReady(
+  modId: string,
+  frameworkVersion: string,
+  deployInstructionJson: string
+): void {
+  getDb()
+    .prepare(
+      "UPDATE mod_build SET status = 'ready', frameworkVersion = ?, deployInstructionJson = ?, error = NULL, finishedAt = ? WHERE modId = ?"
+    )
+    .run(frameworkVersion, deployInstructionJson, Date.now(), modId)
 }
 
 export function finishModBuildFailed(modId: string, error: string): void {
-	// LEI-143: upsert so a worker that crashed before beginModBuild() (no existing row) still leaves a
-	// 'failed' row - without this, the poll loop's DB check found nothing and kept retriggering.
-	getDb()
-		.prepare(
-			`INSERT INTO mod_build (modId, status, error, startedAt, finishedAt) VALUES (?, 'failed', ?, ?, ?)
+  // LEI-143: upsert so a worker that crashed before beginModBuild() (no existing row) still leaves a
+  // 'failed' row - without this, the poll loop's DB check found nothing and kept retriggering.
+  getDb()
+    .prepare(
+      `INSERT INTO mod_build (modId, status, error, startedAt, finishedAt) VALUES (?, 'failed', ?, ?, ?)
 			 ON CONFLICT(modId) DO UPDATE SET status = 'failed', error = excluded.error, finishedAt = excluded.finishedAt`
-		)
-		.run(modId, error, Date.now(), Date.now())
+    )
+    .run(modId, error, Date.now(), Date.now())
 }
 
 export function deleteModBuild(modId: string): void {
-	getDb().prepare("DELETE FROM mod_build WHERE modId = ?").run(modId)
+  getDb().prepare('DELETE FROM mod_build WHERE modId = ?').run(modId)
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -421,26 +469,35 @@ export function deleteModBuild(modId: string): void {
 /* ---------------------------------------------------------------------------------------------- */
 
 export function getRpkgHashCacheEntries(): Record<string, string> {
-	const rows = getDb().prepare("SELECT hash, rpkgName FROM rpkg_hash_cache").all() as unknown as { hash: string; rpkgName: string }[]
-	return Object.fromEntries(rows.map((r) => [r.hash, r.rpkgName]))
+  const rows = getDb().prepare('SELECT hash, rpkgName FROM rpkg_hash_cache').all() as unknown as {
+    hash: string
+    rpkgName: string
+  }[]
+  return Object.fromEntries(rows.map((r) => [r.hash, r.rpkgName]))
 }
 
 export function setRpkgHashCacheEntry(hash: string, rpkgName: string): void {
-	getDb().prepare("INSERT INTO rpkg_hash_cache (hash, rpkgName) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET rpkgName = excluded.rpkgName").run(hash, rpkgName)
+  getDb()
+    .prepare(
+      'INSERT INTO rpkg_hash_cache (hash, rpkgName) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET rpkgName = excluded.rpkgName'
+    )
+    .run(hash, rpkgName)
 }
 
 export function setRpkgHashCacheEntries(entries: Record<string, string>): void {
-	const db = getDb()
-	const stmt = db.prepare("INSERT INTO rpkg_hash_cache (hash, rpkgName) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET rpkgName = excluded.rpkgName")
-	db.exec("BEGIN")
-	try {
-		for (const [hash, rpkgName] of Object.entries(entries)) stmt.run(hash, rpkgName)
-		db.exec("COMMIT")
-	} catch (err) {
-		// LEI-147: guard against masking the original error when BEGIN itself threw (no active txn).
-		if (db.isTransaction) db.exec("ROLLBACK")
-		throw err
-	}
+  const db = getDb()
+  const stmt = db.prepare(
+    'INSERT INTO rpkg_hash_cache (hash, rpkgName) VALUES (?, ?) ON CONFLICT(hash) DO UPDATE SET rpkgName = excluded.rpkgName'
+  )
+  db.exec('BEGIN')
+  try {
+    for (const [hash, rpkgName] of Object.entries(entries)) stmt.run(hash, rpkgName)
+    db.exec('COMMIT')
+  } catch (err) {
+    // LEI-147: guard against masking the original error when BEGIN itself threw (no active txn).
+    if (db.isTransaction) db.exec('ROLLBACK')
+    throw err
+  }
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -461,14 +518,14 @@ export function setRpkgHashCacheEntries(entries: Record<string, string>): void {
 
 /** Removes all cached content artifacts for `modId`. No-op if `contentCacheRoot` hasn't been set (shouldn't happen in the main process, but safe to call from any context). */
 export function clearContentCacheForMod(modId: string): void {
-	if (!contentCacheRoot) return
-	const safeModId = modId.replace(/[<>:"/\\|?*]/g, "")
-	if (!safeModId) return
-	rmSync(join(contentCacheRoot, safeModId), { recursive: true, force: true })
+  if (!contentCacheRoot) return
+  const safeModId = modId.replace(/[<>:"/\\|?*]/g, '')
+  if (!safeModId) return
+  rmSync(join(contentCacheRoot, safeModId), { recursive: true, force: true })
 }
 
 /** Removes the entire content cache directory (all mods). Called by `clearAllMods` and by `mods:rebuildCacheDb`. */
 export function clearAllContentCache(): void {
-	if (!contentCacheRoot) return
-	rmSync(contentCacheRoot, { recursive: true, force: true })
+  if (!contentCacheRoot) return
+  rmSync(contentCacheRoot, { recursive: true, force: true })
 }

@@ -1,11 +1,19 @@
-import { memo } from "react"
-import { useSortable } from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import { ModRow, type ModRowProps } from "./ModRow"
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { memo } from 'react'
+import { ModRow, type ModRowProps } from './ModRow'
 
-function SortableModRowImpl(props: Omit<ModRowProps, "dragHandleProps" | "style" | "setNodeRef" | "dragging"> & { id: string; dragDisabled?: boolean }) {
+function SortableModRowImpl(
+  props: Omit<ModRowProps, 'dragHandleProps' | 'style' | 'setNodeRef' | 'dragging'> & {
+    id: string
+    dragDisabled?: boolean
+  }
+) {
   const { id, dragDisabled, ...rest } = props
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: dragDisabled })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: dragDisabled,
+  })
 
   return (
     <ModRow

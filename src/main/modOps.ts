@@ -1,26 +1,23 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs"
-import { basename, extname, join } from "node:path"
-import { randomUUID } from "node:crypto"
-import JSON5 from "json5"
-import type { AppPaths } from "./paths"
-import { extractArchive } from "./archive"
-import { ModIndex, ensureModsDir } from "./modIndex"
-import { validateModFolder } from "./validateMod"
-import { addNewlyKnownMods } from "./modsConfig"
-import type { DiskManifest } from "./diskManifest"
-import type { ModTaskStatus } from "../renderer/src/lib/ipc"
-import { normalizeManifest, ManifestCompatibilityError } from "./manifestCompatibility"
+import { randomUUID } from 'node:crypto'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { basename, extname, join } from 'node:path'
+import JSON5 from 'json5'
+import type { ModTaskStatus } from '../renderer/src/lib/ipc'
+import { extractArchive } from './archive'
+import type { DiskManifest } from './diskManifest'
+import { ManifestCompatibilityError, normalizeManifest } from './manifestCompatibility'
+import { ensureModsDir, type ModIndex } from './modIndex'
+import { addNewlyKnownMods } from './modsConfig'
+import type { AppPaths } from './paths'
+import { validateModFolder } from './validateMod'
 
-export interface TaskEmit {
-  (update: { status: ModTaskStatus; message?: string; modId?: string }): void
-}
+export type TaskEmit = (update: { status: ModTaskStatus; message?: string; modId?: string }) => void
 
-const ARCHIVE_EXTENSIONS = new Set([".zip", ".7z", ".rar"])
+const ARCHIVE_EXTENSIONS = new Set(['.zip', '.7z', '.rar'])
 
 function sanitizeFolderName(name: string): string {
   // Windows-illegal filename characters, including control characters, trimmed of trailing dots/spaces.
-  // eslint-disable-next-line no-control-regex
-  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/, "") || "mod"
+  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || 'mod'
 }
 
 function findRpkgFiles(dir: string): string[] {
@@ -28,14 +25,14 @@ function findRpkgFiles(dir: string): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name)
     if (entry.isDirectory()) results.push(...findRpkgFiles(full))
-    else if (entry.name.toLowerCase().endsWith(".rpkg")) results.push(full)
+    else if (entry.name.toLowerCase().endsWith('.rpkg')) results.push(full)
   }
   return results
 }
 
 function chunkNameFor(filePath: string): string {
   const match = filePath.match(/chunk[0-9]*/i)
-  return match ? match[0] : "chunk0"
+  return match ? match[0] : 'chunk0'
 }
 
 /**
@@ -51,28 +48,40 @@ function chunkNameFor(filePath: string): string {
  *     concurrent adds must not stomp on the same staging directory.
  *   - never shells out through a hand-built command string (see archive.ts).
  */
-export async function runAddModTask(paths: AppPaths, tempDir: string, modsDir: string, index: ModIndex, taskId: string, sourceFilePath: string, sourceFileName: string, emit: TaskEmit): Promise<void> {
-	const staging = join(tempDir, "tmp", taskId)
+export async function runAddModTask(
+  paths: AppPaths,
+  tempDir: string,
+  modsDir: string,
+  index: ModIndex,
+  taskId: string,
+  sourceFilePath: string,
+  sourceFileName: string,
+  emit: TaskEmit
+): Promise<void> {
+  const staging = join(tempDir, 'tmp', taskId)
 
   try {
-    emit({ status: "queued" })
+    emit({ status: 'queued' })
 
     ensureModsDir(modsDir)
     mkdirSync(staging, { recursive: true })
 
     const ext = extname(sourceFileName).toLowerCase()
 
-    if (ext === ".rpkg") {
+    if (ext === '.rpkg') {
       await installRpkgMod(modsDir, index, sourceFilePath, sourceFileName, emit)
       return
     }
 
     if (!ARCHIVE_EXTENSIONS.has(ext)) {
-      emit({ status: "error", message: "This doesn't look like a mod - expected a .zip, .7z, .rar, or .rpkg file." })
+      emit({
+        status: 'error',
+        message: "This doesn't look like a mod - expected a .zip, .7z, .rar, or .rpkg file.",
+      })
       return
     }
 
-    emit({ status: "extracting" })
+    emit({ status: 'extracting' })
     await extractArchive(paths, sourceFilePath, staging)
 
     const topLevel = readdirSync(staging).filter((f) => statSync(join(staging, f)).isDirectory())
@@ -80,12 +89,15 @@ export async function runAddModTask(paths: AppPaths, tempDir: string, modsDir: s
     // v3-style archives may place manifest.json at the archive root. Install the archive contents
     // into the canonical manifest ID folder, after validating the destination and manifest before
     // copying anything. Wrapper-folder archives continue through the legacy multi-mod path below.
-    if (existsSync(join(staging, "manifest.json"))) {
+    if (existsSync(join(staging, 'manifest.json'))) {
       await installRootManifest(modsDir, index, staging, emit)
       return
     }
 
-    if (topLevel.length > 0 && topLevel.every((f) => existsSync(join(staging, f, "manifest.json")))) {
+    if (
+      topLevel.length > 0 &&
+      topLevel.every((f) => existsSync(join(staging, f, 'manifest.json')))
+    ) {
       await installFrameworkMods(modsDir, index, staging, topLevel, emit)
       return
     }
@@ -96,65 +108,97 @@ export async function runAddModTask(paths: AppPaths, tempDir: string, modsDir: s
       return
     }
 
-    emit({ status: "error", message: "The archive doesn't contain a recognizable framework mod (folder with manifest.json) or any .rpkg files." })
+    emit({
+      status: 'error',
+      message:
+        "The archive doesn't contain a recognizable framework mod (folder with manifest.json) or any .rpkg files.",
+    })
   } catch (error) {
-    emit({ status: "error", message: error instanceof Error ? error.message : String(error) })
+    emit({ status: 'error', message: error instanceof Error ? error.message : String(error) })
   } finally {
     rmSync(staging, { recursive: true, force: true })
   }
 }
 
-async function installRootManifest(modsDir: string, index: ModIndex, staging: string, emit: TaskEmit): Promise<void> {
-  emit({ status: "validating" })
+async function installRootManifest(
+  modsDir: string,
+  index: ModIndex,
+  staging: string,
+  emit: TaskEmit
+): Promise<void> {
+  emit({ status: 'validating' })
   let manifest: DiskManifest
   try {
-    manifest = normalizeManifest(JSON5.parse(readFileSync(join(staging, "manifest.json"), "utf8")))
+    manifest = normalizeManifest(JSON5.parse(readFileSync(join(staging, 'manifest.json'), 'utf8')))
   } catch (error) {
-    const message = error instanceof ManifestCompatibilityError ? `${error.path}: ${error.userMessage}` : "manifest.json is not valid JSON."
-    emit({ status: "error", message })
+    const message =
+      error instanceof ManifestCompatibilityError
+        ? `${error.path}: ${error.userMessage}`
+        : 'manifest.json is not valid JSON.'
+    emit({ status: 'error', message })
     return
   }
 
   const destination = join(modsDir, manifest.id)
   if (index.has(manifest.id) || existsSync(destination)) {
-    emit({ status: "error", message: `"${manifest.name || manifest.id}" is already installed (same mod ID or destination folder).` })
+    emit({
+      status: 'error',
+      message: `"${manifest.name || manifest.id}" is already installed (same mod ID or destination folder).`,
+    })
     return
   }
   const { valid, error } = validateModFolder(staging, manifest)
   if (!valid) {
-    emit({ status: "error", message: `"${manifest.name || manifest.id}" failed validation: ${error}` })
+    emit({
+      status: 'error',
+      message: `"${manifest.name || manifest.id}" failed validation: ${error}`,
+    })
     return
   }
 
-  emit({ status: "installing" })
+  emit({ status: 'installing' })
   cpSync(staging, destination, { recursive: true })
   index.addFolders([manifest.id])
   addNewlyKnownMods(modsDir, [{ id: manifest.id, manifest }])
-  emit({ status: "done", modId: manifest.id })
+  emit({ status: 'done', modId: manifest.id })
 }
 
-async function installFrameworkMods(modsDir: string, index: ModIndex, staging: string, folders: string[], emit: TaskEmit): Promise<void> {
-  emit({ status: "validating" })
+async function installFrameworkMods(
+  modsDir: string,
+  index: ModIndex,
+  staging: string,
+  folders: string[],
+  emit: TaskEmit
+): Promise<void> {
+  emit({ status: 'validating' })
 
   const manifests: DiskManifest[] = []
   const seenIds = new Set<string>()
   for (const folder of folders) {
     let manifest: DiskManifest
     try {
-      manifest = normalizeManifest(JSON5.parse(readFileSync(join(staging, folder, "manifest.json"), "utf8")))
+      manifest = normalizeManifest(
+        JSON5.parse(readFileSync(join(staging, folder, 'manifest.json'), 'utf8'))
+      )
     } catch {
-      emit({ status: "error", message: `"${folder}" has an invalid manifest.json (not valid JSON).` })
+      emit({
+        status: 'error',
+        message: `"${folder}" has an invalid manifest.json (not valid JSON).`,
+      })
       return
     }
 
     if (index.has(manifest.id) || seenIds.has(manifest.id) || existsSync(join(modsDir, folder))) {
-      emit({ status: "error", message: `"${manifest.name || manifest.id}" is already installed (same mod ID).` })
+      emit({
+        status: 'error',
+        message: `"${manifest.name || manifest.id}" is already installed (same mod ID).`,
+      })
       return
     }
 
     const { valid, error } = validateModFolder(join(staging, folder), manifest)
     if (!valid) {
-      emit({ status: "error", message: `"${manifest.name || folder}" failed validation: ${error}` })
+      emit({ status: 'error', message: `"${manifest.name || folder}" failed validation: ${error}` })
       return
     }
 
@@ -162,7 +206,7 @@ async function installFrameworkMods(modsDir: string, index: ModIndex, staging: s
     seenIds.add(manifest.id)
   }
 
-  emit({ status: "installing" })
+  emit({ status: 'installing' })
 
   for (const folder of folders) {
     cpSync(join(staging, folder), join(modsDir, folder), { recursive: true })
@@ -174,23 +218,35 @@ async function installFrameworkMods(modsDir: string, index: ModIndex, staging: s
   // implicit in the index write-through above. Passing each manifest along (not just its id) is what
   // lets addNewlyKnownMods() seed a sane default modOptions entry for mods that ship options, instead of
   // leaving them silently unselected until someone opens the options drawer.
-  addNewlyKnownMods(modsDir, manifests.map((m) => ({ id: m.id, manifest: m })))
+  addNewlyKnownMods(
+    modsDir,
+    manifests.map((m) => ({ id: m.id, manifest: m }))
+  )
 
-  emit({ status: "done", modId: manifests.length === 1 ? manifests[0].id : undefined })
+  emit({ status: 'done', modId: manifests.length === 1 ? manifests[0].id : undefined })
 }
 
-async function installExtractedRpkgFiles(modsDir: string, index: ModIndex, sourceFileName: string, rpkgFiles: string[], emit: TaskEmit): Promise<void> {
-  emit({ status: "validating" })
+async function installExtractedRpkgFiles(
+  modsDir: string,
+  index: ModIndex,
+  sourceFileName: string,
+  rpkgFiles: string[],
+  emit: TaskEmit
+): Promise<void> {
+  emit({ status: 'validating' })
 
   const rpkgModName = sanitizeFolderName(basename(sourceFileName, extname(sourceFileName)))
   const destFolder = join(modsDir, rpkgModName)
 
   if (index.has(rpkgModName) || existsSync(destFolder)) {
-    emit({ status: "error", message: `"${rpkgModName}" is already installed (same destination folder).` })
+    emit({
+      status: 'error',
+      message: `"${rpkgModName}" is already installed (same destination folder).`,
+    })
     return
   }
 
-  emit({ status: "installing" })
+  emit({ status: 'installing' })
 
   for (const file of rpkgFiles) {
     const chunk = chunkNameFor(file)
@@ -201,29 +257,38 @@ async function installExtractedRpkgFiles(modsDir: string, index: ModIndex, sourc
 
   index.addFolders([rpkgModName])
   addNewlyKnownMods(modsDir, [{ id: rpkgModName }])
-  emit({ status: "done", modId: rpkgModName })
+  emit({ status: 'done', modId: rpkgModName })
 }
 
-async function installRpkgMod(modsDir: string, index: ModIndex, sourceFilePath: string, sourceFileName: string, emit: TaskEmit): Promise<void> {
+async function installRpkgMod(
+  modsDir: string,
+  index: ModIndex,
+  sourceFilePath: string,
+  sourceFileName: string,
+  emit: TaskEmit
+): Promise<void> {
   const rpkgModName = sanitizeFolderName(basename(sourceFileName, extname(sourceFileName)))
   const destFolder = join(modsDir, rpkgModName)
 
   if (index.has(rpkgModName) || existsSync(destFolder)) {
-    emit({ status: "error", message: `"${rpkgModName}" is already installed (same destination folder).` })
+    emit({
+      status: 'error',
+      message: `"${rpkgModName}" is already installed (same destination folder).`,
+    })
     return
   }
 
-  emit({ status: "validating" })
+  emit({ status: 'validating' })
   const chunk = chunkNameFor(sourceFileName)
 
-  emit({ status: "installing" })
+  emit({ status: 'installing' })
   const destDir = join(destFolder, chunk)
   mkdirSync(destDir, { recursive: true })
   cpSync(sourceFilePath, join(destDir, basename(sourceFilePath)))
 
   index.addFolders([rpkgModName])
   addNewlyKnownMods(modsDir, [{ id: rpkgModName }])
-  emit({ status: "done", modId: rpkgModName })
+  emit({ status: 'done', modId: rpkgModName })
 }
 
 export function newTaskId(): string {

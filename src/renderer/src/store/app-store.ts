@@ -1,10 +1,10 @@
-import { create } from "zustand"
-import { toast } from "sonner"
-import { t } from "@lingui/core/macro"
-import { getSmfApi } from "@/lib/ipc"
-import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate } from "@/lib/ipc"
-import type { Config, DefaultPaths, GamePlatform, ModEntry } from "@/lib/manifest-types"
-import { WIZARD_STEPS } from "@/lib/wizard-steps"
+import { t } from '@lingui/core/macro'
+import { toast } from 'sonner'
+import { create } from 'zustand'
+import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate } from '@/lib/ipc'
+import { getSmfApi } from '@/lib/ipc'
+import type { Config, DefaultPaths, GamePlatform, ModEntry } from '@/lib/manifest-types'
+import { WIZARD_STEPS } from '@/lib/wizard-steps'
 
 export interface AddTask extends ModTaskUpdate {
   startedAt: number
@@ -42,7 +42,9 @@ interface WizardState {
  * Promise.all'd, since config:get() has to see whichever of those two calls' own addNewlyKnownMods()
  * write-through actually ran) only has to be written once.
  */
-async function refreshModsAndConfig(fetchMods: () => Promise<ModEntry[]>): Promise<{ mods: ModEntry[]; config: Config }> {
+async function refreshModsAndConfig(
+  fetchMods: () => Promise<ModEntry[]>
+): Promise<{ mods: ModEntry[]; config: Config }> {
   const mods = await fetchMods()
   const config = await getSmfApi().config.get()
   return { mods, config }
@@ -124,8 +126,8 @@ interface AppState {
   toggleDeployExpanded(): void
   toggleDeployLog(): void
 
-  setThemeMode(mode: Config["themeMode"]): void
-  setAccent(accent: Config["accent"]): void
+  setThemeMode(mode: Config['themeMode']): void
+  setAccent(accent: Config['accent']): void
   setReportErrors(value: boolean): void
 
   setGamePath(path: string): void
@@ -143,7 +145,14 @@ interface AppState {
   wizardBack(): void
   wizardNext(): void
   /** Batches every field the wizard staged into one commit - see the implementation's doc comment. */
-  commitWizard(draft: { gamePath: string; gamePlatform?: GamePlatform; gamePlatformChoiceRequired?: boolean; cachePath: string; modPath: string; language: string }): Promise<void>
+  commitWizard(draft: {
+    gamePath: string
+    gamePlatform?: GamePlatform
+    gamePlatformChoiceRequired?: boolean
+    cachePath: string
+    modPath: string
+    language: string
+  }): Promise<void>
 }
 
 /**
@@ -152,7 +161,8 @@ interface AppState {
  * single source of truth every consumer (the Apply button's disabled state, NavRail's persistent
  * status icon) should read instead of re-deriving the same `snapshot`/`progress.done` check.
  */
-export const selectDeployActive = (s: AppState): boolean => !!s.deploy.snapshot && !(s.deploy.progress?.done ?? false)
+export const selectDeployActive = (s: AppState): boolean =>
+  !!s.deploy.snapshot && !(s.deploy.progress?.done ?? false)
 
 export const useAppStore = create<AppState>((set, get) => ({
   loaded: false,
@@ -166,9 +176,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   rebuildingCacheDb: false,
   addTasks: {},
   addDialogOpen: false,
-  search: "",
-  systemDark: typeof window !== "undefined" ? (window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false) : false,
-  deploy: { open: false, expanded: false, snapshot: null, progress: null, log: [], logExpanded: false },
+  search: '',
+  systemDark:
+    typeof window !== 'undefined'
+      ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
+      : false,
+  deploy: {
+    open: false,
+    expanded: false,
+    snapshot: null,
+    progress: null,
+    log: [],
+    logExpanded: false,
+  },
   wizard: { open: false, step: 0 },
 
   async init() {
@@ -182,7 +202,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     // (nav, Settings, the Mods screen shell) is interactable immediately, and `mods`/`modsLoading`
     // fill in a moment later - see ModsScreen.tsx's cache-building banner, driven by
     // `modsLoading`/`cacheProgress`, and initListeners()'s onCacheProgress subscription below.
-    const [config, defaultPaths] = await Promise.all([smf.config.get(), smf.config.getDefaultPaths()])
+    const [config, defaultPaths] = await Promise.all([
+      smf.config.get(),
+      smf.config.getDefaultPaths(),
+    ])
     // An empty gamePath is the sentinel loadSettings() writes for a brand-new
     // settings.json (see settings.ts's defaultSettings()/loadSettings() doc
     // comments) - i.e. "no config found yet". Open straight into the wizard
@@ -191,7 +214,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Plain data fetch, no subscriptions - safe to call more than once (StrictMode's double
     // effect invoke included), since re-running it just re-fetches and re-sets the same kind of
     // data rather than accumulating anything. See initListeners() for the subscription half.
-    set({ config, defaultPaths, loaded: true, modsLoading: true, wizard: { open: !config.gamePath, step: 0 } })
+    set({
+      config,
+      defaultPaths,
+      loaded: true,
+      modsLoading: true,
+      wizard: { open: !config.gamePath, step: 0 },
+    })
 
     // See refreshModsAndConfig()'s doc comment - mods:list's own addNewlyKnownMods() write-through can
     // register mods this store's `config` (fetched above, before that write-through ran) doesn't
@@ -216,13 +245,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     }, 2000)
 
     const unsubscribeTaskUpdate = smf.mods.onTaskUpdate((update) => {
-      set((s) => ({ addTasks: { ...s.addTasks, [update.taskId]: { ...update, startedAt: s.addTasks[update.taskId]?.startedAt ?? Date.now() } } }))
+      set((s) => ({
+        addTasks: {
+          ...s.addTasks,
+          [update.taskId]: {
+            ...update,
+            startedAt: s.addTasks[update.taskId]?.startedAt ?? Date.now(),
+          },
+        },
+      }))
 
-      if (update.status === "done") {
+      if (update.status === 'done') {
         // A task finishing is exactly the kind of external mutation that should refresh the mods
         // list without disturbing anything else the user is doing (per-row, non-blocking - see
         // ipc.ts). See refreshModsAndConfig()'s doc comment for why config comes along too.
-        refreshModsAndConfig(() => smf.mods.list()).then(({ mods, config }) => set({ mods, config }))
+        refreshModsAndConfig(() => smf.mods.list()).then(({ mods, config }) =>
+          set({ mods, config })
+        )
         setTimeout(() => {
           set((s) => {
             const next = { ...s.addTasks }
@@ -232,7 +271,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }, 4000)
       }
 
-      if (update.status === "error") {
+      if (update.status === 'error') {
         setTimeout(() => {
           set((s) => {
             const next = { ...s.addTasks }
@@ -252,17 +291,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         deploy: {
           ...s.deploy,
           progress,
-          log: progress.logLine ? [...s.deploy.log, progress.logLine] : s.deploy.log
-        }
+          log: progress.logLine ? [...s.deploy.log, progress.logLine] : s.deploy.log,
+        },
       }))
     })
 
     let mq: MediaQueryList | undefined
     let onSystemDarkChange: ((e: MediaQueryListEvent) => void) | undefined
-    if (typeof window !== "undefined") {
-      mq = window.matchMedia("(prefers-color-scheme: dark)")
+    if (typeof window !== 'undefined') {
+      mq = window.matchMedia('(prefers-color-scheme: dark)')
       onSystemDarkChange = (e) => set({ systemDark: e.matches })
-      mq.addEventListener("change", onSystemDarkChange)
+      mq.addEventListener('change', onSystemDarkChange)
     }
 
     return () => {
@@ -270,7 +309,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       unsubscribeTaskUpdate()
       unsubscribeCacheProgress()
       unsubscribeProgress()
-      mq?.removeEventListener("change", onSystemDarkChange!)
+      mq?.removeEventListener('change', onSystemDarkChange!)
     }
   },
 
@@ -285,7 +324,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Toggling never touches modOrder - a disabled mod keeps the shelf
     // position it was dragged to, and slots back into that spot in
     // loadOrder if it's re-enabled later.
-    const loadOrder = enabled ? config.loadOrder.filter((id) => id !== modId) : config.modOrder.filter((id) => id === modId || config.loadOrder.includes(id))
+    const loadOrder = enabled
+      ? config.loadOrder.filter((id) => id !== modId)
+      : config.modOrder.filter((id) => id === modId || config.loadOrder.includes(id))
     set({ config: { ...config, loadOrder } })
     getSmfApi().config.merge({ loadOrder })
   },
@@ -335,7 +376,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // AddModDialog.tsx's own addFiles() - now shared so a whole-window drop (App.tsx) and the
     // dialog's own dropzone both feed the same pipeline instead of drifting apart.
     for (const file of Array.from(files)) {
-      const path = window.smf?.getPathForFile(file) ?? ""
+      const path = window.smf?.getPathForFile(file) ?? ''
       get().addModFile({ name: file.name, size: file.size, path })
     }
     // A drop anywhere in the app should surface the same progress UI a click on "Add a mod" would -
@@ -407,7 +448,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async startDeploy() {
     const snapshot = await getSmfApi().deploy.start()
-    set({ deploy: { open: true, expanded: false, snapshot, progress: null, log: [], logExpanded: false } })
+    set({
+      deploy: {
+        open: true,
+        expanded: false,
+        snapshot,
+        progress: null,
+        log: [],
+        logExpanded: false,
+      },
+    })
   },
 
   closeDeploy() {
@@ -453,7 +503,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const mutationVersion = ++gameConfigMutationVersion
     const previousCachePath = config.cachePath
     const previousModPath = config.modPath
-    set({ config: { ...config, gamePath, gamePlatform: undefined, gamePlatformChoiceRequired: false } })
+    set({
+      config: { ...config, gamePath, gamePlatform: undefined, gamePlatformChoiceRequired: false },
+    })
 
     clearGamePathDebounce()
     gamePathDebounceTimer = setTimeout(() => {
@@ -464,8 +516,14 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (mutationVersion !== gameConfigMutationVersion) return
           set((s) => {
             if (!s.config || s.config.gamePath !== gamePath) return {}
-            const nextConfig = { ...s.config, gamePath: freshConfig.gamePath, gamePlatform: freshConfig.gamePlatform, gamePlatformChoiceRequired: freshConfig.gamePlatformChoiceRequired }
-            if (s.config.cachePath === previousCachePath) nextConfig.cachePath = freshConfig.cachePath
+            const nextConfig = {
+              ...s.config,
+              gamePath: freshConfig.gamePath,
+              gamePlatform: freshConfig.gamePlatform,
+              gamePlatformChoiceRequired: freshConfig.gamePlatformChoiceRequired,
+            }
+            if (s.config.cachePath === previousCachePath)
+              nextConfig.cachePath = freshConfig.cachePath
             if (s.config.modPath === previousModPath) nextConfig.modPath = freshConfig.modPath
             return { config: nextConfig }
           })
@@ -484,7 +542,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       .config.merge(pathWasPending ? { gamePath: config.gamePath, gamePlatform } : { gamePlatform })
       .then((freshConfig) => {
         if (mutationVersion !== gameConfigMutationVersion) return
-        set((s) => (s.config ? { config: { ...s.config, gamePath: freshConfig.gamePath, gamePlatform: freshConfig.gamePlatform, gamePlatformChoiceRequired: freshConfig.gamePlatformChoiceRequired } } : {}))
+        set((s) =>
+          s.config
+            ? {
+                config: {
+                  ...s.config,
+                  gamePath: freshConfig.gamePath,
+                  gamePlatform: freshConfig.gamePlatform,
+                  gamePlatformChoiceRequired: freshConfig.gamePlatformChoiceRequired,
+                },
+              }
+            : {}
+        )
       })
   },
 
@@ -556,7 +625,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async browseCachePath() {
     clearCachePathDebounce()
-    const picked = await getSmfApi().system.pickDirectory({ title: "Select a cache folder" })
+    const picked = await getSmfApi().system.pickDirectory({ title: 'Select a cache folder' })
     if (!picked) return
     const { config } = get()
     if (!config) return
@@ -565,7 +634,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async browseModPath() {
-    const picked = await getSmfApi().system.pickDirectory({ title: "Select a mod folder" })
+    const picked = await getSmfApi().system.pickDirectory({ title: 'Select a mod folder' })
     if (!picked) return
     // A folder pick is one deliberate action, not a burst of keystrokes - skip setModPath()'s
     // debounce (and cancel one it may have queued) so Browse rescans immediately.
@@ -612,5 +681,5 @@ export const useAppStore = create<AppState>((set, get) => ({
     await getSmfApi().config.merge(draft)
     const { mods, config } = await refreshModsAndConfig(() => getSmfApi().mods.list())
     set({ mods, config, modsLoading: false })
-  }
+  },
 }))

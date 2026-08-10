@@ -1,5 +1,5 @@
-import klaw from "klaw"
-import type { Item } from "klaw"
+import type { Item } from 'klaw'
+import klaw from 'klaw'
 
 export type { Item as WalkItem }
 
@@ -20,9 +20,9 @@ export type { Item as WalkItem }
  * needed to live in.
  */
 export async function walk(dir: string): Promise<Item[]> {
-	const items: Item[] = []
-	for await (const item of klaw(dir)) {
-		items.push(item)
-	}
-	return items
+  const items: Item[] = []
+  for await (const item of klaw(dir)) {
+    items.push(item)
+  }
+  return items
 }

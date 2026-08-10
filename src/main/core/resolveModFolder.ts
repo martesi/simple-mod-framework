@@ -1,11 +1,11 @@
-import { getMod } from "../db"
-import type { DiskManifest } from "../diskManifest"
+import { getMod } from '../db'
+import type { DiskManifest } from '../diskManifest'
 
 export interface ResolvedMod {
-	/** The real on-disk folder name under Mods/ - may differ from `mod` if `mod` was an id, not a folder name. */
-	folder: string
-	isFrameworkMod: boolean
-	manifest?: DiskManifest
+  /** The real on-disk folder name under Mods/ - may differ from `mod` if `mod` was an id, not a folder name. */
+  folder: string
+  isFrameworkMod: boolean
+  manifest?: DiskManifest
 }
 
 /**
@@ -28,8 +28,8 @@ export interface ResolvedMod {
  * every deploy.
  */
 export function resolveModFolder(mod: string): ResolvedMod | undefined {
-	const row = getMod(mod)
-	if (!row) return undefined
+  const row = getMod(mod)
+  if (!row) return undefined
 
-	return { folder: row.folder, isFrameworkMod: row.isFrameworkMod, manifest: row.manifest }
+  return { folder: row.folder, isFrameworkMod: row.isFrameworkMod, manifest: row.manifest }
 }

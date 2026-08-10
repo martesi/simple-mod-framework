@@ -1,7 +1,7 @@
-import { execFile } from "node:child_process"
-import { join } from "node:path"
-import type { AppPaths } from "./paths"
-import { wineArgv } from "./wineExec"
+import { execFile } from 'node:child_process'
+import { join } from 'node:path'
+import type { AppPaths } from './paths'
+import { wineArgv } from './wineExec'
 
 /**
  * Extracts an archive with the bundled 7z.exe - same tool the old
@@ -19,9 +19,17 @@ import { wineArgv } from "./wineExec"
  * On non-win32, {@link wineArgv} runs 7z.exe under Wine instead - see wineExec.ts. Nothing here
  * needs to know that; it always gets back a ready-to-run command/args pair.
  */
-export function extractArchive(paths: AppPaths, archivePath: string, destDir: string): Promise<void> {
-  const sevenZip = join(paths.toolsRoot, "Third-Party", "7z.exe")
-  const { command, args, env } = wineArgv(sevenZip, ["x", archivePath, "-aoa", "-y", `-o${destDir}`], paths.toolsRoot)
+export function extractArchive(
+  paths: AppPaths,
+  archivePath: string,
+  destDir: string
+): Promise<void> {
+  const sevenZip = join(paths.toolsRoot, 'Third-Party', '7z.exe')
+  const { command, args, env } = wineArgv(
+    sevenZip,
+    ['x', archivePath, '-aoa', '-y', `-o${destDir}`],
+    paths.toolsRoot
+  )
 
   return new Promise((resolvePromise, reject) => {
     execFile(command, args, { windowsHide: true, env }, (error) => {

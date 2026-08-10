@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
-import JSON5 from "json5"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import JSON5 from 'json5'
 
 /**
  * LEI-141's config split: load order + selected options live *inside the Mods folder itself*
@@ -18,20 +18,20 @@ import JSON5 from "json5"
  * `loadSettings()` seeds a fresh settings.json.
  */
 export interface ModsConfig {
-	/** IDs of enabled mods only, in deploy order. */
-	loadOrder: string[]
-	/** Display/drag order for every known mod, enabled or not - see the old `Config.modOrder` doc comment (manifest-types.ts). */
-	modOrder: string[]
-	/** modId -> list of enabled option names ("optionName" for checkboxes, "group:optionName" for selects). */
-	modOptions: Record<string, string[]>
+  /** IDs of enabled mods only, in deploy order. */
+  loadOrder: string[]
+  /** Display/drag order for every known mod, enabled or not - see the old `Config.modOrder` doc comment (manifest-types.ts). */
+  modOrder: string[]
+  /** modId -> list of enabled option names ("optionName" for checkboxes, "group:optionName" for selects). */
+  modOptions: Record<string, string[]>
 }
 
 function defaultModsConfig(): ModsConfig {
-	return { loadOrder: [], modOrder: [], modOptions: {} }
+  return { loadOrder: [], modOrder: [], modOptions: {} }
 }
 
 export function modsConfigPath(modsDir: string): string {
-	return join(modsDir, "config.json")
+  return join(modsDir, 'config.json')
 }
 
 /**
@@ -43,57 +43,57 @@ let cached: ModsConfig | null = null
 let cachedForDir: string | null = null
 
 export function invalidateModsConfigCache(): void {
-	cached = null
-	cachedForDir = null
+  cached = null
+  cachedForDir = null
 }
 
 export function loadModsConfig(modsDir: string): ModsConfig {
-	if (cached && cachedForDir === modsDir) return cached
+  if (cached && cachedForDir === modsDir) return cached
 
-	const file = modsConfigPath(modsDir)
+  const file = modsConfigPath(modsDir)
 
-	if (!existsSync(file)) {
-		const fresh = defaultModsConfig()
-		try {
-			mkdirSync(modsDir, { recursive: true })
-			writeFileSync(file, JSON.stringify(fresh, undefined, "\t"))
-		} catch {
-			// Best-effort - a fresh Mods folder that isn't writable yet (e.g. picked but not created)
-			// still gets an in-memory default so the UI has something to render.
-		}
-		cached = fresh
-		cachedForDir = modsDir
-		return fresh
-	}
+  if (!existsSync(file)) {
+    const fresh = defaultModsConfig()
+    try {
+      mkdirSync(modsDir, { recursive: true })
+      writeFileSync(file, JSON.stringify(fresh, undefined, '\t'))
+    } catch {
+      // Best-effort - a fresh Mods folder that isn't writable yet (e.g. picked but not created)
+      // still gets an in-memory default so the UI has something to render.
+    }
+    cached = fresh
+    cachedForDir = modsDir
+    return fresh
+  }
 
-	let config: ModsConfig
-	try {
-		const parsed = JSON5.parse(readFileSync(file, "utf8"))
-		config = { ...defaultModsConfig(), ...parsed }
-	} catch {
-		// Malformed config.json - fall back to defaults in memory rather than crash, but don't
-		// overwrite the broken file on disk (a save only happens on an explicit merge/write below,
-		// so the original bytes are still there for the user/support to recover if this was a fluke).
-		config = defaultModsConfig()
-	}
+  let config: ModsConfig
+  try {
+    const parsed = JSON5.parse(readFileSync(file, 'utf8'))
+    config = { ...defaultModsConfig(), ...parsed }
+  } catch {
+    // Malformed config.json - fall back to defaults in memory rather than crash, but don't
+    // overwrite the broken file on disk (a save only happens on an explicit merge/write below,
+    // so the original bytes are still there for the user/support to recover if this was a fluke).
+    config = defaultModsConfig()
+  }
 
-	cached = config
-	cachedForDir = modsDir
-	return config
+  cached = config
+  cachedForDir = modsDir
+  return config
 }
 
 export function saveModsConfig(modsDir: string, config: ModsConfig): void {
-	mkdirSync(modsDir, { recursive: true })
-	writeFileSync(modsConfigPath(modsDir), JSON.stringify(config, undefined, "\t"))
-	cached = config
-	cachedForDir = modsDir
+  mkdirSync(modsDir, { recursive: true })
+  writeFileSync(modsConfigPath(modsDir), JSON.stringify(config, undefined, '\t'))
+  cached = config
+  cachedForDir = modsDir
 }
 
 export function mergeModsConfig(modsDir: string, patch: Partial<ModsConfig>): ModsConfig {
-	const current = loadModsConfig(modsDir)
-	const next: ModsConfig = { ...current, ...patch }
-	saveModsConfig(modsDir, next)
-	return next
+  const current = loadModsConfig(modsDir)
+  const next: ModsConfig = { ...current, ...patch }
+  saveModsConfig(modsDir, next)
+  return next
 }
 
 /**
@@ -104,30 +104,36 @@ export function mergeModsConfig(modsDir: string, patch: Partial<ModsConfig>): Mo
  * (a fresh install with empty arrays/objects would otherwise "migrate" into an identical empty file,
  * which is harmless but pointless).
  */
-export function migrateFromLegacySettings(modsDir: string, legacy: { loadOrder?: string[]; modOrder?: string[]; modOptions?: Record<string, string[]> }): void {
-	if (existsSync(modsConfigPath(modsDir))) return
+export function migrateFromLegacySettings(
+  modsDir: string,
+  legacy: { loadOrder?: string[]; modOrder?: string[]; modOptions?: Record<string, string[]> }
+): void {
+  if (existsSync(modsConfigPath(modsDir))) return
 
-	const hasData = (legacy.loadOrder?.length ?? 0) > 0 || (legacy.modOrder?.length ?? 0) > 0 || Object.keys(legacy.modOptions ?? {}).length > 0
-	if (!hasData) return
+  const hasData =
+    (legacy.loadOrder?.length ?? 0) > 0 ||
+    (legacy.modOrder?.length ?? 0) > 0 ||
+    Object.keys(legacy.modOptions ?? {}).length > 0
+  if (!hasData) return
 
-	saveModsConfig(modsDir, {
-		loadOrder: legacy.loadOrder ?? [],
-		modOrder: legacy.modOrder ?? [],
-		modOptions: legacy.modOptions ?? {}
-	})
+  saveModsConfig(modsDir, {
+    loadOrder: legacy.loadOrder ?? [],
+    modOrder: legacy.modOrder ?? [],
+    modOptions: legacy.modOptions ?? {},
+  })
 }
 
 /** Structural subset of `ManifestOption`/`DiskManifestOption` - mirrors the old `settings.ts`'s `OptionLike`. */
 interface OptionLike {
-	name: string
-	type: string
-	group?: string
-	enabledByDefault?: boolean
+  name: string
+  type: string
+  group?: string
+  enabledByDefault?: boolean
 }
 
 export interface KnownModInput {
-	id: string
-	manifest?: { options?: OptionLike[] }
+  id: string
+  manifest?: { options?: OptionLike[] }
 }
 
 /**
@@ -137,43 +143,43 @@ export interface KnownModInput {
  * `mods` table - see `db.ts` - is the real membership list; `ModIndex` writes there directly).
  */
 export function addNewlyKnownMods(modsDir: string, mods: KnownModInput[]): ModsConfig {
-	const current = loadModsConfig(modsDir)
+  const current = loadModsConfig(modsDir)
 
-	const existingOrder = current.modOrder ?? []
-	const newIds = mods.map((m) => m.id).filter((id) => !existingOrder.includes(id))
-	const modOrder = [...existingOrder, ...newIds]
+  const existingOrder = current.modOrder ?? []
+  const newIds = mods.map((m) => m.id).filter((id) => !existingOrder.includes(id))
+  const modOrder = [...existingOrder, ...newIds]
 
-	let changed = newIds.length > 0
-	const modOptions = { ...current.modOptions }
+  let changed = newIds.length > 0
+  const modOptions = { ...current.modOptions }
 
-	for (const mod of mods) {
-		const options = mod.manifest?.options
-		if (!options?.length || modOptions[mod.id] !== undefined) continue
+  for (const mod of mods) {
+    const options = mod.manifest?.options
+    if (!options?.length || modOptions[mod.id] !== undefined) continue
 
-		const picks: string[] = []
+    const picks: string[] = []
 
-		for (const o of options) {
-			if (o.type === "checkbox" && o.enabledByDefault) picks.push(o.name)
-		}
+    for (const o of options) {
+      if (o.type === 'checkbox' && o.enabledByDefault) picks.push(o.name)
+    }
 
-		const groups = new Map<string, OptionLike[]>()
-		for (const o of options) {
-			if (o.type === "select" && o.group) {
-				const arr = groups.get(o.group) ?? []
-				arr.push(o)
-				groups.set(o.group, arr)
-			}
-		}
-		for (const [group, groupOptions] of groups) {
-			const chosen = groupOptions.find((o) => o.enabledByDefault) ?? groupOptions[0]
-			picks.push(`${group}:${chosen.name}`)
-		}
+    const groups = new Map<string, OptionLike[]>()
+    for (const o of options) {
+      if (o.type === 'select' && o.group) {
+        const arr = groups.get(o.group) ?? []
+        arr.push(o)
+        groups.set(o.group, arr)
+      }
+    }
+    for (const [group, groupOptions] of groups) {
+      const chosen = groupOptions.find((o) => o.enabledByDefault) ?? groupOptions[0]
+      picks.push(`${group}:${chosen.name}`)
+    }
 
-		modOptions[mod.id] = picks
-		changed = true
-	}
+    modOptions[mod.id] = picks
+    changed = true
+  }
 
-	if (!changed) return current
+  if (!changed) return current
 
-	return mergeModsConfig(modsDir, { modOrder, modOptions })
+  return mergeModsConfig(modsDir, { modOrder, modOptions })
 }

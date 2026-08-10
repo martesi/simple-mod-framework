@@ -1,13 +1,12 @@
-import { useEffect } from "react"
-import { Routes, Route, Navigate } from "react-router-dom"
-import { Toaster } from "sonner"
-import { Trans } from "@lingui/react/macro"
-
-import { useAppStore } from "@/store/app-store"
-import { computeThemeVars, resolveDark } from "@/lib/theme"
-import { AppShell } from "@/components/layout/AppShell"
-import { ModsScreen } from "@/components/mods/ModsScreen"
-import { SettingsScreen } from "@/components/settings/SettingsScreen"
+import { Trans } from '@lingui/react/macro'
+import { useEffect } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { Toaster } from 'sonner'
+import { AppShell } from '@/components/layout/AppShell'
+import { ModsScreen } from '@/components/mods/ModsScreen'
+import { SettingsScreen } from '@/components/settings/SettingsScreen'
+import { computeThemeVars, resolveDark } from '@/lib/theme'
+import { useAppStore } from '@/store/app-store'
 
 export default function App() {
   const init = useAppStore((s) => s.init)
@@ -56,11 +55,11 @@ export default function App() {
       if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files)
     }
 
-    window.addEventListener("dragover", onDragOver, true)
-    window.addEventListener("drop", onDrop, true)
+    window.addEventListener('dragover', onDragOver, true)
+    window.addEventListener('drop', onDrop, true)
     return () => {
-      window.removeEventListener("dragover", onDragOver, true)
-      window.removeEventListener("drop", onDrop, true)
+      window.removeEventListener('dragover', onDragOver, true)
+      window.removeEventListener('drop', onDrop, true)
     }
   }, [addFiles])
 
@@ -72,7 +71,7 @@ export default function App() {
     for (const [key, value] of Object.entries(vars)) {
       root.style.setProperty(key, value)
     }
-    root.classList.toggle("dark", dark)
+    root.classList.toggle('dark', dark)
   }, [config, systemDark])
 
   if (!loaded || !config) {

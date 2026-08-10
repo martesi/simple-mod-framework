@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from "react"
-import { Ban, Check, ChevronDown, TriangleAlert, X } from "lucide-react"
-import { Trans, useLingui } from "@lingui/react/macro"
-import { useAppStore } from "@/store/app-store"
-import { cn } from "@/lib/utils"
-import { getSmfApi, type DeployStage } from "@/lib/ipc"
+import { Trans, useLingui } from '@lingui/react/macro'
+import { Ban, Check, ChevronDown, TriangleAlert, X } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
+import { type DeployStage, getSmfApi } from '@/lib/ipc'
+import { cn } from '@/lib/utils'
+import { useAppStore } from '@/store/app-store'
 
 /**
  * Non-blocking deploy status, bottom-right - no backdrop, the rest of the app
@@ -22,11 +22,11 @@ export function DeployToast() {
   // queue-aware deploy gate) only ever actually shows when at least one mod in the load order isn't
   // eager-built yet; most deploys skip straight past it to "sorting", same as before this stage existed.
   const STAGES: { key: DeployStage; label: string }[] = [
-    { key: "waiting-for-cache-build", label: t`Waiting for mods to finish building` },
-    { key: "sorting", label: t`Sorting load order` },
-    { key: "extracting", label: t`Extracting RPKG mods` },
-    { key: "patching", label: t`Patching game files` },
-    { key: "finalizing", label: t`Finalizing` }
+    { key: 'waiting-for-cache-build', label: t`Waiting for mods to finish building` },
+    { key: 'sorting', label: t`Sorting load order` },
+    { key: 'extracting', label: t`Extracting RPKG mods` },
+    { key: 'patching', label: t`Patching game files` },
+    { key: 'finalizing', label: t`Finalizing` },
   ]
 
   if (!deploy.open || !deploy.snapshot) return null
@@ -37,12 +37,14 @@ export function DeployToast() {
   // success and failure paths (see its "finalizing"/ok:false emits, e.g. the queue-aware gate's
   // build-wait timeout). `ok` is what actually distinguishes the two.
   const failed = done && deploy.progress?.ok === false
-  const progressPct = done ? 100 : Math.round(((Math.max(currentStageIndex, 0) + 0.5) / STAGES.length) * 100)
+  const progressPct = done
+    ? 100
+    : Math.round(((Math.max(currentStageIndex, 0) + 0.5) / STAGES.length) * 100)
 
   // Safe-window cancel (see deployManager.ts/core/cancel.ts) - once the deploy reaches
   // "finalizing" it's writing directly into the game's Retail/Runtime folder with no atomic
   // rename, so cancellation is locked out server-side too; hide the action here to match.
-  const canCancel = !done && deploy.progress?.stage !== "finalizing"
+  const canCancel = !done && deploy.progress?.stage !== 'finalizing'
 
   async function handleCancel(e: React.MouseEvent) {
     e.stopPropagation()
@@ -63,9 +65,10 @@ export function DeployToast() {
   } else if (currentStageIndex >= 0) {
     const stage = STAGES[currentStageIndex]
     statusLine =
-      stage.key === "patching" && deploy.progress?.currentModId ? (
+      stage.key === 'patching' && deploy.progress?.currentModId ? (
         <Trans>
-          {stage.label} — {deploy.progress.currentModId} ({(deploy.progress.modIndex ?? 0) + 1}/{deploy.progress.modTotal})
+          {stage.label} — {deploy.progress.currentModId} ({(deploy.progress.modIndex ?? 0) + 1}/
+          {deploy.progress.modTotal})
         </Trans>
       ) : (
         stage.label
@@ -74,11 +77,14 @@ export function DeployToast() {
 
   return (
     <div className="absolute bottom-5 right-5 z-100 flex max-h-[70vh] w-[360px] flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-md animate-fade-in">
-      <div onClick={toggleDeployExpanded} className="flex cursor-pointer items-center gap-3 px-4 py-3.5">
+      <div
+        onClick={toggleDeployExpanded}
+        className="flex cursor-pointer items-center gap-3 px-4 py-3.5"
+      >
         <div
           className={cn(
-            "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-accent-foreground",
-            failed ? "bg-danger" : done ? "bg-success" : "bg-accent"
+            'flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-accent-foreground',
+            failed ? 'bg-danger' : done ? 'bg-success' : 'bg-accent'
           )}
         >
           {failed ? (
@@ -91,11 +97,22 @@ export function DeployToast() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] font-bold text-text">
-            {failed ? <Trans>Deploy failed</Trans> : done ? <Trans>Mods applied</Trans> : <Trans>Applying your mods</Trans>}
+            {failed ? (
+              <Trans>Deploy failed</Trans>
+            ) : done ? (
+              <Trans>Mods applied</Trans>
+            ) : (
+              <Trans>Applying your mods</Trans>
+            )}
           </div>
           <div className="truncate text-[12px] text-text-2">{statusLine}</div>
         </div>
-        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-text-3 transition-transform", deploy.expanded && "rotate-180")} />
+        <ChevronDown
+          className={cn(
+            'h-3.5 w-3.5 shrink-0 text-text-3 transition-transform',
+            deploy.expanded && 'rotate-180'
+          )}
+        />
         {done ? (
           <button
             onClick={(e) => {
@@ -120,7 +137,10 @@ export function DeployToast() {
       </div>
 
       <div className="h-[3px] shrink-0 bg-surface-2">
-        <div className="h-full bg-accent transition-all duration-300" style={{ width: `${progressPct}%` }} />
+        <div
+          className="h-full bg-accent transition-all duration-300"
+          style={{ width: `${progressPct}%` }}
+        />
       </div>
 
       {deploy.expanded && (
@@ -134,21 +154,35 @@ export function DeployToast() {
                 <div key={stage.key} className="flex items-center gap-3 py-[7px]">
                   <div
                     className={cn(
-                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-accent-foreground",
-                      isFailedHere ? "bg-danger" : isDone ? "bg-success" : isActive ? "bg-accent" : "bg-surface-2"
+                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-accent-foreground',
+                      isFailedHere
+                        ? 'bg-danger'
+                        : isDone
+                          ? 'bg-success'
+                          : isActive
+                            ? 'bg-accent'
+                            : 'bg-surface-2'
                     )}
                   >
                     {isFailedHere && <TriangleAlert className="h-2.5 w-2.5" strokeWidth={3} />}
                     {isDone && !isFailedHere && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
-                    {isActive && <div className="h-[9px] w-[9px] animate-spin-slow rounded-full border-2 border-accent-foreground border-t-transparent" />}
+                    {isActive && (
+                      <div className="h-[9px] w-[9px] animate-spin-slow rounded-full border-2 border-accent-foreground border-t-transparent" />
+                    )}
                   </div>
-                  <div className={cn("text-[13px]", isDone || isActive || isFailedHere ? "text-text" : "text-text-3")}>
+                  <div
+                    className={cn(
+                      'text-[13px]',
+                      isDone || isActive || isFailedHere ? 'text-text' : 'text-text-3'
+                    )}
+                  >
                     {stage.label}
-                    {isActive && stage.key === "patching" && deploy.progress?.currentModId && (
+                    {isActive && stage.key === 'patching' && deploy.progress?.currentModId && (
                       <span className="text-text-2">
-                        {" "}
+                        {' '}
                         <Trans>
-                          — {deploy.progress.currentModId} ({(deploy.progress.modIndex ?? 0) + 1}/{deploy.progress.modTotal})
+                          — {deploy.progress.currentModId} ({(deploy.progress.modIndex ?? 0) + 1}/
+                          {deploy.progress.modTotal})
                         </Trans>
                       </span>
                     )}
@@ -159,12 +193,18 @@ export function DeployToast() {
           </div>
 
           <div className="border-t border-border">
-            <button onClick={toggleDeployLog} className="flex w-full items-center gap-1.5 px-4 py-[10px] text-[12px] font-semibold text-text-2">
-              <ChevronDown className={cn("h-3 w-3 transition-transform", deploy.logExpanded && "rotate-180")} /> <Trans>Show raw log</Trans>
+            <button
+              onClick={toggleDeployLog}
+              className="flex w-full items-center gap-1.5 px-4 py-[10px] text-[12px] font-semibold text-text-2"
+            >
+              <ChevronDown
+                className={cn('h-3 w-3 transition-transform', deploy.logExpanded && 'rotate-180')}
+              />{' '}
+              <Trans>Show raw log</Trans>
             </button>
             {deploy.logExpanded && (
               <pre className="m-0 max-h-[140px] overflow-y-auto whitespace-pre-wrap bg-surface-2 px-4 pb-3.5 pt-0 font-mono text-[11px] leading-relaxed text-text-2">
-                {deploy.log.join("\n") || "…"}
+                {deploy.log.join('\n') || '…'}
               </pre>
             )}
           </div>

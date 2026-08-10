@@ -9,26 +9,27 @@
  * root, trimmed to what this manager reads. Not imported directly for the
  * same "build standalone" reason as manifest-types.ts.
  */
-import type { HttpsUrl } from "../shared/urls"
-import type { ModReference } from "../shared/manifest"
 
-export type { ModReference } from "../shared/manifest"
+import type { ModReference } from '../shared/manifest'
+import type { HttpsUrl } from '../shared/urls'
+
+export type { ModReference } from '../shared/manifest'
 
 export type DiskModReference = ModReference
 
 export type DiskLanguage =
-  | "english"
-  | "french"
-  | "italian"
-  | "german"
-  | "spanish"
-  | "russian"
-  | "chineseSimplified"
-  | "chineseTraditional"
-  | "japanese"
+  | 'english'
+  | 'french'
+  | 'italian'
+  | 'german'
+  | 'spanish'
+  | 'russian'
+  | 'chineseSimplified'
+  | 'chineseTraditional'
+  | 'japanese'
 
 export interface DiskCompatibilityData {
-  supportedPlatforms?: ("steam" | "epic" | "microsoft")[]
+  supportedPlatforms?: ('steam' | 'epic' | 'microsoft')[]
   requirements?: DiskModReference[]
   incompatibilities?: DiskModReference[]
   loadBefore?: DiskModReference[]
@@ -38,7 +39,7 @@ export interface DiskCompatibilityData {
 export interface DiskManifestOption extends DiskCompatibilityData {
   [field: string]: unknown
   name: string
-  type: "checkbox" | "select" | "conditional"
+  type: 'checkbox' | 'select' | 'conditional'
   group?: string
   enabledByDefault?: boolean
   tooltip?: string

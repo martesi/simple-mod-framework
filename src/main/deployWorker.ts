@@ -1,9 +1,9 @@
-import { parentPort } from "node:worker_threads"
-import type { AppPaths } from "./paths"
-import type { AppSettings } from "./settings"
-import type { ModsConfig } from "./modsConfig"
-import type { KnownGamePathInfo } from "./gameDetect"
-import { runFullDeploy, runAnalyseMod, type DeployPipelineLogLine } from "./deployPipeline"
+import { parentPort } from 'node:worker_threads'
+import { type DeployPipelineLogLine, runAnalyseMod, runFullDeploy } from './deployPipeline'
+import type { KnownGamePathInfo } from './gameDetect'
+import type { ModsConfig } from './modsConfig'
+import type { AppPaths } from './paths'
+import type { AppSettings } from './settings'
 
 /**
  * Worker-thread counterpart to DeployManager. Receives one task at a time over parentPort, runs
@@ -25,42 +25,69 @@ import { runFullDeploy, runAnalyseMod, type DeployPipelineLogLine } from "./depl
  */
 
 export type DeployWorkerRequest =
-  | { id: number; type: "deploy"; paths: AppPaths; settings: AppSettings; modsConfig: ModsConfig; game: KnownGamePathInfo }
-  | { id: number; type: "analyseMod"; paths: AppPaths; settings: AppSettings; modsConfig: ModsConfig; game: KnownGamePathInfo; modId: string }
-  | { id: number; type: "cancel" }
+  | {
+      id: number
+      type: 'deploy'
+      paths: AppPaths
+      settings: AppSettings
+      modsConfig: ModsConfig
+      game: KnownGamePathInfo
+    }
+  | {
+      id: number
+      type: 'analyseMod'
+      paths: AppPaths
+      settings: AppSettings
+      modsConfig: ModsConfig
+      game: KnownGamePathInfo
+      modId: string
+    }
+  | { id: number; type: 'cancel' }
 
 export type DeployWorkerMessage =
-  | { id: number; type: "log"; line: DeployPipelineLogLine }
-  | { id: number; type: "done"; ok: true }
-  | { id: number; type: "done"; ok: false; error: string; cancelled?: boolean }
+  | { id: number; type: 'log'; line: DeployPipelineLogLine }
+  | { id: number; type: 'done'; ok: true }
+  | { id: number; type: 'done'; ok: false; error: string; cancelled?: boolean }
 
 if (!parentPort) {
-  throw new Error("deployWorker.ts must be run inside a worker thread")
+  throw new Error('deployWorker.ts must be run inside a worker thread')
 }
 
 const port = parentPort
 
-port.on("message", async (req: DeployWorkerRequest) => {
-  if (req.type === "cancel") {
-    const { requestCancel } = await import("./core/cancel")
+port.on('message', async (req: DeployWorkerRequest) => {
+  if (req.type === 'cancel') {
+    const { requestCancel } = await import('./core/cancel')
     requestCancel()
     return
   }
 
-  const onLog = (line: DeployPipelineLogLine) => port.postMessage({ id: req.id, type: "log", line } satisfies DeployWorkerMessage)
+  const onLog = (line: DeployPipelineLogLine) =>
+    port.postMessage({ id: req.id, type: 'log', line } satisfies DeployWorkerMessage)
 
   try {
     const result =
-      req.type === "deploy"
+      req.type === 'deploy'
         ? await runFullDeploy(req.paths, req.settings, req.modsConfig, req.game, onLog)
         : await runAnalyseMod(req.paths, req.settings, req.modsConfig, req.game, req.modId, onLog)
 
     port.postMessage(
       result.ok
-        ? ({ id: req.id, type: "done", ok: true } satisfies DeployWorkerMessage)
-        : ({ id: req.id, type: "done", ok: false, error: result.error, cancelled: "cancelled" in result ? result.cancelled : undefined } satisfies DeployWorkerMessage)
+        ? ({ id: req.id, type: 'done', ok: true } satisfies DeployWorkerMessage)
+        : ({
+            id: req.id,
+            type: 'done',
+            ok: false,
+            error: result.error,
+            cancelled: 'cancelled' in result ? result.cancelled : undefined,
+          } satisfies DeployWorkerMessage)
     )
   } catch (err) {
-    port.postMessage({ id: req.id, type: "done", ok: false, error: err instanceof Error ? err.message : String(err) } satisfies DeployWorkerMessage)
+    port.postMessage({
+      id: req.id,
+      type: 'done',
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    } satisfies DeployWorkerMessage)
   }
 })

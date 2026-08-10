@@ -1,17 +1,25 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
-import { basename, join, resolve } from "node:path"
-import { Worker } from "node:worker_threads"
-import JSON5 from "json5"
-import type { ModEntry, Manifest } from "../renderer/src/lib/manifest-types"
-import type { DiskManifest } from "./diskManifest"
-import { isRpkgOnlyModFolder, validateModFolder } from "./validateMod"
-import { rewriteManifestImages } from "./modImages"
-import type { IndexWorkerMessage, IndexWorkerRequest, SerializedIndexEntry } from "./indexWorker"
-import { deleteMod, getMeta, type DbModRow, listMods, replaceModsIndex, setMeta } from "./db"
-import { toHttpsUrl } from "../shared/urls"
-import { FRAMEWORK_VERSION } from "./frameworkVersion"
-import { invalidManifestFallback, normalizeManifest } from "./manifestCompatibility"
-import { MANAGED_FOLDER, majorVersion } from "./modIndexConstants"
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { basename, join, resolve } from 'node:path'
+import { Worker } from 'node:worker_threads'
+import JSON5 from 'json5'
+import type { Manifest, ModEntry } from '../renderer/src/lib/manifest-types'
+import { toHttpsUrl } from '../shared/urls'
+import { type DbModRow, deleteMod, getMeta, listMods, replaceModsIndex, setMeta } from './db'
+import type { DiskManifest } from './diskManifest'
+import { FRAMEWORK_VERSION } from './frameworkVersion'
+import type { IndexWorkerMessage, IndexWorkerRequest, SerializedIndexEntry } from './indexWorker'
+import { invalidManifestFallback, normalizeManifest } from './manifestCompatibility'
+import { rewriteManifestImages } from './modImages'
+import { MANAGED_FOLDER, majorVersion } from './modIndexConstants'
+import { isRpkgOnlyModFolder, validateModFolder } from './validateMod'
 
 /**
  * Resolves the on-disk path to indexWorker.cjs bundled next to this file - mirrors
@@ -20,7 +28,7 @@ import { MANAGED_FOLDER, majorVersion } from "./modIndexConstants"
 function resolveIndexWorkerPath(): string {
   let currentDir = __dirname
   while (true) {
-    for (const name of ["indexWorker.cjs", "indexWorker.js"]) {
+    for (const name of ['indexWorker.cjs', 'indexWorker.js']) {
       const candidate = resolve(currentDir, name)
       try {
         require.resolve(candidate)
@@ -29,13 +37,13 @@ function resolveIndexWorkerPath(): string {
         // Try next candidate
       }
     }
-    const parentDir = resolve(currentDir, "..")
+    const parentDir = resolve(currentDir, '..')
     if (parentDir === currentDir) {
       break
     }
     currentDir = parentDir
   }
-  return resolve(__dirname, "indexWorker.cjs")
+  return resolve(__dirname, 'indexWorker.cjs')
 }
 
 /**
@@ -50,7 +58,7 @@ function resolveIndexWorkerPath(): string {
 export const CURRENT_FRAMEWORK_VERSION = FRAMEWORK_VERSION
 
 /** Exported for ipcHandlers.ts's mods:previewFolder - a candidate mod folder is never itself a mod. */
-export { MANAGED_FOLDER } from "./modIndexConstants"
+export { MANAGED_FOLDER } from './modIndexConstants'
 
 /** Exported so indexWorker.ts can use the same shape and main can load the result directly. */
 export interface IndexedMod {
@@ -74,23 +82,29 @@ export interface IndexedMod {
 }
 
 function toUiManifest(m: DiskManifest): Manifest {
-	const url = toHttpsUrl(m.url)
-	return {
+  const url = toHttpsUrl(m.url)
+  return {
     id: m.id,
     name: m.name,
     description: m.description,
     authors: m.authors,
     version: m.version,
     frameworkVersion: m.frameworkVersion,
-		...(url ? { url } : {}),
+    ...(url ? { url } : {}),
     options: m.options?.map((o) => ({
       name: o.name,
       tooltip: o.tooltip,
       image: o.image,
-      ...(o.type === "select" ? { type: "select" as const, group: o.group!, enabledByDefault: o.enabledByDefault } : {}),
-      ...(o.type === "checkbox" ? { type: "checkbox" as const, enabledByDefault: o.enabledByDefault } : {}),
-      ...(o.type === "conditional" ? { type: "conditional" as const, condition: o.condition! } : {})
-    })) as Manifest["options"]
+      ...(o.type === 'select'
+        ? { type: 'select' as const, group: o.group!, enabledByDefault: o.enabledByDefault }
+        : {}),
+      ...(o.type === 'checkbox'
+        ? { type: 'checkbox' as const, enabledByDefault: o.enabledByDefault }
+        : {}),
+      ...(o.type === 'conditional'
+        ? { type: 'conditional' as const, condition: o.condition! }
+        : {}),
+    })) as Manifest['options'],
   }
 }
 
@@ -130,7 +144,7 @@ export class ModIndex {
   /** Best-effort load of the persisted index - returns false (and leaves `byId` untouched) if the db has never been populated by a scan yet. */
   private tryLoadPersistedCache(): boolean {
     try {
-      if (getMeta("modIndexBuilt") !== "1") return false
+      if (getMeta('modIndexBuilt') !== '1') return false
 
       const entries: SerializedIndexEntry[] = listMods().map((row: DbModRow) => ({
         folder: row.folder,
@@ -139,7 +153,7 @@ export class ModIndex {
         manifest: row.manifest,
         valid: row.valid,
         validationError: row.validationError,
-        outdated: row.outdated
+        outdated: row.outdated,
       }))
       this.loadFromEntries(entries)
       return true
@@ -165,10 +179,10 @@ export class ModIndex {
         manifest: entry.manifest,
         valid: entry.valid,
         validationError: entry.validationError,
-        outdated: entry.outdated
+        outdated: entry.outdated,
       }))
       replaceModsIndex(rows)
-      setMeta("modIndexBuilt", "1")
+      setMeta('modIndexBuilt', '1')
     } catch {
       // Best-effort - see doc comment above.
     }
@@ -208,7 +222,9 @@ export class ModIndex {
       return
     }
 
-    const folders = readdirSync(modsDir).filter((f) => f !== MANAGED_FOLDER && statSync(join(modsDir, f)).isDirectory())
+    const folders = readdirSync(modsDir).filter(
+      (f) => f !== MANAGED_FOLDER && statSync(join(modsDir, f)).isDirectory()
+    )
 
     for (const folder of folders) {
       this.indexFolder(modsDir, folder)
@@ -253,7 +269,9 @@ export class ModIndex {
       return
     }
 
-    const folders = readdirSync(modsDir).filter((f) => f !== MANAGED_FOLDER && statSync(join(modsDir, f)).isDirectory())
+    const folders = readdirSync(modsDir).filter(
+      (f) => f !== MANAGED_FOLDER && statSync(join(modsDir, f)).isDirectory()
+    )
     const total = folders.length
 
     for (let i = 0; i < folders.length; i++) {
@@ -296,21 +314,21 @@ export class ModIndex {
         return
       }
 
-      worker.on("message", (msg: IndexWorkerMessage) => {
-        if (msg.type === "progress") {
+      worker.on('message', (msg: IndexWorkerMessage) => {
+        if (msg.type === 'progress') {
           onProgress?.(msg.scanned, msg.total)
-        } else if (msg.type === "done") {
+        } else if (msg.type === 'done') {
           this.loadFromEntries(msg.entries)
           this.persistCache()
           void worker.terminate()
           resolve()
-        } else if (msg.type === "error") {
+        } else if (msg.type === 'error') {
           void worker.terminate()
           reject(new Error(msg.message))
         }
       })
 
-      worker.on("error", (err) => {
+      worker.on('error', (err) => {
         void worker.terminate()
         reject(err)
       })
@@ -335,18 +353,34 @@ export class ModIndex {
 
   private indexFolder(modsDir: string, folder: string): void {
     const full = join(modsDir, folder)
-    const manifestPath = join(full, "manifest.json")
+    const manifestPath = join(full, 'manifest.json')
 
     if (existsSync(manifestPath)) {
       try {
-        const manifest: DiskManifest = normalizeManifest(JSON5.parse(readFileSync(manifestPath, "utf8")))
-        this.byId.set(manifest.id, { folder, id: manifest.id, isFrameworkMod: true, manifest, ...this.validate(full, manifest) })
+        const manifest: DiskManifest = normalizeManifest(
+          JSON5.parse(readFileSync(manifestPath, 'utf8'))
+        )
+        this.byId.set(manifest.id, {
+          folder,
+          id: manifest.id,
+          isFrameworkMod: true,
+          manifest,
+          ...this.validate(full, manifest),
+        })
         return
       } catch {
         try {
-          const raw = JSON5.parse(readFileSync(manifestPath, "utf8"))
+          const raw = JSON5.parse(readFileSync(manifestPath, 'utf8'))
           const fallback = invalidManifestFallback(raw, folder)
-          this.byId.set(folder, { folder, id: folder, isFrameworkMod: true, manifest: fallback, valid: false, validationError: "Manifest is incompatible with this framework version or has invalid fields." })
+          this.byId.set(folder, {
+            folder,
+            id: folder,
+            isFrameworkMod: true,
+            manifest: fallback,
+            valid: false,
+            validationError:
+              'Manifest is incompatible with this framework version or has invalid fields.',
+          })
           return
         } catch {
           // Invalid JSON has no safe manifest metadata; retain the legacy broken-folder fallback.
@@ -358,9 +392,13 @@ export class ModIndex {
   }
 
   /** Runs the disk-touching validity/outdated checks once - see IndexedMod's doc comment for why this is cached rather than called from list(). */
-  private validate(folder: string, manifest: DiskManifest): { valid: boolean; validationError?: string; outdated: boolean } {
+  private validate(
+    folder: string,
+    manifest: DiskManifest
+  ): { valid: boolean; validationError?: string; outdated: boolean } {
     const { valid, error } = validateModFolder(folder, manifest)
-	const outdated = majorVersion(manifest.frameworkVersion) < majorVersion(CURRENT_FRAMEWORK_VERSION)
+    const outdated =
+      majorVersion(manifest.frameworkVersion) < majorVersion(CURRENT_FRAMEWORK_VERSION)
     return { valid, validationError: error, outdated }
   }
 
@@ -400,7 +438,7 @@ export class ModIndex {
     this.ensureBuilt()
     const folder = this.folderFor(id)
     if (!folder) throw new Error(`Couldn't find mod ${id}`)
-    writeFileSync(join(folder, "manifest.json"), JSON.stringify(manifest, undefined, "\t"))
+    writeFileSync(join(folder, 'manifest.json'), JSON.stringify(manifest, undefined, '\t'))
     const entry = this.byId.get(id)
     if (entry) {
       entry.manifest = manifest
@@ -427,7 +465,7 @@ export class ModIndex {
         manifest: rewriteManifestImages(toUiManifest(manifest), entry.id, folder),
         outdated: entry.outdated,
         valid: entry.valid,
-        validationError: entry.validationError
+        validationError: entry.validationError,
       }
     })
   }

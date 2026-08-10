@@ -1,16 +1,15 @@
-import React from "react"
-import ReactDOM from "react-dom/client"
-import { HashRouter } from "react-router-dom"
-import { I18nProvider } from "@lingui/react"
+import { I18nProvider } from '@lingui/react'
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { HashRouter } from 'react-router-dom'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { i18n } from '@/lib/i18n'
+import { setSmfApi } from '@/lib/ipc'
+import { createElectronSmfApi } from '@/lib/ipc.electron'
+import { createMockSmfApi } from '@/lib/ipc.mock'
+import App from './App'
 
-import { i18n } from "@/lib/i18n"
-import { setSmfApi } from "@/lib/ipc"
-import { createMockSmfApi } from "@/lib/ipc.mock"
-import { createElectronSmfApi } from "@/lib/ipc.electron"
-import { TooltipProvider } from "@/components/ui/tooltip"
-import App from "./App"
-
-import "./styles/globals.css"
+import './styles/globals.css'
 
 // LEI-134 landed the real preload-exposed API (window.smf, see
 // preload/index.ts) - use it whenever it's present. The mock stays as a
@@ -20,7 +19,7 @@ import "./styles/globals.css"
 // through getSmfApi(), so nothing else changes either way.
 setSmfApi(window.smf ? createElectronSmfApi() : createMockSmfApi())
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <I18nProvider i18n={i18n}>
       <HashRouter>

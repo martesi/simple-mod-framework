@@ -1,7 +1,20 @@
-import { OptionType, type Config, type DefaultPaths, type Manifest, type ModEntry } from "./manifest-types"
-import type { GamePathPreview } from "./ipc"
-import type { GamePlatform } from "./manifest-types"
-import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
+import type {
+  DeployProgress,
+  DeploySnapshot,
+  GamePathPreview,
+  ModBuildInfo,
+  ModTaskUpdate,
+  SmfApi,
+  Unsubscribe,
+} from './ipc'
+import type { GamePlatform } from './manifest-types'
+import {
+  type Config,
+  type DefaultPaths,
+  type Manifest,
+  type ModEntry,
+  OptionType,
+} from './manifest-types'
 
 /**
  * STUB IMPLEMENTATION - see the big comment block in ipc.ts.
@@ -12,12 +25,12 @@ import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate, SmfAp
  * with while LEI-133/134/136 land the real handlers.
  */
 
-const CONFIG_KEY = "smf-mock:config"
-const MODS_KEY = "smf-mock:mods"
+const CONFIG_KEY = 'smf-mock:config'
+const MODS_KEY = 'smf-mock:mods'
 
 /** Mirrors settings.ts's guessGameRoot() - strips a trailing "\Retail" so both cache/mod path previews sit under the actual game root. */
 function guessGameRoot(gamePath: string): string {
-  return gamePath.replace(/\\Retail$/i, "")
+  return gamePath.replace(/\\Retail$/i, '')
 }
 
 /** Mirrors settings.ts's resolveTempDir()'s ".smf/tmp"-under-game-root default, just enough to look plausible in the mock. */
@@ -31,112 +44,132 @@ function previewModPath(gamePath: string): string {
 }
 
 function uuid() {
-  return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2)
 }
 
-function makeManifest(partial: Partial<Manifest> & Pick<Manifest, "id" | "name">): Manifest {
+function makeManifest(partial: Partial<Manifest> & Pick<Manifest, 'id' | 'name'>): Manifest {
   return {
-    description: "",
+    description: '',
     authors: [],
-    version: "1.0.0",
-    frameworkVersion: "3.0.0",
-    ...partial
+    version: '1.0.0',
+    frameworkVersion: '3.0.0',
+    ...partial,
   }
 }
 
 const seedMods: ModEntry[] = [
   {
-    id: "atampy26.SilentAssassinSuitPack",
+    id: 'atampy26.SilentAssassinSuitPack',
     isFrameworkMod: true,
     manifest: makeManifest({
-      id: "atampy26.SilentAssassinSuitPack",
-      name: "Silent Assassin Suit Pack",
-      description: "Adds 12 additional suits themed around the Silent Assassin rating.",
-      authors: ["atampy26"],
+      id: 'atampy26.SilentAssassinSuitPack',
+      name: 'Silent Assassin Suit Pack',
+      description: 'Adds 12 additional suits themed around the Silent Assassin rating.',
+      authors: ['atampy26'],
       options: [
         {
-          name: "Unlock suits immediately",
+          name: 'Unlock suits immediately',
           type: OptionType.checkbox,
           enabledByDefault: false,
-          tooltip: "Skip the in-game unlock requirements.",
-          image: "https://picsum.photos/seed/smf-unlock/300/200"
+          tooltip: 'Skip the in-game unlock requirements.',
+          image: 'https://picsum.photos/seed/smf-unlock/300/200',
         },
-        { name: "Classic", type: OptionType.select, group: "Suit tint", enabledByDefault: true, image: "https://picsum.photos/seed/smf-classic/300/200" },
-        { name: "Midnight", type: OptionType.select, group: "Suit tint", image: "https://picsum.photos/seed/smf-midnight/300/200" },
-        { name: "Ash", type: OptionType.select, group: "Suit tint", image: "https://picsum.photos/seed/smf-ash/300/200" },
-        { name: "Charcoal", type: OptionType.select, group: "Suit tint" }
-      ]
-    })
+        {
+          name: 'Classic',
+          type: OptionType.select,
+          group: 'Suit tint',
+          enabledByDefault: true,
+          image: 'https://picsum.photos/seed/smf-classic/300/200',
+        },
+        {
+          name: 'Midnight',
+          type: OptionType.select,
+          group: 'Suit tint',
+          image: 'https://picsum.photos/seed/smf-midnight/300/200',
+        },
+        {
+          name: 'Ash',
+          type: OptionType.select,
+          group: 'Suit tint',
+          image: 'https://picsum.photos/seed/smf-ash/300/200',
+        },
+        { name: 'Charcoal', type: OptionType.select, group: 'Suit tint' },
+      ],
+    }),
   },
   {
-    id: "InderpreetSK.CustomLoadoutMenu",
+    id: 'InderpreetSK.CustomLoadoutMenu',
     isFrameworkMod: true,
     manifest: makeManifest({
-      id: "InderpreetSK.CustomLoadoutMenu",
-      name: "Custom Loadout Menu",
-      description: "Replaces the loadout selection screen with a searchable grid and favorites.",
-      authors: ["InderpreetSK"]
-    })
+      id: 'InderpreetSK.CustomLoadoutMenu',
+      name: 'Custom Loadout Menu',
+      description: 'Replaces the loadout selection screen with a searchable grid and favorites.',
+      authors: ['InderpreetSK'],
+    }),
   },
   {
-    id: "notex.HDTextureOverhaulParis",
+    id: 'notex.HDTextureOverhaulParis',
     isFrameworkMod: true,
     outdated: true,
     manifest: makeManifest({
-      id: "notex.HDTextureOverhaulParis",
-      name: "HD Texture Overhaul — Paris",
-      description: "4K retextures for the Paris courtyard and manor interiors.",
-      authors: ["notex"],
-      frameworkVersion: "2.1.0"
-    })
+      id: 'notex.HDTextureOverhaulParis',
+      name: 'HD Texture Overhaul — Paris',
+      description: '4K retextures for the Paris courtyard and manor interiors.',
+      authors: ['notex'],
+      frameworkVersion: '2.1.0',
+    }),
   },
   {
-    id: "atampy26.SniperAssassinUnlocker",
+    id: 'atampy26.SniperAssassinUnlocker',
     isFrameworkMod: true,
     manifest: makeManifest({
-      id: "atampy26.SniperAssassinUnlocker",
-      name: "Sniper Assassin Unlocker",
-      description: "Unlocks all Sniper Assassin maps and loadouts from the start.",
-      authors: ["atampy26"],
-      options: [{ name: "Include DLC maps", type: OptionType.checkbox, enabledByDefault: true }]
-    })
+      id: 'atampy26.SniperAssassinUnlocker',
+      name: 'Sniper Assassin Unlocker',
+      description: 'Unlocks all Sniper Assassin maps and loadouts from the start.',
+      authors: ['atampy26'],
+      options: [{ name: 'Include DLC maps', type: OptionType.checkbox, enabledByDefault: true }],
+    }),
   },
   {
-    id: "rox.ChongqingAmbientOverhaul",
+    id: 'rox.ChongqingAmbientOverhaul',
     isFrameworkMod: true,
     manifest: makeManifest({
-      id: "rox.ChongqingAmbientOverhaul",
-      name: "Chongqing Ambient Overhaul",
-      description: "Reworks crowd density and ambient audio for a livelier city feel.",
-      authors: ["rox"]
-    })
+      id: 'rox.ChongqingAmbientOverhaul',
+      name: 'Chongqing Ambient Overhaul',
+      description: 'Reworks crowd density and ambient audio for a livelier city feel.',
+      authors: ['rox'],
+    }),
   },
   {
-    id: "markusA.ElusiveTargetReplayPack",
+    id: 'markusA.ElusiveTargetReplayPack',
     isFrameworkMod: true,
     manifest: makeManifest({
-      id: "markusA.ElusiveTargetReplayPack",
-      name: "Elusive Target Replay Pack",
-      description: "Re-enables 14 retired Elusive Targets for offline replay.",
-      authors: ["markusA"]
-    })
+      id: 'markusA.ElusiveTargetReplayPack',
+      name: 'Elusive Target Replay Pack',
+      description: 'Re-enables 14 retired Elusive Targets for offline replay.',
+      authors: ['markusA'],
+    }),
   },
   {
-    id: "chunk_extras_v3",
+    id: 'chunk_extras_v3',
     isFrameworkMod: false,
-    rpkgModName: "chunk_extras_v3"
+    rpkgModName: 'chunk_extras_v3',
   },
   {
-    id: "kereminde.ModernWeaponPack",
+    id: 'kereminde.ModernWeaponPack',
     isFrameworkMod: true,
     manifest: makeManifest({
-      id: "kereminde.ModernWeaponPack",
-      name: "Modern Weapon Pack",
-      description: "Adds 6 real-world-inspired weapon reskins across all disciplines.",
-      authors: ["kereminde"],
-      options: [{ name: "Replace default pistol", type: OptionType.checkbox, enabledByDefault: false }]
-    })
-  }
+      id: 'kereminde.ModernWeaponPack',
+      name: 'Modern Weapon Pack',
+      description: 'Adds 6 real-world-inspired weapon reskins across all disciplines.',
+      authors: ['kereminde'],
+      options: [
+        { name: 'Replace default pistol', type: OptionType.checkbox, enabledByDefault: false },
+      ],
+    }),
+  },
 ]
 
 function loadMods(): ModEntry[] {
@@ -163,20 +196,27 @@ function defaultConfig(mods: ModEntry[]): Config {
   }
 
   return {
-    loadOrder: mods.filter((m) => m.id !== "markusA.ElusiveTargetReplayPack" && m.id !== "chunk_extras_v3" && m.id !== "kereminde.ModernWeaponPack").map((m) => m.id),
+    loadOrder: mods
+      .filter(
+        (m) =>
+          m.id !== 'markusA.ElusiveTargetReplayPack' &&
+          m.id !== 'chunk_extras_v3' &&
+          m.id !== 'kereminde.ModernWeaponPack'
+      )
+      .map((m) => m.id),
     modOrder: mods.map((m) => m.id),
     knownMods: mods.map((m) => m.id),
     modOptions,
     developerMode: false,
     reportErrors: undefined,
-    themeMode: "system",
-    accent: "neutral",
-    gamePath: "",
-    cachePath: "",
-    modPath: "",
-    language: "en-US",
+    themeMode: 'system',
+    accent: 'neutral',
+    gamePath: '',
+    cachePath: '',
+    modPath: '',
+    language: 'en-US',
     gamePlatform: undefined,
-    gamePlatformChoiceRequired: false
+    gamePlatformChoiceRequired: false,
   }
 }
 
@@ -202,7 +242,7 @@ class MockSmfApi implements SmfApi {
   private progressListeners = new Set<(p: DeployProgress) => void>()
   private activeSnapshot: DeploySnapshot | null = null
   private deployTimer: ReturnType<typeof setInterval> | null = null
-  private deployStage: DeployProgress["stage"] | null = null
+  private deployStage: DeployProgress['stage'] | null = null
 
   config = {
     get: async (): Promise<Config> => structuredClone(this.cfg),
@@ -216,14 +256,34 @@ class MockSmfApi implements SmfApi {
     // after a beat, same "believable" spirit as the rest of this mock. `persist: false` (the setup
     // wizard - see ipc.ts's doc comment) skips the write and hands back a preview instead, mirroring
     // the real backend's toUiConfig-against-a-hypothetical-gamePath trick.
-    pickGameDirectory: async (persist = true, selectedPlatform?: GamePlatform): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
+    pickGameDirectory: async (
+      persist = true,
+      selectedPlatform?: GamePlatform
+    ): Promise<{ ok: true; config: Config } | { ok: false; error: string }> => {
       await delay(300)
-      const gamePath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN 3"
-      const gamePlatform = selectedPlatform ?? "steam"
+      const gamePath = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\HITMAN 3'
+      const gamePlatform = selectedPlatform ?? 'steam'
       if (!persist) {
-        return { ok: true, config: { ...structuredClone(this.cfg), gamePath, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath), gamePlatform, gamePlatformChoiceRequired: false } }
+        return {
+          ok: true,
+          config: {
+            ...structuredClone(this.cfg),
+            gamePath,
+            cachePath: previewCachePath(gamePath),
+            modPath: previewModPath(gamePath),
+            gamePlatform,
+            gamePlatformChoiceRequired: false,
+          },
+        }
       }
-      this.cfg = { ...this.cfg, gamePath, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath), gamePlatform, gamePlatformChoiceRequired: false }
+      this.cfg = {
+        ...this.cfg,
+        gamePath,
+        cachePath: previewCachePath(gamePath),
+        modPath: previewModPath(gamePath),
+        gamePlatform,
+        gamePlatformChoiceRequired: false,
+      }
       saveConfig(this.cfg)
       return { ok: true, config: structuredClone(this.cfg) }
     },
@@ -234,26 +294,35 @@ class MockSmfApi implements SmfApi {
     getDefaultPaths: async (): Promise<DefaultPaths> => {
       await delay(50)
       return {
-        gamePath: "C:\\Games\\HITMAN3",
-        cachePath: "C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\cache",
-        modPath: "C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\Mods"
+        gamePath: 'C:\\Games\\HITMAN3',
+        cachePath: 'C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\cache',
+        modPath: 'C:\\Users\\you\\AppData\\Roaming\\Mod Manager\\Mods',
       }
     },
 
     // Mirrors the real backend's config:previewPaths - both cachePath and modPath move with the
     // hypothetical gamePath (settings.ts's resolveTempDir()/resolveModsDir() both derive from the
     // game root by default).
-    previewPaths: async (gamePath: string, gamePlatform?: "steam" | "epic" | "microsoft"): Promise<GamePathPreview> => {
+    previewPaths: async (
+      gamePath: string,
+      gamePlatform?: 'steam' | 'epic' | 'microsoft'
+    ): Promise<GamePathPreview> => {
       await delay(50)
-      return { ok: true, cachePath: previewCachePath(gamePath), modPath: previewModPath(gamePath), gamePlatform: gamePlatform ?? "steam", gamePlatformChoiceRequired: false }
-    }
+      return {
+        ok: true,
+        cachePath: previewCachePath(gamePath),
+        modPath: previewModPath(gamePath),
+        gamePlatform: gamePlatform ?? 'steam',
+        gamePlatformChoiceRequired: false,
+      }
+    },
   }
 
   system = {
     pickDirectory: async (): Promise<string | null> => {
       await delay(300)
-      return "C:\\Users\\you\\Documents\\SMF"
-    }
+      return 'C:\\Users\\you\\Documents\\SMF'
+    },
   }
 
   mods = {
@@ -282,10 +351,10 @@ class MockSmfApi implements SmfApi {
 
     beginAdd: (file: { name: string; size: number; path: string }): string => {
       const taskId = uuid()
-      const label = file.name.replace(/\.(zip|7z|rar|rpkg)$/i, "")
+      const label = file.name.replace(/\.(zip|7z|rar|rpkg)$/i, '')
       const looksLikeArchive = /\.(zip|7z|rar|rpkg)$/i.test(file.name)
 
-      const emit = (u: Omit<ModTaskUpdate, "taskId" | "label">) => {
+      const emit = (u: Omit<ModTaskUpdate, 'taskId' | 'label'>) => {
         for (const cb of this.taskListeners) cb({ taskId, label, ...u })
       }
 
@@ -294,38 +363,56 @@ class MockSmfApi implements SmfApi {
       // beginAdd() again immediately for a different file proceeds in
       // parallel without waiting on this one.
       ;(async () => {
-        emit({ status: "queued" })
+        emit({ status: 'queued' })
         await delay(200)
 
         if (!looksLikeArchive) {
-          emit({ status: "error", message: "This doesn't look like a mod - expected a .zip, .7z, .rar, or .rpkg file." })
+          emit({
+            status: 'error',
+            message: "This doesn't look like a mod - expected a .zip, .7z, .rar, or .rpkg file.",
+          })
           return
         }
 
-        emit({ status: "extracting" })
+        emit({ status: 'extracting' })
         await delay(500)
-        emit({ status: "validating" })
+        emit({ status: 'validating' })
         await delay(400)
 
         if (this.modsData.some((m) => m.id === label)) {
-          emit({ status: "error", message: `"${label}" is already installed (same destination folder).` })
+          emit({
+            status: 'error',
+            message: `"${label}" is already installed (same destination folder).`,
+          })
           return
         }
 
-        emit({ status: "installing" })
+        emit({ status: 'installing' })
         await delay(400)
 
         const isRpkg = /\.rpkg$/i.test(file.name)
         const newMod: ModEntry = isRpkg
           ? { id: label, isFrameworkMod: false, rpkgModName: label }
-          : { id: label, isFrameworkMod: true, manifest: makeManifest({ id: label, name: label, description: "Recently added mod." }) }
+          : {
+              id: label,
+              isFrameworkMod: true,
+              manifest: makeManifest({
+                id: label,
+                name: label,
+                description: 'Recently added mod.',
+              }),
+            }
 
         this.modsData = [...this.modsData, newMod]
-        this.cfg = { ...this.cfg, knownMods: [...this.cfg.knownMods, newMod.id], modOrder: [...this.cfg.modOrder, newMod.id] }
+        this.cfg = {
+          ...this.cfg,
+          knownMods: [...this.cfg.knownMods, newMod.id],
+          modOrder: [...this.cfg.modOrder, newMod.id],
+        }
         saveMods(this.modsData)
         saveConfig(this.cfg)
 
-        emit({ status: "done", modId: newMod.id })
+        emit({ status: 'done', modId: newMod.id })
       })()
 
       return taskId
@@ -343,7 +430,11 @@ class MockSmfApi implements SmfApi {
 
     remove: async (modId: string): Promise<{ ok: boolean; reason?: string }> => {
       if (this.activeSnapshot) {
-        return { ok: false, reason: "A deploy is currently running. Deploy.exe reads mod folders throughout the run, so mods can't be removed until it finishes." }
+        return {
+          ok: false,
+          reason:
+            "A deploy is currently running. Deploy.exe reads mod folders throughout the run, so mods can't be removed until it finishes.",
+        }
       }
       await delay(150)
       this.modsData = this.modsData.filter((m) => m.id !== modId)
@@ -351,7 +442,7 @@ class MockSmfApi implements SmfApi {
         ...this.cfg,
         loadOrder: this.cfg.loadOrder.filter((a) => a !== modId),
         modOrder: this.cfg.modOrder.filter((a) => a !== modId),
-        knownMods: this.cfg.knownMods.filter((a) => a !== modId)
+        knownMods: this.cfg.knownMods.filter((a) => a !== modId),
       }
       saveMods(this.modsData)
       saveConfig(this.cfg)
@@ -362,18 +453,20 @@ class MockSmfApi implements SmfApi {
     // since this mock has nothing that could ever be "building".
     buildStatuses: async (): Promise<ModBuildInfo[]> => {
       await delay(50)
-      return this.modsData.filter((m) => m.isFrameworkMod).map((m) => ({ modId: m.id, status: "ready" as const }))
+      return this.modsData
+        .filter((m) => m.isFrameworkMod)
+        .map((m) => ({ modId: m.id, status: 'ready' as const }))
     },
 
     rebuildCacheDb: async (): Promise<{ ok: boolean; reason?: string }> => {
-      if (this.activeSnapshot) return { ok: false, reason: "A deploy is currently running." }
+      if (this.activeSnapshot) return { ok: false, reason: 'A deploy is currently running.' }
       const total = this.modsData.length || 1
       for (let scanned = 1; scanned <= total; scanned++) {
         await delay(300 / total)
         for (const cb of this.cacheProgressListeners) cb({ scanned, total })
       }
       return { ok: true }
-    }
+    },
   }
 
   deploy = {
@@ -384,20 +477,20 @@ class MockSmfApi implements SmfApi {
       const snapshot: DeploySnapshot = {
         snapshotId: uuid(),
         snapshotTime: Date.now(),
-        loadOrder: [...this.cfg.loadOrder]
+        loadOrder: [...this.cfg.loadOrder],
       }
       this.activeSnapshot = snapshot
 
       if (this.deployTimer) clearInterval(this.deployTimer)
 
-      const stages: DeployProgress["stage"][] = ["sorting", "extracting", "patching", "finalizing"]
+      const stages: DeployProgress['stage'][] = ['sorting', 'extracting', 'patching', 'finalizing']
       let stageIndex = 0
       let modIndex = 0
 
       const tick = () => {
         const stage = stages[stageIndex]
         this.deployStage = stage
-        const isPatching = stage === "patching"
+        const isPatching = stage === 'patching'
         const modTotal = snapshot.loadOrder.length
 
         if (isPatching && modIndex < modTotal) {
@@ -410,7 +503,7 @@ class MockSmfApi implements SmfApi {
             modIndex,
             modTotal,
             logLine: `Patching ${currentModId}`,
-            done: false
+            done: false,
           })
           modIndex++
           return
@@ -422,7 +515,7 @@ class MockSmfApi implements SmfApi {
           stageTotal: stages.length,
           modTotal,
           logLine: `${stage[0].toUpperCase()}${stage.slice(1)}...`,
-          done: false
+          done: false,
         })
 
         stageIndex++
@@ -431,7 +524,14 @@ class MockSmfApi implements SmfApi {
         if (stageIndex >= stages.length) {
           if (this.deployTimer) clearInterval(this.deployTimer)
           this.deployTimer = null
-          this.emitProgress({ stage: "finalizing", stageIndex: stages.length - 1, stageTotal: stages.length, logLine: "Done.", done: true, ok: true })
+          this.emitProgress({
+            stage: 'finalizing',
+            stageIndex: stages.length - 1,
+            stageTotal: stages.length,
+            logLine: 'Done.',
+            done: true,
+            ok: true,
+          })
           this.activeSnapshot = null
           this.deployStage = null
         }
@@ -446,34 +546,44 @@ class MockSmfApi implements SmfApi {
       return () => this.progressListeners.delete(cb)
     },
 
-    getActiveSnapshot: (): DeploySnapshot | null => (this.activeSnapshot ? structuredClone(this.activeSnapshot) : null),
+    getActiveSnapshot: (): DeploySnapshot | null =>
+      this.activeSnapshot ? structuredClone(this.activeSnapshot) : null,
 
     analyseMod: async (modId: string): Promise<{ ok: boolean; error?: string }> => {
       await delay(200)
-      return this.modsData.some((m) => m.id === modId) ? { ok: true } : { ok: false, error: `"${modId}" isn't installed.` }
+      return this.modsData.some((m) => m.id === modId)
+        ? { ok: true }
+        : { ok: false, error: `"${modId}" isn't installed.` }
     },
 
     cancel: async (snapshotId: string): Promise<{ ok: boolean; error?: string }> => {
       await delay(50)
       if (!this.activeSnapshot || this.activeSnapshot.snapshotId !== snapshotId) {
-        return { ok: false, error: "No matching active deploy." }
+        return { ok: false, error: 'No matching active deploy.' }
       }
 
       // Mirrors the real safe-window lockout: once the simulated run has reached "finalizing",
       // cancellation is no longer honoured.
-      if (this.deployStage === "finalizing") {
-        return { ok: false, error: "Deploy is finalizing and can no longer be cancelled." }
+      if (this.deployStage === 'finalizing') {
+        return { ok: false, error: 'Deploy is finalizing and can no longer be cancelled.' }
       }
 
       if (this.deployTimer) {
         clearInterval(this.deployTimer)
         this.deployTimer = null
       }
-      this.emitProgress({ stage: "finalizing", stageIndex: 3, stageTotal: 4, logLine: "Deploy cancelled.", done: true, ok: false })
+      this.emitProgress({
+        stage: 'finalizing',
+        stageIndex: 3,
+        stageTotal: 4,
+        logLine: 'Deploy cancelled.',
+        done: true,
+        ok: false,
+      })
       this.activeSnapshot = null
       this.deployStage = null
       return { ok: true }
-    }
+    },
   }
 
   private emitProgress(p: DeployProgress) {

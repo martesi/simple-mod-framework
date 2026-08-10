@@ -1,7 +1,7 @@
-import crypto from "crypto"
-import fs from "fs-extra"
-import os from "os"
-import path from "path"
+import crypto from 'node:crypto'
+import os from 'node:os'
+import path from 'node:path'
+import fs from 'fs-extra'
 
 // Compiled mod scripts used to land in `<cwd>/compiled` and get wiped after
 // every use (fs.removeSync). Two problems with that:
@@ -25,32 +25,32 @@ import path from "path"
 // and unchanged sources are never recompiled. Because the destination
 // changes whenever the content does, there's nothing to evict from
 // require.cache - a stale hash is simply never requested again.
-const cacheRoot = path.join(os.tmpdir(), "simple-mod-framework", "script-cache")
+const cacheRoot = path.join(os.tmpdir(), 'simple-mod-framework', 'script-cache')
 const maxCacheAgeMs = 30 * 24 * 60 * 60 * 1000 // 30 days
 
 let pruned = false
 function pruneOldCacheEntriesOnce() {
-	if (pruned) return
-	pruned = true
+  if (pruned) return
+  pruned = true
 
-	try {
-		const now = Date.now()
-		for (const entry of fs.readdirSync(cacheRoot)) {
-			const entryPath = path.join(cacheRoot, entry)
-			const stat = fs.statSync(entryPath)
-			if (now - stat.mtimeMs > maxCacheAgeMs) {
-				fs.removeSync(entryPath)
-			}
-		}
-	} catch {
-		// Best-effort only - a permission error or missing cacheRoot here
-		// should never break compilation.
-	}
+  try {
+    const now = Date.now()
+    for (const entry of fs.readdirSync(cacheRoot)) {
+      const entryPath = path.join(cacheRoot, entry)
+      const stat = fs.statSync(entryPath)
+      if (now - stat.mtimeMs > maxCacheAgeMs) {
+        fs.removeSync(entryPath)
+      }
+    }
+  } catch {
+    // Best-effort only - a permission error or missing cacheRoot here
+    // should never break compilation.
+  }
 }
 
 export interface CompileOptions {
-	/** esbuild `target`, e.g. "es2019". Matches the JS syntax level the framework's own Node runtime supports. */
-	target: string
+  /** esbuild `target`, e.g. "es2019". Matches the JS syntax level the framework's own Node runtime supports. */
+  target: string
 }
 
 /**
@@ -93,64 +93,71 @@ export interface CompileOptions {
  * something a bundler is allowed to inline. See electron.vite.config.ts's
  * `external` list and electron-builder.yml's `extraResources`.
  */
-export async function compile(fileNames: string[], options: CompileOptions, rootDir: string): Promise<string> {
-	for (const fileName of fileNames) {
-		const relative = path.relative(rootDir, fileName)
-		if (relative.startsWith("..") || path.isAbsolute(relative)) {
-			throw new Error(`Refusing to compile a script that escapes its mod folder: ${fileName}`)
-		}
-	}
+export async function compile(
+  fileNames: string[],
+  options: CompileOptions,
+  rootDir: string
+): Promise<string> {
+  for (const fileName of fileNames) {
+    const relative = path.relative(rootDir, fileName)
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error(`Refusing to compile a script that escapes its mod folder: ${fileName}`)
+    }
+  }
 
-	fs.ensureDirSync(cacheRoot)
-	pruneOldCacheEntriesOnce()
+  fs.ensureDirSync(cacheRoot)
+  pruneOldCacheEntriesOnce()
 
-	const hash = crypto.createHash("sha256")
-	hash.update(JSON.stringify(options))
-	for (const fileName of fileNames) {
-		hash.update(path.relative(rootDir, fileName))
-		hash.update(fs.readFileSync(fileName))
-	}
-	const key = hash.digest("hex")
+  const hash = crypto.createHash('sha256')
+  hash.update(JSON.stringify(options))
+  for (const fileName of fileNames) {
+    hash.update(path.relative(rootDir, fileName))
+    hash.update(fs.readFileSync(fileName))
+  }
+  const key = hash.digest('hex')
 
-	const destDir = path.join(cacheRoot, key)
-	const entryPath = path.join(destDir, path.relative(rootDir, fileNames[0]).replace(/\.tsx?$/, ".js"))
+  const destDir = path.join(cacheRoot, key)
+  const entryPath = path.join(
+    destDir,
+    path.relative(rootDir, fileNames[0]).replace(/\.tsx?$/, '.js')
+  )
 
-	if (fs.existsSync(entryPath)) {
-		return entryPath // cache hit - this exact source (and these exact options) already compiled - esbuild never even gets loaded
-	}
+  if (fs.existsSync(entryPath)) {
+    return entryPath // cache hit - this exact source (and these exact options) already compiled - esbuild never even gets loaded
+  }
 
-	// Not imported until we actually need to transpile something - see the doc comment above.
-	const { transform } = await import("esbuild")
+  // Not imported until we actually need to transpile something - see the doc comment above.
+  const { transform } = await import('esbuild')
 
-	for (const fileName of fileNames) {
-		const relative = path.relative(rootDir, fileName).replace(/\.tsx?$/, ".js")
-		if (relative.startsWith("..") || path.isAbsolute(relative)) {
-			// Should be unreachable given the check above, but never write
-			// outside destDir under any circumstances.
-			throw new Error(`Refusing to write compiled output outside its cache folder: ${relative}`)
-		}
+  for (const fileName of fileNames) {
+    const relative = path.relative(rootDir, fileName).replace(/\.tsx?$/, '.js')
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      // Should be unreachable given the check above, but never write
+      // outside destDir under any circumstances.
+      throw new Error(`Refusing to write compiled output outside its cache folder: ${relative}`)
+    }
 
-		const ext = path.extname(fileName).toLowerCase()
-		const loader = ext === ".tsx" ? "tsx" : ext === ".jsx" ? "jsx" : ext === ".js" ? "js" : "ts"
+    const ext = path.extname(fileName).toLowerCase()
+    const loader = ext === '.tsx' ? 'tsx' : ext === '.jsx' ? 'jsx' : ext === '.js' ? 'js' : 'ts'
 
-		// format: "cjs" plus esbuild's own ESM interop helpers (always injected
-		// for cjs output, no separate flag needed) reproduces what
-		// esModuleInterop did under ts.createProgram. `allowJs`/`resolveJsonModule`
-		// have no equivalent here because there's no type-checker or module
-		// resolver in the loop any more (there never was - see LEI-139) - a
-		// mod script's own `import data from "./x.json"` downlevels to a plain
-		// `require("./x.json")`, which Node already resolves natively.
-		const result = await transform(fs.readFileSync(fileName, "utf8"), {
-			loader,
-			format: "cjs",
-			target: options.target,
-			sourcefile: fileName
-		})
+    // format: "cjs" plus esbuild's own ESM interop helpers (always injected
+    // for cjs output, no separate flag needed) reproduces what
+    // esModuleInterop did under ts.createProgram. `allowJs`/`resolveJsonModule`
+    // have no equivalent here because there's no type-checker or module
+    // resolver in the loop any more (there never was - see LEI-139) - a
+    // mod script's own `import data from "./x.json"` downlevels to a plain
+    // `require("./x.json")`, which Node already resolves natively.
+    const result = await transform(fs.readFileSync(fileName, 'utf8'), {
+      loader,
+      format: 'cjs',
+      target: options.target,
+      sourcefile: fileName,
+    })
 
-		const outPath = path.join(destDir, relative)
-		fs.ensureDirSync(path.dirname(outPath))
-		fs.writeFileSync(outPath, result.code)
-	}
+    const outPath = path.join(destDir, relative)
+    fs.ensureDirSync(path.dirname(outPath))
+    fs.writeFileSync(outPath, result.code)
+  }
 
-	return entryPath
+  return entryPath
 }

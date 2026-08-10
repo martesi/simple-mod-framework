@@ -1,6 +1,6 @@
-import { FolderOpen } from "lucide-react"
-import { useLingui } from "@lingui/react/macro"
-import { cn } from "@/lib/utils"
+import { useLingui } from '@lingui/react/macro'
+import { FolderOpen } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 /**
  * A path text field + "Browse" button, shared by SettingsScreen's Paths card
@@ -15,13 +15,13 @@ export function PathInputRow({
   placeholder,
   onChange,
   onBrowse,
-  size = "default"
+  size = 'default',
 }: {
   value: string
   placeholder: string
   onChange(value: string): void
   onBrowse?: () => void
-  size?: "default" | "lg"
+  size?: 'default' | 'lg'
 }) {
   const { t } = useLingui()
   return (
@@ -31,8 +31,8 @@ export function PathInputRow({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className={cn(
-          "flex-1 rounded-md border border-border bg-surface-2 font-mono text-text outline-none placeholder:text-text-3",
-          size === "lg" ? "px-3.5 py-3 text-[14px]" : "px-3 py-[9px] text-[13px]"
+          'flex-1 rounded-md border border-border bg-surface-2 font-mono text-text outline-none placeholder:text-text-3',
+          size === 'lg' ? 'px-3.5 py-3 text-[14px]' : 'px-3 py-[9px] text-[13px]'
         )}
       />
       <button
@@ -40,8 +40,8 @@ export function PathInputRow({
         title={t`Browse`}
         onClick={() => onBrowse?.()}
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-text-2 hover:bg-surface-hover",
-          size === "lg" ? "h-[42px] w-[42px]" : "h-9 w-9"
+          'flex shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-text-2 hover:bg-surface-hover',
+          size === 'lg' ? 'h-[42px] w-[42px]' : 'h-9 w-9'
         )}
       >
         <FolderOpen className="h-[14px] w-[14px]" />

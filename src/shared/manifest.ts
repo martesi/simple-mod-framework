@@ -3,4 +3,3 @@ export interface ModReference {
   id: string
   range: string
 }
-

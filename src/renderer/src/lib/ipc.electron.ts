@@ -1,6 +1,13 @@
-import type { Config, DefaultPaths, ModEntry } from "./manifest-types"
-import type { GamePathPreview } from "./ipc"
-import type { DeployProgress, DeploySnapshot, ModBuildInfo, ModTaskUpdate, SmfApi, Unsubscribe } from "./ipc"
+import type {
+  DeployProgress,
+  DeploySnapshot,
+  GamePathPreview,
+  ModBuildInfo,
+  ModTaskUpdate,
+  SmfApi,
+  Unsubscribe,
+} from './ipc'
+import type { Config, DefaultPaths, ModEntry } from './manifest-types'
 
 /**
  * The real `SmfApi` implementation (LEI-134), backed by the `smf` bridge
@@ -16,40 +23,50 @@ export function createElectronSmfApi(): SmfApi {
     config: {
       get: () => bridge.config.get() as Promise<Config>,
       merge: (patch) => bridge.config.merge(patch) as Promise<Config>,
-      pickGameDirectory: (persist, gamePlatform) => bridge.config.pickGameDirectory(persist, gamePlatform) as Promise<{ ok: true; config: Config } | { ok: false; error: string }>,
+      pickGameDirectory: (persist, gamePlatform) =>
+        bridge.config.pickGameDirectory(persist, gamePlatform) as Promise<
+          { ok: true; config: Config } | { ok: false; error: string }
+        >,
       getDefaultPaths: () => bridge.config.getDefaultPaths() as Promise<DefaultPaths>,
-      previewPaths: (gamePath, gamePlatform) => bridge.config.previewPaths(gamePath, gamePlatform) as Promise<GamePathPreview>
+      previewPaths: (gamePath, gamePlatform) =>
+        bridge.config.previewPaths(gamePath, gamePlatform) as Promise<GamePathPreview>,
     },
 
     system: {
-      pickDirectory: (options) => bridge.system.pickDirectory(options)
+      pickDirectory: (options) => bridge.system.pickDirectory(options),
     },
 
     mods: {
       list: () => bridge.mods.list() as Promise<ModEntry[]>,
 
-      previewFolder: (dir) => bridge.mods.previewFolder(dir) as Promise<{ exists: boolean; count: number }>,
+      previewFolder: (dir) =>
+        bridge.mods.previewFolder(dir) as Promise<{ exists: boolean; count: number }>,
 
       rebuildIndex: () => bridge.mods.rebuildIndex() as Promise<ModEntry[]>,
 
       beginAdd: (file) => bridge.mods.beginAdd(file),
 
-      onTaskUpdate: (cb: (update: ModTaskUpdate) => void): Unsubscribe => bridge.mods.onTaskUpdate((update) => cb(update as ModTaskUpdate)),
+      onTaskUpdate: (cb: (update: ModTaskUpdate) => void): Unsubscribe =>
+        bridge.mods.onTaskUpdate((update) => cb(update as ModTaskUpdate)),
 
       onCacheProgress: (cb: (progress: { scanned: number; total: number }) => void): Unsubscribe =>
-        bridge.mods.onCacheProgress((progress) => cb(progress as { scanned: number; total: number })),
+        bridge.mods.onCacheProgress((progress) =>
+          cb(progress as { scanned: number; total: number })
+        ),
 
       remove: (modId) => bridge.mods.remove(modId) as Promise<{ ok: boolean; reason?: string }>,
 
       buildStatuses: () => bridge.mods.buildStatuses() as Promise<ModBuildInfo[]>,
 
-      rebuildCacheDb: () => bridge.mods.rebuildCacheDb() as Promise<{ ok: boolean; reason?: string }>
+      rebuildCacheDb: () =>
+        bridge.mods.rebuildCacheDb() as Promise<{ ok: boolean; reason?: string }>,
     },
 
     deploy: {
       start: () => bridge.deploy.start() as Promise<DeploySnapshot>,
 
-      onProgress: (cb: (progress: DeployProgress) => void): Unsubscribe => bridge.deploy.onProgress((progress) => cb(progress as DeployProgress)),
+      onProgress: (cb: (progress: DeployProgress) => void): Unsubscribe =>
+        bridge.deploy.onProgress((progress) => cb(progress as DeployProgress)),
 
       getActiveSnapshot: () => {
         // SmfApi types this synchronous, but an IPC round-trip to main can't
@@ -60,9 +77,11 @@ export function createElectronSmfApi(): SmfApi {
         return null
       },
 
-      analyseMod: (modId) => bridge.deploy.analyseMod(modId) as Promise<{ ok: boolean; error?: string }>,
+      analyseMod: (modId) =>
+        bridge.deploy.analyseMod(modId) as Promise<{ ok: boolean; error?: string }>,
 
-      cancel: (snapshotId) => bridge.deploy.cancel(snapshotId) as Promise<{ ok: boolean; error?: string }>
-    }
+      cancel: (snapshotId) =>
+        bridge.deploy.cancel(snapshotId) as Promise<{ ok: boolean; error?: string }>,
+    },
   }
 }

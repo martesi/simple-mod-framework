@@ -1,17 +1,17 @@
-import * as React from "react"
-import { memo } from "react"
-import { ExternalLink, Loader2, Settings2, TriangleAlert, X } from "lucide-react"
-import { Trans, useLingui } from "@lingui/react/macro"
-import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
-import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { cn } from "@/lib/utils"
-import { toHttpsUrl } from "@/lib/external-url"
-import type { ModEntry } from "@/lib/manifest-types"
-import { OptionType } from "@/lib/manifest-types"
-import type { ModBuildInfo } from "@/lib/ipc"
-import { MOD_ROW_HEIGHT } from "./mod-layout"
+import { Trans, useLingui } from '@lingui/react/macro'
+import { ExternalLink, Loader2, Settings2, TriangleAlert, X } from 'lucide-react'
+import type * as React from 'react'
+import { memo } from 'react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { toHttpsUrl } from '@/lib/external-url'
+import type { ModBuildInfo } from '@/lib/ipc'
+import type { ModEntry } from '@/lib/manifest-types'
+import { OptionType } from '@/lib/manifest-types'
+import { cn } from '@/lib/utils'
+import { MOD_ROW_HEIGHT } from './mod-layout'
 
 export interface ModRowProps {
   mod: ModEntry
@@ -32,18 +32,32 @@ export interface ModRowProps {
   onOpenSettings(id: string): void
   onRemove(mod: ModEntry): void
   /** LEI-141's per-mod eager-build status - `undefined` for a mod that's never had a build recorded (RPKG-only mods, or one whose first build hasn't run yet). */
-  buildStatus?: ModBuildInfo["status"]
+  buildStatus?: ModBuildInfo['status']
   buildError?: string
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>
   style?: React.CSSProperties
   setNodeRef?: (node: HTMLElement | null) => void
 }
 
-function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggle, onOpenSettings, onRemove, buildStatus, buildError, dragHandleProps, style, setNodeRef }: ModRowProps) {
+function ModRowImpl({
+  mod,
+  enabled,
+  orderLabel,
+  dragging,
+  removeBlocked,
+  onToggle,
+  onOpenSettings,
+  onRemove,
+  buildStatus,
+  buildError,
+  dragHandleProps,
+  style,
+  setNodeRef,
+}: ModRowProps) {
   const { t } = useLingui()
-  const name = mod.isFrameworkMod ? mod.manifest!.name : mod.rpkgModName!
-  const description = mod.isFrameworkMod ? mod.manifest!.description : t`RPKG-only mod`
-  const author = mod.isFrameworkMod ? mod.manifest!.authors.join(", ") : ""
+  const name = mod.isFrameworkMod ? mod.manifest?.name : mod.rpkgModName!
+  const description = mod.isFrameworkMod ? mod.manifest?.description : t`RPKG-only mod`
+  const author = mod.isFrameworkMod ? mod.manifest?.authors.join(', ') : ''
   const hasOptions = !!mod.manifest?.options?.some((o) => o.type !== OptionType.conditional)
   // Revalidate at the UI boundary too. Cached manifests can outlive an app upgrade, and this keeps
   // the click handler safe even if a future data source bypasses ModIndex's normalization.
@@ -52,49 +66,75 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
   return (
     <div
       ref={setNodeRef}
-      style={{ height: MOD_ROW_HEIGHT, boxSizing: "border-box", ...style }}
-      className={cn("flex items-center gap-3.5 border-b border-border px-[18px] last:border-b-0", dragging && "bg-surface-hover opacity-50")}
+      style={{ height: MOD_ROW_HEIGHT, boxSizing: 'border-box', ...style }}
+      className={cn(
+        'flex items-center gap-3.5 border-b border-border px-[18px] last:border-b-0',
+        dragging && 'bg-surface-hover opacity-50'
+      )}
     >
-      <div {...dragHandleProps} className="flex h-4 w-2.5 shrink-0 cursor-grab flex-wrap content-between gap-[2px] text-text-3 active:cursor-grabbing">
+      <div
+        {...dragHandleProps}
+        className="flex h-4 w-2.5 shrink-0 cursor-grab flex-wrap content-between gap-[2px] text-text-3 active:cursor-grabbing"
+      >
         {Array.from({ length: 6 }).map((_, i) => (
           <span key={i} className="h-[3px] w-[3px] rounded-full bg-text-3" />
         ))}
       </div>
 
-      <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-[11px] font-bold text-text-2" style={{ visibility: enabled ? "visible" : "hidden" }}>
+      <div
+        className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-[11px] font-bold text-text-2"
+        style={{ visibility: enabled ? 'visible' : 'hidden' }}
+      >
         {orderLabel}
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <div className={cn("truncate text-[14px] font-semibold", enabled ? "text-text" : "text-text-2")}>{name}</div>
+          <div
+            className={cn(
+              'truncate text-[14px] font-semibold',
+              enabled ? 'text-text' : 'text-text-2'
+            )}
+          >
+            {name}
+          </div>
           <Badge>{mod.isFrameworkMod ? <Trans>Framework</Trans> : <Trans>RPKG</Trans>}</Badge>
           {hasOptions && (
             <Badge>
               <Trans>Options</Trans>
             </Badge>
           )}
-          {buildStatus === "building" && (
+          {buildStatus === 'building' && (
             <Badge variant="accent" className="gap-1">
               <Loader2 className="h-2.5 w-2.5 animate-spin" /> <Trans>Building…</Trans>
             </Badge>
           )}
-          {buildStatus === "failed" && (
+          {buildStatus === 'failed' && (
             <Tooltip>
               <TooltipTrigger render={<span />}>
                 <Badge variant="warning" className="gap-1">
                   <TriangleAlert className="h-3 w-3" /> <Trans>Build failed</Trans>
                 </Badge>
               </TooltipTrigger>
-              <TooltipContent>{buildError || t`Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database.`}</TooltipContent>
+              <TooltipContent>
+                {buildError ||
+                  t`Something went wrong building this mod's cache — check the logs, or try Settings' Rebuild cache database.`}
+              </TooltipContent>
             </Tooltip>
           )}
         </div>
-        <div className="truncate text-[12.5px] text-text-2">{author ? `${author} — ${description}` : description}</div>
+        <div className="truncate text-[12.5px] text-text-2">
+          {author ? `${author} — ${description}` : description}
+        </div>
       </div>
 
       {hasOptions && (
-        <Button variant="ghost" size="icon" title={t`Mod settings`} onClick={() => onOpenSettings(mod.id)}>
+        <Button
+          variant="ghost"
+          size="icon"
+          title={t`Mod settings`}
+          onClick={() => onOpenSettings(mod.id)}
+        >
           <Settings2 className="h-[15px] w-[15px] text-text-2" />
         </Button>
       )}
@@ -104,7 +144,7 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
           variant="ghost"
           size="icon"
           title={t`Open mod page in browser`}
-          onClick={() => window.open(externalUrl, "_blank", "noopener,noreferrer")}
+          onClick={() => window.open(externalUrl, '_blank', 'noopener,noreferrer')}
         >
           <ExternalLink className="h-[15px] w-[15px] text-text-2" />
         </Button>
@@ -116,7 +156,13 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
             (possibly disabled) Button in a span: a disabled real <button>
             can swallow the hover/focus events a tooltip trigger needs. */}
         <TooltipTrigger render={<span />}>
-          <Button variant="ghost" size="icon" disabled={removeBlocked} title={removeBlocked ? t`Can't remove while a deploy is running` : t`Remove mod`} onClick={() => onRemove(mod)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={removeBlocked}
+            title={removeBlocked ? t`Can't remove while a deploy is running` : t`Remove mod`}
+            onClick={() => onRemove(mod)}
+          >
             <X className="h-[15px] w-[15px] text-text-2" />
           </Button>
         </TooltipTrigger>
@@ -127,7 +173,11 @@ function ModRowImpl({ mod, enabled, orderLabel, dragging, removeBlocked, onToggl
         )}
       </Tooltip>
 
-      <Switch checked={enabled} disabled={mod.isFrameworkMod && mod.valid === false} onCheckedChange={() => onToggle(mod.id)} />
+      <Switch
+        checked={enabled}
+        disabled={mod.isFrameworkMod && mod.valid === false}
+        onCheckedChange={() => onToggle(mod.id)}
+      />
     </div>
   )
 }

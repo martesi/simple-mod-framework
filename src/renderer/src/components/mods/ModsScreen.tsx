@@ -1,24 +1,38 @@
-import { useMemo, useState } from "react"
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
-import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable"
-import { Loader2, Plus, RefreshCw, Rocket, Search } from "lucide-react"
-import { toast } from "sonner"
-import { Trans, useLingui } from "@lingui/react/macro"
-
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { selectDeployActive, useAppStore } from "@/store/app-store"
-import { useVirtualList } from "@/lib/useVirtualList"
-import type { ModEntry } from "@/lib/manifest-types"
-
-import { SortableModRow } from "./SortableModRow"
-import { MOD_ROW_HEIGHT } from "./mod-layout"
-import { AddModDialog } from "./AddModDialog"
-import { ModSettingsDrawer } from "./ModSettingsDrawer"
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { Loader2, Plus, RefreshCw, Rocket, Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import type { ModEntry } from '@/lib/manifest-types'
+import { useVirtualList } from '@/lib/useVirtualList'
+import { selectDeployActive, useAppStore } from '@/store/app-store'
+import { AddModDialog } from './AddModDialog'
+import { ModSettingsDrawer } from './ModSettingsDrawer'
+import { MOD_ROW_HEIGHT } from './mod-layout'
+import { SortableModRow } from './SortableModRow'
 
 function modLabel(mod: ModEntry) {
-  return mod.isFrameworkMod ? `${mod.manifest!.name} ${mod.manifest!.description}` : mod.rpkgModName!
+  return mod.isFrameworkMod
+    ? `${mod.manifest?.name} ${mod.manifest?.description}`
+    : mod.rpkgModName!
 }
 
 /**
@@ -71,7 +85,9 @@ export function ModsScreen() {
   const q = search.trim().toLowerCase()
 
   const filtered = useMemo(() => {
-    return mods.filter((m) => !q || modLabel(m).toLowerCase().includes(q)).sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0))
+    return mods
+      .filter((m) => !q || modLabel(m).toLowerCase().includes(q))
+      .sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0))
   }, [mods, q, orderIndex])
 
   const enabledIds = config?.loadOrder ?? []
@@ -81,7 +97,12 @@ export function ModsScreen() {
   // scroll range - see useVirtualList.ts. `SortableContext` below still gets the *full* ordered id
   // list (dnd-kit needs that for correct index/collision math), but only `windowed` actually mounts
   // a <SortableModRow>.
-  const { containerRef: listRef, windowed, topSpacer, bottomSpacer } = useVirtualList(filtered, MOD_ROW_HEIGHT, OVERSCAN)
+  const {
+    containerRef: listRef,
+    windowed,
+    topSpacer,
+    bottomSpacer,
+  } = useVirtualList(filtered, MOD_ROW_HEIGHT, OVERSCAN)
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
@@ -119,11 +140,25 @@ export function ModsScreen() {
         </h1>
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t`Filter mods…`} className="w-60 pl-8" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t`Filter mods…`}
+            className="w-60 pl-8"
+          />
         </div>
         {config?.developerMode && (
-          <Button variant="outline" title={t`Re-scan the Mods folder and re-read every manifest from disk`} disabled={rebuildingIndex} onClick={() => rebuildIndex()}>
-            {rebuildingIndex ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          <Button
+            variant="outline"
+            title={t`Re-scan the Mods folder and re-read every manifest from disk`}
+            disabled={rebuildingIndex}
+            onClick={() => rebuildIndex()}
+          >
+            {rebuildingIndex ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
             <Trans>Rebuild cache</Trans>
           </Button>
         )}
@@ -143,7 +178,10 @@ export function ModsScreen() {
               Building mod cache — scanned {cacheProgress.scanned} of {cacheProgress.total} mods…
             </Trans>
           ) : (
-            <Trans>Building mod cache — this can take a moment the first time, or after switching mod folders…</Trans>
+            <Trans>
+              Building mod cache — this can take a moment the first time, or after switching mod
+              folders…
+            </Trans>
           )}
         </div>
       )}
@@ -162,8 +200,15 @@ export function ModsScreen() {
         )}
 
         <div ref={listRef} className="h-full overflow-y-auto">
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={filtered.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={filtered.map((m) => m.id)}
+              strategy={verticalListSortingStrategy}
+            >
               {topSpacer > 0 && <div style={{ height: topSpacer }} />}
               {windowed.map((mod) => {
                 const enabled = enabledIds.includes(mod.id)
@@ -175,7 +220,7 @@ export function ModsScreen() {
                     id={mod.id}
                     mod={mod}
                     enabled={enabled}
-                    orderLabel={enabledIndex >= 0 ? String(enabledIndex + 1) : ""}
+                    orderLabel={enabledIndex >= 0 ? String(enabledIndex + 1) : ''}
                     removeBlocked={deployActive}
                     dragDisabled={!!q}
                     buildStatus={build?.status}
@@ -195,7 +240,10 @@ export function ModsScreen() {
         </div>
       </div>
 
-      <AddModDialog open={addOpen} onOpenChange={(open) => (open ? openAddDialog() : closeAddDialog())} />
+      <AddModDialog
+        open={addOpen}
+        onOpenChange={(open) => (open ? openAddDialog() : closeAddDialog())}
+      />
       <ModSettingsDrawer mod={settingsMod} onClose={() => setSettingsModId(null)} />
 
       <Dialog open={!!removeCandidate} onOpenChange={(open) => !open && setRemoveCandidate(null)}>
@@ -206,13 +254,22 @@ export function ModsScreen() {
             </DialogTitle>
             <DialogDescription>
               <Trans>
-                Are you sure you want to permanently remove{" "}
-                <i>{removeCandidate?.isFrameworkMod ? removeCandidate.manifest?.name : removeCandidate?.rpkgModName}</i>? You can't undo this.
+                Are you sure you want to permanently remove{' '}
+                <i>
+                  {removeCandidate?.isFrameworkMod
+                    ? removeCandidate.manifest?.name
+                    : removeCandidate?.rpkgModName}
+                </i>
+                ? You can't undo this.
               </Trans>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="secondary" disabled={!!removingModId} onClick={() => setRemoveCandidate(null)}>
+            <Button
+              variant="secondary"
+              disabled={!!removingModId}
+              onClick={() => setRemoveCandidate(null)}
+            >
               <Trans>Cancel</Trans>
             </Button>
             <Button variant="destructive" disabled={!!removingModId} onClick={confirmRemove}>

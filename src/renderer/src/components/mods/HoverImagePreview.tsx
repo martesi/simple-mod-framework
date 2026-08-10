@@ -1,5 +1,5 @@
-import { createPortal } from "react-dom"
-import { PREVIEW_SIZE } from "./hover-image-preview-utils"
+import { createPortal } from 'react-dom'
+import { PREVIEW_SIZE } from './hover-image-preview-utils'
 
 /**
  * Larger, uncropped look at a mod-option thumbnail on hover - see PreviewThumb in
@@ -10,7 +10,12 @@ import { PREVIEW_SIZE } from "./hover-image-preview-utils"
 export function HoverImagePreview({ image, x, y }: { image: string; x: number; y: number }) {
   return createPortal(
     <div className="pointer-events-none fixed z-[95] animate-fade-in" style={{ left: x, top: y }}>
-      <img src={image} alt="" className="rounded-md border border-border bg-surface-2 object-contain shadow-md" style={{ height: PREVIEW_SIZE, width: PREVIEW_SIZE }} />
+      <img
+        src={image}
+        alt=""
+        className="rounded-md border border-border bg-surface-2 object-contain shadow-md"
+        style={{ height: PREVIEW_SIZE, width: PREVIEW_SIZE }}
+      />
     </div>,
     document.body
   )

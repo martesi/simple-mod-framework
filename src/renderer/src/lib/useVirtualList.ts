@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react"
+import { type RefObject, useEffect, useRef, useState } from 'react'
 
 export interface VirtualWindow<T> {
   /** Attach to whichever element actually scrolls - its measured `scrollTop`/`clientHeight` drive everything below. */
@@ -10,7 +10,10 @@ export interface VirtualWindow<T> {
   /** Height (px) of the empty spacer standing in for every skipped row *below* `windowed`. */
   bottomSpacer: number
   /** Imperatively scroll `containerRef`'s element so row `index` is in view. */
-  scrollToIndex(index: number, opts?: { align?: "start" | "center"; behavior?: ScrollBehavior }): void
+  scrollToIndex(
+    index: number,
+    opts?: { align?: 'start' | 'center'; behavior?: ScrollBehavior }
+  ): void
 }
 
 /**
@@ -47,19 +50,19 @@ export function useVirtualList<T>(items: T[], rowHeight: number, overscan = 10):
     const update = () => setViewport({ scrollTop: el.scrollTop, height: el.clientHeight })
     update()
 
-    el.addEventListener("scroll", update, { passive: true })
+    el.addEventListener('scroll', update, { passive: true })
     const resizeObserver = new ResizeObserver(update)
     resizeObserver.observe(el)
 
     return () => {
-      el.removeEventListener("scroll", update)
+      el.removeEventListener('scroll', update)
       resizeObserver.disconnect()
     }
     // Re-measure whenever the item count changes too - a shorter list can mean this container's
     // clientHeight itself changed shape/collapsed (e.g. content shrank below its max-height), which
     // ResizeObserver already catches, but re-running `update()` here as well covers the case where
     // the container's size didn't change but `scrollTop` needs re-clamping against a smaller total.
-  }, [items.length])
+  }, [])
 
   const total = items.length
   const startIndex = Math.max(0, Math.floor(viewport.scrollTop / rowHeight) - overscan)
@@ -71,13 +74,16 @@ export function useVirtualList<T>(items: T[], rowHeight: number, overscan = 10):
   // round-trip back into this hook's own listener - otherwise the newly-scrolled-to row wouldn't
   // exist in `windowed` until an extra, timing-dependent render later, which matters to callers
   // that need to act on that row (e.g. flash-highlighting it) in the same tick as the scroll.
-  function scrollToIndex(index: number, opts?: { align?: "start" | "center"; behavior?: ScrollBehavior }) {
+  function scrollToIndex(
+    index: number,
+    opts?: { align?: 'start' | 'center'; behavior?: ScrollBehavior }
+  ) {
     const el = containerRef.current
     if (!el) return
     let target = index * rowHeight
-    if (opts?.align === "center") target -= (el.clientHeight - rowHeight) / 2
+    if (opts?.align === 'center') target -= (el.clientHeight - rowHeight) / 2
     target = Math.max(0, Math.min(target, el.scrollHeight - el.clientHeight))
-    el.scrollTo({ top: target, behavior: opts?.behavior ?? "smooth" })
+    el.scrollTo({ top: target, behavior: opts?.behavior ?? 'smooth' })
     setViewport({ scrollTop: target, height: el.clientHeight })
   }
 
@@ -86,6 +92,6 @@ export function useVirtualList<T>(items: T[], rowHeight: number, overscan = 10):
     windowed: items.slice(startIndex, endIndex),
     topSpacer: startIndex * rowHeight,
     bottomSpacer: (total - endIndex) * rowHeight,
-    scrollToIndex
+    scrollToIndex,
   }
 }

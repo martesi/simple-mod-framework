@@ -1,19 +1,24 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react"
-import { Locate, Search } from "lucide-react"
-import { Trans, useLingui } from "@lingui/react/macro"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet"
-import { Checkbox } from "@/components/ui/checkbox"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useAppStore } from "@/store/app-store"
-import { useVirtualList } from "@/lib/useVirtualList"
-import { cn } from "@/lib/utils"
-import { OptionType, type ManifestOption, type ModEntry } from "@/lib/manifest-types"
-import { openImageViewer, closeImageViewer, type PreviewableOption, type LocateTarget } from "./imageViewer"
-import { HoverImagePreview } from "./HoverImagePreview"
-import { clampHoverPosition } from "./hover-image-preview-utils"
+import { Trans, useLingui } from '@lingui/react/macro'
+import { Locate, Search } from 'lucide-react'
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { type ManifestOption, type ModEntry, OptionType } from '@/lib/manifest-types'
+import { useVirtualList } from '@/lib/useVirtualList'
+import { cn } from '@/lib/utils'
+import { useAppStore } from '@/store/app-store'
+import { HoverImagePreview } from './HoverImagePreview'
+import { clampHoverPosition } from './hover-image-preview-utils'
+import {
+  closeImageViewer,
+  type LocateTarget,
+  openImageViewer,
+  type PreviewableOption,
+} from './imageViewer'
 
 /** How long the cursor must stay on a thumbnail before the larger hover preview appears - short enough to feel responsive, long enough that scanning across many thumbnails doesn't flash a popup on every one. */
 const HOVER_PREVIEW_DELAY_MS = 250
@@ -46,14 +51,25 @@ const RADIO_ROW_HEIGHT = 48
  * near the cursor without needing the full-screen viewer at all; clicking still opens that viewer
  * as before, independent of hover.
  */
-function PreviewThumb({ image, active, onClick }: { image: string; active: boolean; onClick(): void }) {
+function PreviewThumb({
+  image,
+  active,
+  onClick,
+}: {
+  image: string
+  active: boolean
+  onClick(): void
+}) {
   const { t } = useLingui()
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null)
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   function handleMouseEnter(e: MouseEvent) {
     const { clientX, clientY } = e
-    hoverTimer.current = setTimeout(() => setHoverPos(clampHoverPosition(clientX, clientY)), HOVER_PREVIEW_DELAY_MS)
+    hoverTimer.current = setTimeout(
+      () => setHoverPos(clampHoverPosition(clientX, clientY)),
+      HOVER_PREVIEW_DELAY_MS
+    )
   }
 
   function handleMouseLeave() {
@@ -80,7 +96,13 @@ function PreviewThumb({ image, active, onClick }: { image: string; active: boole
     >
       {/* Lazy: a mod with dozens of option thumbnails would otherwise fire that many smf-mod://
           requests (each a main-process disk read) the instant the drawer opens. */}
-      <img src={image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+      <img
+        src={image}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="h-full w-full object-cover"
+      />
       {hoverPos && <HoverImagePreview image={image} x={hoverPos.x} y={hoverPos.y} />}
     </button>
   )
@@ -107,7 +129,7 @@ function SelectGroupSection({
   onSelect,
   onLocateOption,
   locate,
-  onLocateHandled
+  onLocateHandled,
 }: {
   group: { name: string; options: ManifestOption[] }
   selected: string | undefined
@@ -131,8 +153,8 @@ function SelectGroupSection({
   function locateTarget(option: ManifestOption): LocateTarget {
     return {
       key: `${group.name}-${option.name}`,
-      section: { type: "group", name: group.name },
-      rowIndex: group.options.findIndex((o) => o.name === option.name)
+      section: { type: 'group', name: group.name },
+      rowIndex: group.options.findIndex((o) => o.name === option.name),
     }
   }
 
@@ -141,9 +163,12 @@ function SelectGroupSection({
     return { ...locateTarget(option), name: option.name, image: option.image! }
   }
 
-  const [search, setSearch] = useState("")
+  const [search, setSearch] = useState('')
   const q = search.trim().toLowerCase()
-  const filteredOptions = useMemo(() => group.options.filter((o) => !q || o.name.toLowerCase().includes(q)), [group.options, q])
+  const filteredOptions = useMemo(
+    () => group.options.filter((o) => !q || o.name.toLowerCase().includes(q)),
+    [group.options, q]
+  )
 
   const [flashKey, setFlashKey] = useState<string | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -156,26 +181,27 @@ function SelectGroupSection({
   // Interaction to Next Paint on the click that opened it. `filteredOptions` (not the raw
   // `group.options`) is what gets windowed, so the search box above just narrows what's mounted -
   // the hook itself doesn't need to know filtering happened.
-  const { containerRef, windowed, topSpacer, bottomSpacer, scrollToIndex } = useVirtualList(filteredOptions, RADIO_ROW_HEIGHT)
+  const { containerRef, windowed, topSpacer, bottomSpacer, scrollToIndex } = useVirtualList(
+    filteredOptions,
+    RADIO_ROW_HEIGHT
+  )
 
   // `locate.rowIndex` is only valid against this group's *unfiltered* `group.options` (see
   // PreviewableOption's doc comment), so a pending request first clears any active search filter
   // and waits for the next render (once `filteredOptions` is back to the full list) before it's
   // safe to scroll - otherwise it could land on the wrong row, or one that's currently hidden.
-	useEffect(() => {
-		if (!locate) return
-		if (search) {
-			// eslint-disable-next-line react-hooks/set-state-in-effect
-			setSearch("")
+  useEffect(() => {
+    if (!locate) return
+    if (search) {
+      setSearch('')
       return
     }
-    scrollToIndex(locate.rowIndex, { align: "center" })
+    scrollToIndex(locate.rowIndex, { align: 'center' })
     clearTimeout(flashTimer.current)
     setFlashKey(locate.key)
     flashTimer.current = setTimeout(() => setFlashKey(null), FLASH_DURATION_MS)
     onLocateHandled()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locate, search])
+  }, [locate, search, scrollToIndex, onLocateHandled])
 
   return (
     <div>
@@ -184,11 +210,22 @@ function SelectGroupSection({
       {hasImages && (
         <div className="mb-2.5 flex h-[140px] w-full items-center justify-center overflow-hidden rounded-md border border-border bg-surface-2">
           {selectedOption?.image ? (
-            <button type="button" title={t`Click to preview`} onClick={() => openImageViewer([previewItem(selectedOption)], 0, {})} className="h-full w-full">
-              <img src={selectedOption.image} alt={selectedOption.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+            <button
+              type="button"
+              title={t`Click to preview`}
+              onClick={() => openImageViewer([previewItem(selectedOption)], 0, {})}
+              className="h-full w-full"
+            >
+              <img
+                src={selectedOption.image}
+                alt={selectedOption.name}
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-cover"
+              />
             </button>
           ) : (
-            <span className="px-2 text-center text-[12px] text-text-3">{selected ?? ""}</span>
+            <span className="px-2 text-center text-[12px] text-text-3">{selected ?? ''}</span>
           )}
         </div>
       )}
@@ -197,7 +234,12 @@ function SelectGroupSection({
         <div className="mb-2 flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t`Filter options…`} className="h-8 pl-8 text-[12.5px]" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t`Filter options…`}
+              className="h-8 pl-8 text-[12.5px]"
+            />
           </div>
           <Button
             variant="ghost"
@@ -229,8 +271,15 @@ function SelectGroupSection({
           return (
             <div
               key={option.name}
-              style={{ height: RADIO_ROW_HEIGHT, boxSizing: "border-box", background: selected === option.name ? "var(--accent-soft)" : "transparent" }}
-              className={cn("flex items-center gap-2.5 border-b border-border px-2.5 last:border-b-0", flashKey === key && "row-flash")}
+              style={{
+                height: RADIO_ROW_HEIGHT,
+                boxSizing: 'border-box',
+                background: selected === option.name ? 'var(--accent-soft)' : 'transparent',
+              }}
+              className={cn(
+                'flex items-center gap-2.5 border-b border-border px-2.5 last:border-b-0',
+                flashKey === key && 'row-flash'
+              )}
             >
               {option.image && (
                 <PreviewThumb
@@ -238,16 +287,23 @@ function SelectGroupSection({
                   active={activeKey === key}
                   onClick={() => {
                     const imageOptions = filteredOptions.filter((o) => o.image)
-                    openImageViewer(imageOptions.map(previewItem), imageOptions.findIndex((o) => o.name === option.name), {
-                      onLocate: onLocateOption,
-                      onActiveChange: setActiveKey
-                    })
+                    openImageViewer(
+                      imageOptions.map(previewItem),
+                      imageOptions.findIndex((o) => o.name === option.name),
+                      {
+                        onLocate: onLocateOption,
+                        onActiveChange: setActiveKey,
+                      }
+                    )
                   }}
                 />
               )}
               <label className="flex flex-1 cursor-pointer items-center gap-2.5 min-w-0">
                 <RadioGroupItem value={option.name} />
-                <span className="truncate text-[13px] text-text" style={{ fontWeight: selected === option.name ? 600 : 400 }}>
+                <span
+                  className="truncate text-[13px] text-text"
+                  style={{ fontWeight: selected === option.name ? 600 : 400 }}
+                >
                   {option.name}
                 </span>
               </label>
@@ -289,7 +345,7 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
   // one layer of indirection (e.g. openImageViewer's onLocate callback).
   const locateNonce = useRef(0)
 
-  const [checkboxSearch, setCheckboxSearch] = useState("")
+  const [checkboxSearch, setCheckboxSearch] = useState('')
   const [checkboxFlashKey, setCheckboxFlashKey] = useState<string | null>(null)
   const checkboxFlashTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const [checkboxLocate, setCheckboxLocate] = useState<LocateRequest | null>(null)
@@ -298,29 +354,35 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
   // Re-sync the draft from whatever's actually committed whenever a (possibly different) mod's
   // drawer opens - `mod` goes null -> value each time ModsScreen.tsx opens it, even for the same
   // mod id twice in a row, so this always reflects the latest on-disk state at open time.
-	useEffect(() => {
-		// This effect resets transient drawer state when the opened mod changes.
-		// eslint-disable-next-line react-hooks/set-state-in-effect
-		setDraft(mod ? (config?.modOptions[mod.id] ?? []) : [])
+  useEffect(() => {
+    // This effect resets transient drawer state when the opened mod changes.
+    setDraft(mod ? (config?.modOptions[mod.id] ?? []) : [])
     closeImageViewer()
     setCheckboxActiveKey(null)
-    setCheckboxSearch("")
+    setCheckboxSearch('')
     setCheckboxLocate(null)
     setGroupLocate({})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mod?.id])
+  }, [mod?.id, mod, config?.modOptions])
 
   const { checkboxes, groups } = useMemo(() => {
     const options = mod?.manifest?.options ?? []
     const checkboxes = options.filter((o) => o.type === OptionType.checkbox)
     const selects = options.filter((o) => o.type === OptionType.select)
-    const groupNames = [...new Set(selects.map((o) => (o.type === OptionType.select ? o.group : "")))]
-    const groups = groupNames.map((name) => ({ name, options: selects.filter((o) => o.type === OptionType.select && o.group === name) }))
+    const groupNames = [
+      ...new Set(selects.map((o) => (o.type === OptionType.select ? o.group : ''))),
+    ]
+    const groups = groupNames.map((name) => ({
+      name,
+      options: selects.filter((o) => o.type === OptionType.select && o.group === name),
+    }))
     return { checkboxes, groups }
   }, [mod])
 
   const cq = checkboxSearch.trim().toLowerCase()
-  const filteredCheckboxes = useMemo(() => checkboxes.filter((o) => !cq || o.name.toLowerCase().includes(cq)), [checkboxes, cq])
+  const filteredCheckboxes = useMemo(
+    () => checkboxes.filter((o) => !cq || o.name.toLowerCase().includes(cq)),
+    [checkboxes, cq]
+  )
 
   // Same virtualization as each select group below (see SelectGroupSection's doc comment) - this
   // one lives at the top level of the component instead of inside a loop because there's only ever
@@ -333,21 +395,20 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
     windowed: checkboxWindowed,
     topSpacer: checkboxTopSpacer,
     bottomSpacer: checkboxBottomSpacer,
-    scrollToIndex: scrollCheckboxToIndex
+    scrollToIndex: scrollCheckboxToIndex,
   } = useVirtualList(filteredCheckboxes, CHECKBOX_ROW_HEIGHT)
 
   // `checkboxLocate.rowIndex` is only valid against the unfiltered `checkboxes` array, so a
   // pending request clears the checkbox search box first and waits a render for
   // `filteredCheckboxes` to go back to the full list before it's safe to scroll - same two-step
   // pattern as the per-group locate effect in SelectGroupSection, and for the same reason.
-	useEffect(() => {
-		if (!checkboxLocate) return
-		if (checkboxSearch) {
-			// eslint-disable-next-line react-hooks/set-state-in-effect
-			setCheckboxSearch("")
+  useEffect(() => {
+    if (!checkboxLocate) return
+    if (checkboxSearch) {
+      setCheckboxSearch('')
       return
     }
-    scrollCheckboxToIndex(checkboxLocate.rowIndex, { align: "center" })
+    scrollCheckboxToIndex(checkboxLocate.rowIndex, { align: 'center' })
     clearTimeout(checkboxFlashTimer.current)
     setCheckboxFlashKey(checkboxLocate.key)
     checkboxFlashTimer.current = setTimeout(() => setCheckboxFlashKey(null), FLASH_DURATION_MS)
@@ -355,8 +416,7 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
     // character typed into the checkbox search box (which momentarily makes `checkboxSearch`
     // truthy) would immediately be wiped by this same effect, mistaking it for a fresh locate.
     setCheckboxLocate(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkboxLocate, checkboxSearch])
+  }, [checkboxLocate, checkboxSearch, scrollCheckboxToIndex])
 
   useEffect(() => () => clearTimeout(checkboxFlashTimer.current), [])
 
@@ -368,10 +428,15 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
   // bare LocateTarget (no image required) works just as well as a full PreviewableOption.
   function locate(item: LocateTarget) {
     closeImageViewer()
-    const sectionKey = item.section.type === "checkbox" ? "checkboxes" : `group:${item.section.name}`
-    sectionRefs.current.get(sectionKey)?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-    const request: LocateRequest = { rowIndex: item.rowIndex, key: item.key, nonce: locateNonce.current++ }
-    if (item.section.type === "checkbox") {
+    const sectionKey =
+      item.section.type === 'checkbox' ? 'checkboxes' : `group:${item.section.name}`
+    sectionRefs.current.get(sectionKey)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    const request: LocateRequest = {
+      rowIndex: item.rowIndex,
+      key: item.key,
+      nonce: locateNonce.current++,
+    }
+    if (item.section.type === 'checkbox') {
       setCheckboxLocate(request)
     } else {
       const groupName = item.section.name
@@ -380,11 +445,18 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
   }
 
   function setCheckbox(optionName: string, enabled: boolean) {
-    setDraft((current) => (enabled ? [...current.filter((o) => o !== optionName), optionName] : current.filter((o) => o !== optionName)))
+    setDraft((current) =>
+      enabled
+        ? [...current.filter((o) => o !== optionName), optionName]
+        : current.filter((o) => o !== optionName)
+    )
   }
 
   function setSelect(group: string, optionName: string) {
-    setDraft((current) => [...current.filter((o) => !o.startsWith(`${group}:`)), `${group}:${optionName}`])
+    setDraft((current) => [
+      ...current.filter((o) => !o.startsWith(`${group}:`)),
+      `${group}:${optionName}`,
+    ])
   }
 
   function close() {
@@ -397,121 +469,143 @@ export function ModSettingsDrawer({ mod, onClose }: { mod: ModEntry | null; onCl
 
   return (
     <Sheet open={!!mod} onOpenChange={(open) => !open && close()}>
-        <SheetContent>
-          <SheetHeader>
-            <div>
-              <div className="mb-0.5 text-[12px] font-semibold text-text-2">
-                <Trans>Mod settings</Trans>
-              </div>
-              <SheetTitle>{mod?.isFrameworkMod ? mod.manifest?.name : mod?.rpkgModName}</SheetTitle>
+      <SheetContent>
+        <SheetHeader>
+          <div>
+            <div className="mb-0.5 text-[12px] font-semibold text-text-2">
+              <Trans>Mod settings</Trans>
             </div>
-          </SheetHeader>
+            <SheetTitle>{mod?.isFrameworkMod ? mod.manifest?.name : mod?.rpkgModName}</SheetTitle>
+          </div>
+        </SheetHeader>
 
-          <div className="flex flex-1 flex-col gap-[18px] overflow-y-auto px-[22px] py-5">
-            {checkboxes.length === 0 && groups.length === 0 && (
-              <div className="text-[13px] text-text-3">
-                <Trans>This mod has no configurable options.</Trans>
-              </div>
-            )}
+        <div className="flex flex-1 flex-col gap-[18px] overflow-y-auto px-[22px] py-5">
+          {checkboxes.length === 0 && groups.length === 0 && (
+            <div className="text-[13px] text-text-3">
+              <Trans>This mod has no configurable options.</Trans>
+            </div>
+          )}
 
-            {checkboxes.length > 0 && (
-              <div
-                ref={(el) => {
-                  if (el) sectionRefs.current.set("checkboxes", el)
-                  else sectionRefs.current.delete("checkboxes")
-                }}
-              >
-                {checkboxes.length > 8 && (
-                  <div className="relative mb-2">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
-                    <Input value={checkboxSearch} onChange={(e) => setCheckboxSearch(e.target.value)} placeholder={t`Filter options…`} className="h-8 pl-8 text-[12.5px]" />
-                  </div>
-                )}
-                {/* Bounded + scrollable (mirrors the select groups' own box below) rather than free-
+          {checkboxes.length > 0 && (
+            <div
+              ref={(el) => {
+                if (el) sectionRefs.current.set('checkboxes', el)
+                else sectionRefs.current.delete('checkboxes')
+              }}
+            >
+              {checkboxes.length > 8 && (
+                <div className="relative mb-2">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
+                  <Input
+                    value={checkboxSearch}
+                    onChange={(e) => setCheckboxSearch(e.target.value)}
+                    placeholder={t`Filter options…`}
+                    className="h-8 pl-8 text-[12.5px]"
+                  />
+                </div>
+              )}
+              {/* Bounded + scrollable (mirrors the select groups' own box below) rather than free-
                     flowing rows, because virtualizing needs a real viewport to measure scrollTop
                     against - see useVirtualList.ts. A handful of checkboxes just renders as a short box
                     that never actually scrolls; a few thousand renders as a real scrollable list
                     instead of a few-thousand-node mount. */}
-                <div ref={checkboxContainerRef} className="max-h-[320px] overflow-y-auto rounded-md border border-border bg-surface-2">
-                  {filteredCheckboxes.length === 0 && (
-                    <div className="px-3 py-6 text-center text-[12px] text-text-3">
-                      <Trans>No options match "{checkboxSearch.trim()}".</Trans>
-                    </div>
-                  )}
-                  {checkboxTopSpacer > 0 && <div style={{ height: checkboxTopSpacer }} />}
-                  {checkboxWindowed.map((option) => {
-                    const checked = draft.includes(option.name)
-                    const key = `cb-${option.name}`
-                    return (
-                      <div
-                        key={option.name}
-                        style={{ height: CHECKBOX_ROW_HEIGHT, boxSizing: "border-box" }}
-                        className={cn("flex items-center gap-2.5 border-b border-border px-2.5 last:border-b-0", checkboxFlashKey === key && "row-flash")}
-                      >
-                        {option.image && (
-                          <PreviewThumb
-                            image={option.image}
-                            active={checkboxActiveKey === key}
-                            onClick={() => {
-                              const imageOptions = filteredCheckboxes.filter((o) => o.image)
-                              const items: PreviewableOption[] = imageOptions.map((o) => ({
-                                key: `cb-${o.name}`,
-                                name: o.name,
-                                image: o.image!,
-                                section: { type: "checkbox" },
-                                rowIndex: checkboxes.findIndex((c) => c.name === o.name)
-                              }))
-                              openImageViewer(items, imageOptions.findIndex((o) => o.name === option.name), { onLocate: locate, onActiveChange: setCheckboxActiveKey })
-                            }}
-                          />
+              <div
+                ref={checkboxContainerRef}
+                className="max-h-[320px] overflow-y-auto rounded-md border border-border bg-surface-2"
+              >
+                {filteredCheckboxes.length === 0 && (
+                  <div className="px-3 py-6 text-center text-[12px] text-text-3">
+                    <Trans>No options match "{checkboxSearch.trim()}".</Trans>
+                  </div>
+                )}
+                {checkboxTopSpacer > 0 && <div style={{ height: checkboxTopSpacer }} />}
+                {checkboxWindowed.map((option) => {
+                  const checked = draft.includes(option.name)
+                  const key = `cb-${option.name}`
+                  return (
+                    <div
+                      key={option.name}
+                      style={{ height: CHECKBOX_ROW_HEIGHT, boxSizing: 'border-box' }}
+                      className={cn(
+                        'flex items-center gap-2.5 border-b border-border px-2.5 last:border-b-0',
+                        checkboxFlashKey === key && 'row-flash'
+                      )}
+                    >
+                      {option.image && (
+                        <PreviewThumb
+                          image={option.image}
+                          active={checkboxActiveKey === key}
+                          onClick={() => {
+                            const imageOptions = filteredCheckboxes.filter((o) => o.image)
+                            const items: PreviewableOption[] = imageOptions.map((o) => ({
+                              key: `cb-${o.name}`,
+                              name: o.name,
+                              image: o.image!,
+                              section: { type: 'checkbox' },
+                              rowIndex: checkboxes.findIndex((c) => c.name === o.name),
+                            }))
+                            openImageViewer(
+                              items,
+                              imageOptions.findIndex((o) => o.name === option.name),
+                              { onLocate: locate, onActiveChange: setCheckboxActiveKey }
+                            )
+                          }}
+                        />
+                      )}
+                      <label className="flex flex-1 cursor-pointer items-center gap-2.5">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => setCheckbox(option.name, v === true)}
+                        />
+                        <span className="text-[13.5px] text-text">{option.name}</span>
+                        {option.tooltip && (
+                          <Tooltip>
+                            <TooltipTrigger render={<span className="text-text-3" />}>
+                              ⓘ
+                            </TooltipTrigger>
+                            <TooltipContent>{option.tooltip}</TooltipContent>
+                          </Tooltip>
                         )}
-                        <label className="flex flex-1 cursor-pointer items-center gap-2.5">
-                          <Checkbox checked={checked} onCheckedChange={(v) => setCheckbox(option.name, v === true)} />
-                          <span className="text-[13.5px] text-text">{option.name}</span>
-                          {option.tooltip && (
-                            <Tooltip>
-                              <TooltipTrigger render={<span className="text-text-3" />}>ⓘ</TooltipTrigger>
-                              <TooltipContent>{option.tooltip}</TooltipContent>
-                            </Tooltip>
-                          )}
-                        </label>
-                      </div>
-                    )
-                  })}
-                  {checkboxBottomSpacer > 0 && <div style={{ height: checkboxBottomSpacer }} />}
-                </div>
+                      </label>
+                    </div>
+                  )
+                })}
+                {checkboxBottomSpacer > 0 && <div style={{ height: checkboxBottomSpacer }} />}
               </div>
-            )}
+            </div>
+          )}
 
-            {groups.map((group) => {
-              const selected = draft.find((o) => o.startsWith(`${group.name}:`))?.split(":")[1]
-              return (
-                <div
-                  key={group.name}
-                  ref={(el) => {
-                    if (el) sectionRefs.current.set(`group:${group.name}`, el)
-                    else sectionRefs.current.delete(`group:${group.name}`)
-                  }}
-                >
-                  <SelectGroupSection
-                    group={group}
-                    selected={selected}
-                    onSelect={(optionName) => setSelect(group.name, optionName)}
-                    onLocateOption={locate}
-                    locate={groupLocate[group.name] ?? null}
-                    onLocateHandled={() => setGroupLocate((prev) => ({ ...prev, [group.name]: null }))}
-                  />
-                </div>
-              )
-            })}
-          </div>
+          {groups.map((group) => {
+            const selected = draft.find((o) => o.startsWith(`${group.name}:`))?.split(':')[1]
+            return (
+              <div
+                key={group.name}
+                ref={(el) => {
+                  if (el) sectionRefs.current.set(`group:${group.name}`, el)
+                  else sectionRefs.current.delete(`group:${group.name}`)
+                }}
+              >
+                <SelectGroupSection
+                  group={group}
+                  selected={selected}
+                  onSelect={(optionName) => setSelect(group.name, optionName)}
+                  onLocateOption={locate}
+                  locate={groupLocate[group.name] ?? null}
+                  onLocateHandled={() =>
+                    setGroupLocate((prev) => ({ ...prev, [group.name]: null }))
+                  }
+                />
+              </div>
+            )
+          })}
+        </div>
 
-          <SheetFooter>
-            <Button className="w-full" onClick={close}>
-              <Trans>Done</Trans>
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+        <SheetFooter>
+          <Button className="w-full" onClick={close}>
+            <Trans>Done</Trans>
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   )
 }

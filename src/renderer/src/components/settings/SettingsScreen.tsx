@@ -1,15 +1,28 @@
-import { useState } from "react"
-import { Loader2 } from "lucide-react"
-import { Trans, useLingui } from "@lingui/react/macro"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useAppStore } from "@/store/app-store"
-import { cn } from "@/lib/utils"
-import { ACCENTS, resolveDark, type Accent, type ThemeMode } from "@/lib/theme"
-import { LANGUAGES, LANGUAGE_ITEMS } from "@/lib/languages"
-import { PathInputRow } from "./PathInputRow"
-import { GamePlatformSelect } from "./GamePlatformSelect"
+import { Trans, useLingui } from '@lingui/react/macro'
+import { Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { LANGUAGE_ITEMS, LANGUAGES } from '@/lib/languages'
+import { ACCENTS, type Accent, resolveDark, type ThemeMode } from '@/lib/theme'
+import { cn } from '@/lib/utils'
+import { useAppStore } from '@/store/app-store'
+import { GamePlatformSelect } from './GamePlatformSelect'
+import { PathInputRow } from './PathInputRow'
 
 export function SettingsScreen() {
   const { t } = useLingui()
@@ -32,9 +45,9 @@ export function SettingsScreen() {
   const [confirmRebuildOpen, setConfirmRebuildOpen] = useState(false)
 
   const THEME_MODES: { key: ThemeMode; label: string }[] = [
-    { key: "light", label: t`Light` },
-    { key: "dark", label: t`Dark` },
-    { key: "system", label: t`Auto` }
+    { key: 'light', label: t`Light` },
+    { key: 'dark', label: t`Dark` },
+    { key: 'system', label: t`Auto` },
   ]
 
   const ACCENT_LABELS: Record<Accent, string> = {
@@ -42,7 +55,7 @@ export function SettingsScreen() {
     blue: t`Blue`,
     violet: t`Violet`,
     green: t`Green`,
-    red: t`Red`
+    red: t`Red`,
   }
 
   if (!config || !defaultPaths) return null
@@ -59,7 +72,9 @@ export function SettingsScreen() {
       <h1 className="mb-1 text-2xl font-bold">
         <Trans>Settings</Trans>
       </h1>
-      <div className="mb-6 text-[13px] text-text-2">Simple Mod Framework · Mod Manager v3.0.0-preview</div>
+      <div className="mb-6 text-[13px] text-text-2">
+        Simple Mod Framework · Mod Manager v3.0.0-preview
+      </div>
 
       <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-text-3">
         <Trans>Paths</Trans>
@@ -69,26 +84,50 @@ export function SettingsScreen() {
           <div className="mb-2 text-[12px] font-semibold text-text-2">
             <Trans>Game root</Trans>
           </div>
-          <PathInputRow value={config.gamePath} placeholder={defaultPaths.gamePath} onChange={setGamePath} onBrowse={browseGamePath} />
+          <PathInputRow
+            value={config.gamePath}
+            placeholder={defaultPaths.gamePath}
+            onChange={setGamePath}
+            onBrowse={browseGamePath}
+          />
         </div>
-        <GamePlatformSelect value={config.gamePlatform} required={config.gamePlatformChoiceRequired} disabled={!config.gamePath} onChange={setGamePlatform} />
+        <GamePlatformSelect
+          value={config.gamePlatform}
+          required={config.gamePlatformChoiceRequired}
+          disabled={!config.gamePath}
+          onChange={setGamePlatform}
+        />
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">
             <Trans>Cache path</Trans>
           </div>
-          <PathInputRow value={config.cachePath} placeholder={defaultPaths.cachePath} onChange={setCachePath} onBrowse={browseCachePath} />
+          <PathInputRow
+            value={config.cachePath}
+            placeholder={defaultPaths.cachePath}
+            onChange={setCachePath}
+            onBrowse={browseCachePath}
+          />
         </div>
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">
             <Trans>Mod path</Trans>
           </div>
-          <PathInputRow value={config.modPath} placeholder={defaultPaths.modPath} onChange={setModPath} onBrowse={browseModPath} />
+          <PathInputRow
+            value={config.modPath}
+            placeholder={defaultPaths.modPath}
+            onChange={setModPath}
+            onBrowse={browseModPath}
+          />
         </div>
         <div>
           <div className="mb-2 text-[12px] font-semibold text-text-2">
             <Trans>Language</Trans>
           </div>
-          <Select items={LANGUAGE_ITEMS} value={config.language} onValueChange={(language) => language && setLanguage(language)}>
+          <Select
+            items={LANGUAGE_ITEMS}
+            value={config.language}
+            onValueChange={(language) => language && setLanguage(language)}
+          >
             <SelectTrigger className="py-[9px] text-[13px]">
               <SelectValue />
             </SelectTrigger>
@@ -116,8 +155,10 @@ export function SettingsScreen() {
               key={key}
               onClick={() => setThemeMode(key)}
               className={cn(
-                "flex-1 rounded-[6px] py-[7px] text-center text-[12.5px]",
-                config.themeMode === key ? "bg-surface font-semibold text-text" : "font-normal text-text-2"
+                'flex-1 rounded-[6px] py-[7px] text-center text-[12.5px]',
+                config.themeMode === key
+                  ? 'bg-surface font-semibold text-text'
+                  : 'font-normal text-text-2'
               )}
             >
               {label}
@@ -136,8 +177,8 @@ export function SettingsScreen() {
               onClick={() => setAccent(key)}
               className="h-7 w-7 rounded-full shadow-[0_0_0_2px_var(--surface)_inset]"
               style={{
-                background: ACCENTS[key][dark ? "dark" : "light"],
-                border: config.accent === key ? "2px solid var(--text)" : "1px solid var(--border)"
+                background: ACCENTS[key][dark ? 'dark' : 'light'],
+                border: config.accent === key ? '2px solid var(--text)' : '1px solid var(--border)',
               }}
             />
           ))}
@@ -153,10 +194,18 @@ export function SettingsScreen() {
             <Trans>Rebuild cache database</Trans>
           </div>
           <div className="text-[12.5px] text-text-2">
-            <Trans>Wipes and rebuilds cache.db from scratch (mods, manifests, per-mod builds) - the "something's wrong with the cache" recovery option. Doesn't touch your Mods folder or load order.</Trans>
+            <Trans>
+              Wipes and rebuilds cache.db from scratch (mods, manifests, per-mod builds) - the
+              "something's wrong with the cache" recovery option. Doesn't touch your Mods folder or
+              load order.
+            </Trans>
           </div>
         </div>
-        <Button variant="outline" disabled={rebuildingCacheDb} onClick={() => setConfirmRebuildOpen(true)}>
+        <Button
+          variant="outline"
+          disabled={rebuildingCacheDb}
+          onClick={() => setConfirmRebuildOpen(true)}
+        >
           {rebuildingCacheDb ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           <Trans>Rebuild cache database</Trans>
         </Button>
@@ -170,8 +219,9 @@ export function SettingsScreen() {
             </DialogTitle>
             <DialogDescription>
               <Trans>
-                This deletes cache.db and rebuilds every mod's cache from scratch - the same work as a first launch. It can take a while with a lot of mods installed, and any deploy is blocked until it
-                finishes. Your Mods folder and load order aren't touched.
+                This deletes cache.db and rebuilds every mod's cache from scratch - the same work as
+                a first launch. It can take a while with a lot of mods installed, and any deploy is
+                blocked until it finishes. Your Mods folder and load order aren't touched.
               </Trans>
             </DialogDescription>
           </DialogHeader>

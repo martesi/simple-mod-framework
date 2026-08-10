@@ -1,8 +1,8 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
-import { basename, isAbsolute, join, resolve } from "node:path"
-import JSON5 from "json5"
-import type { AppPaths } from "./paths"
-import { isGamePlatform, type GamePlatform } from "../shared/game"
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { basename, isAbsolute, join, resolve } from 'node:path'
+import JSON5 from 'json5'
+import { type GamePlatform, isGamePlatform } from '../shared/game'
+import type { AppPaths } from './paths'
 
 /**
  * This app's persisted settings - one JSON file in `app.getPath('userData')` (see paths.ts),
@@ -17,54 +17,54 @@ import { isGamePlatform, type GamePlatform } from "../shared/game"
  * real mod index instead of a rebuild-from-disk-on-launch convenience cache.
  */
 export interface AppSettings {
-	/** The folder containing the game's Retail executable (or its parent - `deriveGamePathInfo()` self-heals that) - the one thing the user picks via `config:pickGameDirectory`, or types directly into Settings. */
-	gamePath: string
-	/** Explicit storefront selection; overrides the best-effort filesystem hint. */
-	gamePlatform?: GamePlatform
+  /** The folder containing the game's Retail executable (or its parent - `deriveGamePathInfo()` self-heals that) - the one thing the user picks via `config:pickGameDirectory`, or types directly into Settings. */
+  gamePath: string
+  /** Explicit storefront selection; overrides the best-effort filesystem hint. */
+  gamePlatform?: GamePlatform
 
-	/**
-	 * Explicit override for where mods are stored. Unset means "use the computed default" - under
-	 * the game root once one's picked (`<gameRoot>/.smf/mods`), or a "Mods" folder under `dataRoot`
-	 * itself before that - see `resolveModsDir()`.
-	 */
-	modsPath?: string
+  /**
+   * Explicit override for where mods are stored. Unset means "use the computed default" - under
+   * the game root once one's picked (`<gameRoot>/.smf/mods`), or a "Mods" folder under `dataRoot`
+   * itself before that - see `resolveModsDir()`.
+   */
+  modsPath?: string
 
-	/**
-	 * Explicit override for the temp dir (cache.db + staging/ + Output/ + the ephemeral working
-	 * folders - see `resolveTempDir()`'s doc comment). Unset means "use the computed default" -
-	 * under the game root once one's picked, or `dataRoot` itself before that (no game path is
-	 * expected pre-wizard).
-	 */
-	tempPath?: string
+  /**
+   * Explicit override for the temp dir (cache.db + staging/ + Output/ + the ephemeral working
+   * folders - see `resolveTempDir()`'s doc comment). Unset means "use the computed default" -
+   * under the game root once one's picked, or `dataRoot` itself before that (no game path is
+   * expected pre-wizard).
+   */
+  tempPath?: string
 
-	skipIntro: boolean
-	outputToSeparateDirectory: boolean
-	outputConfigToAppDataOnDeploy: boolean
-	reportErrors?: boolean
-	errorReportingID?: string | null
-	developerMode: boolean
+  skipIntro: boolean
+  outputToSeparateDirectory: boolean
+  outputConfigToAppDataOnDeploy: boolean
+  reportErrors?: boolean
+  errorReportingID?: string | null
+  developerMode: boolean
 
-	// ---- UI-only extensions (not part of the real framework Config, never touched by the deploy pipeline) ----
-	themeMode?: "light" | "dark" | "system"
-	accent?: "neutral" | "blue" | "violet" | "green" | "red"
-	language?: string
+  // ---- UI-only extensions (not part of the real framework Config, never touched by the deploy pipeline) ----
+  themeMode?: 'light' | 'dark' | 'system'
+  accent?: 'neutral' | 'blue' | 'violet' | 'green' | 'red'
+  language?: string
 }
 
 export function settingsPath(paths: AppPaths): string {
-	return join(paths.dataRoot, "settings.json")
+  return join(paths.dataRoot, 'settings.json')
 }
 
 function defaultSettings(): AppSettings {
-	return {
-		gamePath: "",
-		skipIntro: false,
-		outputToSeparateDirectory: false,
-		outputConfigToAppDataOnDeploy: false,
-		developerMode: false,
-		themeMode: "system",
-		accent: "neutral",
-		language: "en-US"
-	}
+  return {
+    gamePath: '',
+    skipIntro: false,
+    outputToSeparateDirectory: false,
+    outputConfigToAppDataOnDeploy: false,
+    developerMode: false,
+    themeMode: 'system',
+    accent: 'neutral',
+    language: 'en-US',
+  }
 }
 
 /**
@@ -84,39 +84,42 @@ let cachedSettings: AppSettings | null = null
  * `modsConfig.ts`'s `migrateFromLegacySettings()` for where their *values* actually go on upgrade.
  */
 export function loadSettings(paths: AppPaths): AppSettings {
-	if (cachedSettings) return cachedSettings
+  if (cachedSettings) return cachedSettings
 
-	const file = settingsPath(paths)
+  const file = settingsPath(paths)
 
-	if (!existsSync(file)) {
-		const fresh = defaultSettings()
-		writeFileSync(file, JSON5.stringify(fresh, undefined, "\t"))
-		cachedSettings = fresh
-		return fresh
-	}
+  if (!existsSync(file)) {
+    const fresh = defaultSettings()
+    writeFileSync(file, JSON5.stringify(fresh, undefined, '\t'))
+    cachedSettings = fresh
+    return fresh
+  }
 
-	const parsed = JSON5.parse(readFileSync(file, "utf8"))
-	const settings: AppSettings = { ...defaultSettings(), ...(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}) }
-	if (!isGamePlatform(settings.gamePlatform)) delete settings.gamePlatform
-	cachedSettings = settings
-	return settings
+  const parsed = JSON5.parse(readFileSync(file, 'utf8'))
+  const settings: AppSettings = {
+    ...defaultSettings(),
+    ...(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}),
+  }
+  if (!isGamePlatform(settings.gamePlatform)) delete settings.gamePlatform
+  cachedSettings = settings
+  return settings
 }
 
 export function saveSettings(paths: AppPaths, settings: AppSettings): void {
-	writeFileSync(settingsPath(paths), JSON5.stringify(settings, undefined, "\t"))
-	cachedSettings = settings
+  writeFileSync(settingsPath(paths), JSON5.stringify(settings, undefined, '\t'))
+  cachedSettings = settings
 }
 
 /** Shallow-merge a patch into settings.json and return the resulting full settings - `undefined` explicitly removes an optional setting. */
 export function mergeSettings(paths: AppPaths, patch: Partial<AppSettings>): AppSettings {
-	const current = loadSettings(paths)
-	const next = { ...current }
-	for (const [key, value] of Object.entries(patch)) {
-		if (value === undefined) delete (next as Record<string, unknown>)[key]
-		else (next as Record<string, unknown>)[key] = value
-	}
-	saveSettings(paths, next)
-	return next
+  const current = loadSettings(paths)
+  const next = { ...current }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete (next as Record<string, unknown>)[key]
+    else (next as Record<string, unknown>)[key] = value
+  }
+  saveSettings(paths, next)
+  return next
 }
 
 /**
@@ -127,17 +130,20 @@ export function mergeSettings(paths: AppPaths, patch: Partial<AppSettings>): App
  * override always wins over the computed default.
  */
 export function resolveModsDir(paths: AppPaths, settings: AppSettings): string {
-	if (settings.modsPath) return isAbsolute(settings.modsPath) ? settings.modsPath : resolve(paths.dataRoot, settings.modsPath)
+  if (settings.modsPath)
+    return isAbsolute(settings.modsPath)
+      ? settings.modsPath
+      : resolve(paths.dataRoot, settings.modsPath)
 
-	if (settings.gamePath) return join(guessGameRoot(settings.gamePath), ".smf", "mods")
+  if (settings.gamePath) return join(guessGameRoot(settings.gamePath), '.smf', 'mods')
 
-	return resolve(paths.dataRoot, "Mods")
+  return resolve(paths.dataRoot, 'Mods')
 }
 
 /** Best-effort guess at the game's root folder (the one containing "Retail" and "Runtime") from the raw, possibly-unvalidated `gamePath` string - used only for the temp dir's default location, computed without touching the filesystem beyond a basename check, since a full validated derivation (`gameDetect.ts`'s `deriveGamePathInfo()`) needs the db this very function helps place. */
 function guessGameRoot(gamePath: string): string {
-	const resolved = resolve(gamePath)
-	return basename(resolved).toLowerCase() === "retail" ? resolve(resolved, "..") : resolved
+  const resolved = resolve(gamePath)
+  return basename(resolved).toLowerCase() === 'retail' ? resolve(resolved, '..') : resolved
 }
 
 /**
@@ -150,29 +156,32 @@ function guessGameRoot(gamePath: string): string {
  * own explicit `tempPath` override always wins over the computed default.
  */
 export function resolveTempDir(paths: AppPaths, settings: AppSettings): string {
-	if (settings.tempPath) return isAbsolute(settings.tempPath) ? settings.tempPath : resolve(paths.dataRoot, settings.tempPath)
+  if (settings.tempPath)
+    return isAbsolute(settings.tempPath)
+      ? settings.tempPath
+      : resolve(paths.dataRoot, settings.tempPath)
 
-	if (settings.gamePath) return join(guessGameRoot(settings.gamePath), ".smf", "tmp")
+  if (settings.gamePath) return join(guessGameRoot(settings.gamePath), '.smf', 'tmp')
 
-	// No game picked yet (first-ever launch, before the setup wizard) - dataRoot is the only folder
-	// guaranteed to exist/be writable at this point.
-	return paths.dataRoot
+  // No game picked yet (first-ever launch, before the setup wizard) - dataRoot is the only folder
+  // guaranteed to exist/be writable at this point.
+  return paths.dataRoot
 }
 
 export interface DefaultUiPaths {
-	/**
-	 * A plausible example game folder, for placeholder text only - never validated or persisted,
-	 * picking a real one is still on the user. Deliberately doesn't end in "\Retail": `gameDetect.ts`'s
-	 * `deriveGamePathInfo()` accepts either the game's root folder or its Retail subfolder (self-healing
-	 * the latter from the former), so showing "...\Retail" here reads as "you must type this exact
-	 * subfolder" - which isn't true, and is exactly the mistake that's confused people picking the
-	 * wrong folder (see gameDetect.ts's self-heal comment).
-	 */
-	gamePath: string
-	/** Where this app would actually put its temp dir (cache.db, staging, etc.) if the user leaves the field untouched - see `resolveTempDir()`. Named `cachePath` to match the renderer's existing `Config`/`DefaultPaths` field (manifest-types.ts) rather than introducing a rename across the IPC boundary in this same change. */
-	cachePath: string
-	/** Same idea as `cachePath` - mirrors `resolveModsDir()`'s own default (`.smf/mods` under the game root, or "Mods" under `dataRoot` pre-wizard) when `modsPath` is unset. */
-	modPath: string
+  /**
+   * A plausible example game folder, for placeholder text only - never validated or persisted,
+   * picking a real one is still on the user. Deliberately doesn't end in "\Retail": `gameDetect.ts`'s
+   * `deriveGamePathInfo()` accepts either the game's root folder or its Retail subfolder (self-healing
+   * the latter from the former), so showing "...\Retail" here reads as "you must type this exact
+   * subfolder" - which isn't true, and is exactly the mistake that's confused people picking the
+   * wrong folder (see gameDetect.ts's self-heal comment).
+   */
+  gamePath: string
+  /** Where this app would actually put its temp dir (cache.db, staging, etc.) if the user leaves the field untouched - see `resolveTempDir()`. Named `cachePath` to match the renderer's existing `Config`/`DefaultPaths` field (manifest-types.ts) rather than introducing a rename across the IPC boundary in this same change. */
+  cachePath: string
+  /** Same idea as `cachePath` - mirrors `resolveModsDir()`'s own default (`.smf/mods` under the game root, or "Mods" under `dataRoot` pre-wizard) when `modsPath` is unset. */
+  modPath: string
 }
 
 /**
@@ -189,28 +198,36 @@ export interface DefaultUiPaths {
  * these fields at all - see this file's top doc comment) and re-reads the file directly instead, so
  * this keeps working even after `AppSettings` itself has long since dropped them from its type.
  */
-export function readLegacyModListFields(paths: AppPaths): { loadOrder?: string[]; modOrder?: string[]; modOptions?: Record<string, string[]> } {
-	const file = settingsPath(paths)
-	if (!existsSync(file)) return {}
+export function readLegacyModListFields(paths: AppPaths): {
+  loadOrder?: string[]
+  modOrder?: string[]
+  modOptions?: Record<string, string[]>
+} {
+  const file = settingsPath(paths)
+  if (!existsSync(file)) return {}
 
-	try {
-		const raw = JSON5.parse(readFileSync(file, "utf8")) as Record<string, unknown>
-		return {
-			loadOrder: Array.isArray(raw.loadOrder) ? (raw.loadOrder as string[]) : undefined,
-			modOrder: Array.isArray(raw.modOrder) ? (raw.modOrder as string[]) : undefined,
-			modOptions: raw.modOptions && typeof raw.modOptions === "object" ? (raw.modOptions as Record<string, string[]>) : undefined
-		}
-	} catch {
-		return {}
-	}
+  try {
+    const raw = JSON5.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+    return {
+      loadOrder: Array.isArray(raw.loadOrder) ? (raw.loadOrder as string[]) : undefined,
+      modOrder: Array.isArray(raw.modOrder) ? (raw.modOrder as string[]) : undefined,
+      modOptions:
+        raw.modOptions && typeof raw.modOptions === 'object'
+          ? (raw.modOptions as Record<string, string[]>)
+          : undefined,
+    }
+  } catch {
+    return {}
+  }
 }
 
 export function resolveDefaultUiPaths(paths: AppPaths, settings?: AppSettings): DefaultUiPaths {
-	const programFiles = process.env["ProgramFiles(x86)"] ?? process.env["ProgramFiles"] ?? "C:\\Program Files (x86)"
-	const exampleGamePath = join(programFiles, "HITMAN3")
-	return {
-		gamePath: exampleGamePath,
-		cachePath: settings ? resolveTempDir(paths, settings) : resolve(paths.dataRoot),
-		modPath: settings ? resolveModsDir(paths, settings) : resolve(paths.dataRoot, "Mods")
-	}
+  const programFiles =
+    process.env['ProgramFiles(x86)'] ?? process.env.ProgramFiles ?? 'C:\\Program Files (x86)'
+  const exampleGamePath = join(programFiles, 'HITMAN3')
+  return {
+    gamePath: exampleGamePath,
+    cachePath: settings ? resolveTempDir(paths, settings) : resolve(paths.dataRoot),
+    modPath: settings ? resolveModsDir(paths, settings) : resolve(paths.dataRoot, 'Mods'),
+  }
 }

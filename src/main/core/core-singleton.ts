@@ -1,6 +1,6 @@
-import type { Config } from "./types"
-import type { CleanupCallback, Core, Logger, ResolvedCoreOptions } from "./core"
-import type RPKGInstance from "./rpkg"
+import type { CleanupCallback, Core, Logger, ResolvedCoreOptions } from './core'
+import type RPKGInstance from './rpkg'
+import type { Config } from './types'
 
 /**
  * Bridge between the many modules in this codebase that do
@@ -26,25 +26,25 @@ import type RPKGInstance from "./rpkg"
 let currentCore: Core | undefined
 
 export function setCurrentCore(core: Core) {
-	currentCore = core
+  currentCore = core
 
-	FrameworkVersion = core.FrameworkVersion
-	isDevBuild = core.isDevBuild
-	rpkgInstance = core.rpkgInstance
-	config = core.config
-	logger = core.logger
-	options = core.options
-	paths = core.paths
+  FrameworkVersion = core.FrameworkVersion
+  isDevBuild = core.isDevBuild
+  rpkgInstance = core.rpkgInstance
+  config = core.config
+  logger = core.logger
+  options = core.options
+  paths = core.paths
 }
 
 export function getCurrentCore(): Core {
-	if (!currentCore) {
-		throw new Error(
-			"No active core - createCore() must be called (and its result passed to setCurrentCore()) before using the framework. See main.ts's CLI bootstrap or patchWorker.ts's per-worker-thread bootstrap."
-		)
-	}
+  if (!currentCore) {
+    throw new Error(
+      "No active core - createCore() must be called (and its result passed to setCurrentCore()) before using the framework. See main.ts's CLI bootstrap or patchWorker.ts's per-worker-thread bootstrap."
+    )
+  }
 
-	return currentCore
+  return currentCore
 }
 
 export let FrameworkVersion: string
@@ -53,16 +53,16 @@ export let rpkgInstance: RPKGInstance
 export let config: Config
 export let logger: Logger
 export let options: ResolvedCoreOptions
-export let paths: Core["paths"]
+export let paths: Core['paths']
 
 export function registerCleanup(fn: CleanupCallback): void {
-	getCurrentCore().registerCleanup(fn)
+  getCurrentCore().registerCleanup(fn)
 }
 
 export function unregisterCleanup(fn: CleanupCallback): void {
-	getCurrentCore().unregisterCleanup(fn)
+  getCurrentCore().unregisterCleanup(fn)
 }
 
 export function cleanExit(): Promise<void> {
-	return getCurrentCore().cleanExit()
+  return getCurrentCore().cleanExit()
 }

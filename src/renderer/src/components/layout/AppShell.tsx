@@ -1,7 +1,7 @@
-import type { ReactNode } from "react"
-import { NavRail } from "./NavRail"
-import { DeployToast } from "@/components/mods/DeployToast"
-import { SetupWizard } from "@/components/settings/SetupWizard"
+import type { ReactNode } from 'react'
+import { DeployToast } from '@/components/mods/DeployToast'
+import { SetupWizard } from '@/components/settings/SetupWizard'
+import { NavRail } from './NavRail'
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (

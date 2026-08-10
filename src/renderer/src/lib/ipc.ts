@@ -49,9 +49,9 @@
  *   itself - swap it out once LEI-136 lands one.
  */
 
-import type { Config, DefaultPaths, GamePlatform, ModEntry } from "./manifest-types"
+import type { Config, DefaultPaths, GamePlatform, ModEntry } from './manifest-types'
 
-export type ModTaskStatus = "queued" | "extracting" | "validating" | "installing" | "done" | "error"
+export type ModTaskStatus = 'queued' | 'extracting' | 'validating' | 'installing' | 'done' | 'error'
 
 export interface ModTaskUpdate {
   taskId: string
@@ -70,7 +70,12 @@ export interface ModTaskUpdate {
  * (`sorting` onward) ever starts. There's no more inline fallback rebuild silently absorbed into
  * `patching` the way there used to be.
  */
-export type DeployStage = "waiting-for-cache-build" | "sorting" | "extracting" | "patching" | "finalizing"
+export type DeployStage =
+  | 'waiting-for-cache-build'
+  | 'sorting'
+  | 'extracting'
+  | 'patching'
+  | 'finalizing'
 
 export interface DeployProgress {
   stage: DeployStage
@@ -96,12 +101,18 @@ export interface DeploySnapshot {
 /** LEI-141's per-mod eager-build status, straight from `cache.db`'s `mod_build` table - `undefined`/absent for a mod that's never been built (or is RPKG-only and has nothing to build). */
 export interface ModBuildInfo {
   modId: string
-  status: "building" | "ready" | "failed"
+  status: 'building' | 'ready' | 'failed'
   error?: string
 }
 
 export type GamePathPreview =
-  | { ok: true; cachePath: string; modPath: string; gamePlatform?: GamePlatform; gamePlatformChoiceRequired: boolean }
+  | {
+      ok: true
+      cachePath: string
+      modPath: string
+      gamePlatform?: GamePlatform
+      gamePlatformChoiceRequired: boolean
+    }
   | { ok: false; error: string }
 
 export type Unsubscribe = () => void
@@ -122,7 +133,10 @@ export interface SmfApi {
      * read `.config.cachePath`/`.config.modPath` off it for a live preview without anything hitting
      * disk yet. `error` is `""` (not surfaced) if the user just canceled the dialog.
      */
-    pickGameDirectory(persist?: boolean, gamePlatform?: GamePlatform): Promise<{ ok: true; config: Config } | { ok: false; error: string }>
+    pickGameDirectory(
+      persist?: boolean,
+      gamePlatform?: GamePlatform
+    ): Promise<{ ok: true; config: Config } | { ok: false; error: string }>
     /** Example paths for the Settings/wizard placeholder text - see settings.ts's `resolveDefaultUiPaths()` doc comment for why these come from main rather than being hardcoded in the renderer. */
     getDefaultPaths(): Promise<DefaultPaths>
     /** What paths and storefront state would resolve to for a hypothetical (not-yet-saved) `gamePath` - see settings.ts's `resolveTempDir()` and gameDetect.ts. The setup wizard uses this to validate typed paths without persisting anything. */
@@ -222,7 +236,7 @@ export function setSmfApi(api: SmfApi) {
 
 export function getSmfApi(): SmfApi {
   if (!apiSingleton) {
-    throw new Error("SmfApi not initialized - call setSmfApi() first (see src/main.tsx)")
+    throw new Error('SmfApi not initialized - call setSmfApi() first (see src/main.tsx)')
   }
   return apiSingleton
 }

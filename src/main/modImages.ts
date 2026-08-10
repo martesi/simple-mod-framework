@@ -1,8 +1,8 @@
-import { access } from "node:fs/promises"
-import { extname, resolve, sep } from "node:path"
-import { pathToFileURL } from "node:url"
-import { net, protocol } from "electron"
-import type { Manifest } from "../renderer/src/lib/manifest-types"
+import { access } from 'node:fs/promises'
+import { extname, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { net, protocol } from 'electron'
+import type { Manifest } from '../renderer/src/lib/manifest-types'
 
 /**
  * Manifest option thumbnails (`ManifestOption.image`) are relative paths
@@ -23,9 +23,9 @@ import type { Manifest } from "../renderer/src/lib/manifest-types"
  * (ModSettingsDrawer.tsx) needs no changes for any of this: it's still just
  * a string in an `<img src>`.
  */
-const SCHEME = "smf-mod"
+const SCHEME = 'smf-mod'
 
-let currentModsRoot: () => string = () => ""
+let currentModsRoot: () => string = () => ''
 
 /** Wire in the live "where is Mods/ right now" getter - called once from main/index.ts. */
 export function setModImageRoot(getModsDir: () => string): void {
@@ -34,7 +34,18 @@ export function setModImageRoot(getModsDir: () => string): void {
 
 /** Call before `app.whenReady()` - registering a scheme's privileges only works pre-ready. */
 export function registerModImageSchemePrivileges(): void {
-  protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: false, secure: true, supportFetchAPI: true, corsEnabled: false, bypassCSP: false } }])
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: SCHEME,
+      privileges: {
+        standard: false,
+        secure: true,
+        supportFetchAPI: true,
+        corsEnabled: false,
+        bypassCSP: false,
+      },
+    },
+  ])
 }
 
 /** Call after `app.whenReady()`. */
@@ -42,7 +53,7 @@ export function registerModImageProtocolHandler(): void {
   protocol.handle(SCHEME, async (request) => {
     // Non-standard scheme URLs look like "smf-mod:<token>" (no authority) -
     // everything after the colon, stripped of any accidental leading slashes.
-    const token = request.url.slice(`${SCHEME}:`.length).replace(/^\/+/, "")
+    const token = request.url.slice(`${SCHEME}:`.length).replace(/^\/+/, '')
     const filePath = decodeToken(token)
     if (!filePath) return new Response(null, { status: 400 })
 
@@ -70,18 +81,27 @@ export function registerModImageProtocolHandler(): void {
 }
 
 function encodeToken(value: string): string {
-  return Buffer.from(value, "utf8").toString("base64url")
+  return Buffer.from(value, 'utf8').toString('base64url')
 }
 
 function decodeToken(value: string): string | undefined {
   try {
-    return Buffer.from(value, "base64url").toString("utf8")
+    return Buffer.from(value, 'base64url').toString('utf8')
   } catch {
     return undefined
   }
 }
 
-const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".apng", ".gif", ".webp", ".svg", ".jfif"])
+const IMAGE_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.apng',
+  '.gif',
+  '.webp',
+  '.svg',
+  '.jfif',
+])
 
 function looksLikeLocalImagePath(value: string): boolean {
   // Manifest option images are historically sometimes authored as remote
@@ -91,7 +111,11 @@ function looksLikeLocalImagePath(value: string): boolean {
 }
 
 /** Rewrite every `options[].image` in a manifest to a `smf-mod://` URL, bounds-checked against `modFolder`. Anything that isn't a local relative image path (a remote URL, an unrecognized extension) is left untouched. */
-export function rewriteManifestImages(manifest: Manifest, _modId: string, modFolder: string): Manifest {
+export function rewriteManifestImages(
+  manifest: Manifest,
+  _modId: string,
+  modFolder: string
+): Manifest {
   if (!manifest.options?.length) return manifest
 
   const resolvedFolder = resolve(modFolder)
@@ -109,6 +133,6 @@ export function rewriteManifestImages(manifest: Manifest, _modId: string, modFol
       }
 
       return { ...option, image: `${SCHEME}:${encodeToken(resolvedImage)}` }
-    }) as Manifest["options"]
+    }) as Manifest['options'],
   }
 }

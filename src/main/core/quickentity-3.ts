@@ -1,35 +1,56 @@
-import child_process from "child_process"
-import path from "path"
-import { logger, paths } from "./core-singleton"
-import { wineCommand } from "../wineExec"
+import child_process from 'node:child_process'
+import path from 'node:path'
+import { wineCommand } from '../wineExec'
+import { logger, paths } from './core-singleton'
 
 // Shim for QuickEntity 3.0 executable
 
 // Computed lazily (not at module scope) - paths.toolsRoot isn't set until createCore() runs (see
 // LEI-130), which may well be after this module is first imported.
-const qnExe = () => path.join(paths.toolsRoot, "Third-Party", "quickentity-3.exe")
+const qnExe = () => path.join(paths.toolsRoot, 'Third-Party', 'quickentity-3.exe')
 
-const execCommand = function (command: string) {
-	void logger.verbose(`Executing QN 3.0 command ${command}`)
-	const { command: wrapped, env } = wineCommand(command, paths.toolsRoot)
-	// See analyseMod.ts's execCommand for why cwd is pinned to dataRoot rather than left to
-	// process.cwd() - cmd.exe (which execSync shells out through on Windows) refuses to start at
-	// all with a UNC cwd.
-	child_process.execSync(wrapped, { stdio: [ "pipe", "pipe", "inherit" ], cwd: paths.dataRoot, windowsHide: true, env })
+const execCommand = (command: string) => {
+  void logger.verbose(`Executing QN 3.0 command ${command}`)
+  const { command: wrapped, env } = wineCommand(command, paths.toolsRoot)
+  // See analyseMod.ts's execCommand for why cwd is pinned to dataRoot rather than left to
+  // process.cwd() - cmd.exe (which execSync shells out through on Windows) refuses to start at
+  // all with a UNC cwd.
+  child_process.execSync(wrapped, {
+    stdio: ['pipe', 'pipe', 'inherit'],
+    cwd: paths.dataRoot,
+    windowsHide: true,
+    env,
+  })
 }
 
-export async function convert(_game: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string, output: string) {
-	execCommand(
-		`"${qnExe()}" entity convert --input-factory "${TEMP}" --input-factory-meta "${TEMPmeta}" --input-blueprint "${TBLU}" --input-blueprint-meta "${TBLUmeta}" --output "${output}" --lossless`
-	)
+export async function convert(
+  _game: string,
+  TEMP: string,
+  TEMPmeta: string,
+  TBLU: string,
+  TBLUmeta: string,
+  output: string
+) {
+  execCommand(
+    `"${qnExe()}" entity convert --input-factory "${TEMP}" --input-factory-meta "${TEMPmeta}" --input-blueprint "${TBLU}" --input-blueprint-meta "${TBLUmeta}" --output "${output}" --lossless`
+  )
 }
 
-export async function generate(_game: string, input: string, TEMP: string, TEMPmeta: string, TBLU: string, TBLUmeta: string) {
-	execCommand(
-		`"${qnExe()}" entity generate --input "${input}" --output-factory "${TEMP}" --output-factory-meta "${TEMPmeta}" --output-blueprint "${TBLU}" --output-blueprint-meta "${TBLUmeta}"`
-	)
+export async function generate(
+  _game: string,
+  input: string,
+  TEMP: string,
+  TEMPmeta: string,
+  TBLU: string,
+  TBLUmeta: string
+) {
+  execCommand(
+    `"${qnExe()}" entity generate --input "${input}" --output-factory "${TEMP}" --output-factory-meta "${TEMPmeta}" --output-blueprint "${TBLU}" --output-blueprint-meta "${TBLUmeta}"`
+  )
 }
 
 export async function applyPatchJSON(original: string, patch: string, output: string) {
-	execCommand(`"${qnExe()}" patch apply --input "${original}" --patch "${patch}" --output "${output}"`)
+  execCommand(
+    `"${qnExe()}" patch apply --input "${original}" --patch "${patch}" --output "${output}"`
+  )
 }

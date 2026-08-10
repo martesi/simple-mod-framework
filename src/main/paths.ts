@@ -1,5 +1,5 @@
-import { resolve } from "node:path"
-import { app } from "electron"
+import { resolve } from 'node:path'
+import { app } from 'electron'
 
 /**
  * Filesystem roots this process uses. `dataRoot` contains machine-level settings; the resolved
@@ -34,7 +34,7 @@ let cached: AppPaths | undefined
 export function resolveAppPaths(): AppPaths {
   if (cached) return cached
 
-  const dataRoot = app.getPath("userData")
+  const dataRoot = app.getPath('userData')
 
   const toolsRoot = app.isPackaged
     ? process.resourcesPath
@@ -43,7 +43,7 @@ export function resolveAppPaths(): AppPaths {
       // CLI/Mod Manager merge), and extra/ already has the same layout
       // electron-builder.yml's extraResources gives resourcesPath when packaged,
       // so no separate build/ staging step is needed to mirror it anymore.
-      resolve(app.getAppPath(), "extra")
+      resolve(app.getAppPath(), 'extra')
 
   cached = { dataRoot, toolsRoot }
   return cached

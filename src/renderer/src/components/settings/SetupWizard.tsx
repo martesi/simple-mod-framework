@@ -1,20 +1,26 @@
-import type { ReactNode } from "react"
-import { useEffect, useState } from "react"
-import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { Loader2, X } from "lucide-react"
-import { toast } from "sonner"
-import { Plural, Trans, useLingui } from "@lingui/react/macro"
+import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
+import { Plural, Trans, useLingui } from '@lingui/react/macro'
+import { Loader2, X } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 
-import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useAppStore } from "@/store/app-store"
-import { getSmfApi } from "@/lib/ipc"
-import { cn } from "@/lib/utils"
-import { LANGUAGES, LANGUAGE_ITEMS } from "@/lib/languages"
-import { WIZARD_STEPS } from "@/lib/wizard-steps"
-import type { GamePlatform } from "@/lib/manifest-types"
-import { PathInputRow } from "./PathInputRow"
-import { GamePlatformSelect } from "./GamePlatformSelect"
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { getSmfApi } from '@/lib/ipc'
+import { LANGUAGE_ITEMS, LANGUAGES } from '@/lib/languages'
+import type { GamePlatform } from '@/lib/manifest-types'
+import { cn } from '@/lib/utils'
+import { WIZARD_STEPS } from '@/lib/wizard-steps'
+import { useAppStore } from '@/store/app-store'
+import { GamePlatformSelect } from './GamePlatformSelect'
+import { PathInputRow } from './PathInputRow'
 
 interface WizardDraft {
   gamePath: string
@@ -38,7 +44,7 @@ function WizardPathStep({
   value,
   placeholder,
   onChange,
-  onBrowse
+  onBrowse,
 }: {
   title: string
   description: string
@@ -51,7 +57,13 @@ function WizardPathStep({
     <>
       <div className="mb-1.5 text-[22px] font-bold text-text">{title}</div>
       <div className="mb-[18px] text-[14px] leading-[1.55] text-text-2">{description}</div>
-      <PathInputRow value={value} placeholder={placeholder} onChange={onChange} onBrowse={onBrowse} size="lg" />
+      <PathInputRow
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+        onBrowse={onBrowse}
+        size="lg"
+      />
     </>
   )
 }
@@ -63,7 +75,13 @@ function WizardPathStep({
  * wizard's draft (see SetupWizard's doc comment) - `preview` instead comes from a debounced
  * `mods.previewFolder()` call scoped to this component.
  */
-function ModDiscoveryStatus({ preview, loading }: { preview: ModPreview | null; loading: boolean }) {
+function ModDiscoveryStatus({
+  preview,
+  loading,
+}: {
+  preview: ModPreview | null
+  loading: boolean
+}) {
   if (loading || !preview) {
     return (
       <div className="mt-3 flex items-center gap-2.5 rounded-md border border-border bg-surface px-3.5 py-2.5 text-[13px] text-text-2">
@@ -84,9 +102,15 @@ function ModDiscoveryStatus({ preview, loading }: { preview: ModPreview | null; 
   return (
     <div className="mt-3 text-[13px] text-text-2">
       {preview.count > 0 ? (
-        <Plural value={preview.count} one="# mod found in this folder." other="# mods found in this folder." />
+        <Plural
+          value={preview.count}
+          one="# mod found in this folder."
+          other="# mods found in this folder."
+        />
       ) : (
-        <Trans>No mods found in this folder yet - double-check the path if you expected some.</Trans>
+        <Trans>
+          No mods found in this folder yet - double-check the path if you expected some.
+        </Trans>
       )}
     </div>
   )
@@ -150,7 +174,14 @@ export function SetupWizard() {
   if (wizard.open !== prevWizardOpen) {
     setPrevWizardOpen(wizard.open)
     if (wizard.open && config) {
-      setDraft({ gamePath: config.gamePath, gamePlatform: config.gamePlatform, gamePlatformChoiceRequired: config.gamePlatformChoiceRequired, cachePath: config.cachePath, modPath: config.modPath, language: config.language })
+      setDraft({
+        gamePath: config.gamePath,
+        gamePlatform: config.gamePlatform,
+        gamePlatformChoiceRequired: config.gamePlatformChoiceRequired,
+        cachePath: config.cachePath,
+        modPath: config.modPath,
+        language: config.language,
+      })
       setCacheDirty(false)
       setModDirty(false)
       setModPreview(null)
@@ -183,7 +214,7 @@ export function SetupWizard() {
 
   if (!config || !defaultPaths || !draft) return null
 
-  const step = WIZARD_STEPS[wizard.step] ?? "welcome"
+  const step = WIZARD_STEPS[wizard.step] ?? 'welcome'
   const isLast = wizard.step === WIZARD_STEPS.length - 1
   const isSecondLast = wizard.step === WIZARD_STEPS.length - 2
   const nextLabel = isLast ? t`Finish` : isSecondLast ? t`Save & finish` : t`Next`
@@ -197,15 +228,16 @@ export function SetupWizard() {
   async function handleBrowseGamePath() {
     const result = await getSmfApi().config.pickGameDirectory(false, draft?.gamePlatform)
     if (result.ok) {
-      setDraft((d) =>
-        d && {
-          ...d,
-          gamePath: result.config.gamePath,
-          gamePlatform: result.config.gamePlatform,
-          gamePlatformChoiceRequired: result.config.gamePlatformChoiceRequired,
-          cachePath: cacheDirty ? d.cachePath : result.config.cachePath,
-          modPath: modDirty ? d.modPath : result.config.modPath
-        }
+      setDraft(
+        (d) =>
+          d && {
+            ...d,
+            gamePath: result.config.gamePath,
+            gamePlatform: result.config.gamePlatform,
+            gamePlatformChoiceRequired: result.config.gamePlatformChoiceRequired,
+            cachePath: cacheDirty ? d.cachePath : result.config.cachePath,
+            modPath: modDirty ? d.modPath : result.config.modPath,
+          }
       )
     } else if (result.error) {
       // An empty error means the user just canceled the dialog - nothing to say.
@@ -234,7 +266,7 @@ export function SetupWizard() {
     }
     const stepKey = WIZARD_STEPS[wizard.step]
 
-    if (stepKey === "game") {
+    if (stepKey === 'game') {
       // Leaving the game-root step: preview what cachePath (resolveTempDir()'s ".smf/tmp" folder
       // under the game root) and modPath (resolveModsDir()'s ".smf/mods" folder, same idea) would
       // resolve to now, without persisting anything. Only overwrites a field the user hasn't
@@ -245,20 +277,23 @@ export function SetupWizard() {
         return
       }
       if (preview.gamePlatformChoiceRequired) {
-        setDraft((d) => d && { ...d, gamePlatform: preview.gamePlatform, gamePlatformChoiceRequired: true })
+        setDraft(
+          (d) => d && { ...d, gamePlatform: preview.gamePlatform, gamePlatformChoiceRequired: true }
+        )
         toast.error(t`Choose the game platform before continuing.`)
         return
       }
-      setDraft((d) =>
-        d && {
-          ...d,
-          gamePlatform: preview.gamePlatform,
-          gamePlatformChoiceRequired: false,
-          cachePath: cacheDirty ? d.cachePath : preview.cachePath,
-          modPath: modDirty ? d.modPath : preview.modPath
-        }
+      setDraft(
+        (d) =>
+          d && {
+            ...d,
+            gamePlatform: preview.gamePlatform,
+            gamePlatformChoiceRequired: false,
+            cachePath: cacheDirty ? d.cachePath : preview.cachePath,
+            modPath: modDirty ? d.modPath : preview.modPath,
+          }
       )
-    } else if (stepKey === "language") {
+    } else if (stepKey === 'language') {
       // "Save & finish" - see this component's own doc comment for why every field waits until here.
       setCommitting(true)
       try {
@@ -273,19 +308,23 @@ export function SetupWizard() {
 
   let body: ReactNode = null
   switch (step) {
-    case "welcome":
+    case 'welcome':
       body = (
         <>
           <div className="mb-3 text-[30px] font-bold text-text">
             <Trans>Welcome to Simple Mod Framework</Trans>
           </div>
           <div className="text-[15px] leading-[1.65] text-text-2">
-            <Trans>This wizard walks you through pointing the mod manager at your game install and choosing where mods and cache files live. You can change any of this later in Settings.</Trans>
+            <Trans>
+              This wizard walks you through pointing the mod manager at your game install and
+              choosing where mods and cache files live. You can change any of this later in
+              Settings.
+            </Trans>
           </div>
         </>
       )
       break
-    case "game":
+    case 'game':
       body = (
         <>
           <WizardPathStep
@@ -293,7 +332,17 @@ export function SetupWizard() {
             description={t`Point to your game's root folder (the one containing Retail and Runtime).`}
             value={draft.gamePath}
             placeholder={defaultPaths.gamePath}
-            onChange={(gamePath) => setDraft((d) => d && { ...d, gamePath, gamePlatform: undefined, gamePlatformChoiceRequired: false })}
+            onChange={(gamePath) =>
+              setDraft(
+                (d) =>
+                  d && {
+                    ...d,
+                    gamePath,
+                    gamePlatform: undefined,
+                    gamePlatformChoiceRequired: false,
+                  }
+              )
+            }
             onBrowse={handleBrowseGamePath}
           />
           <div className="mt-4">
@@ -301,13 +350,15 @@ export function SetupWizard() {
               value={draft.gamePlatform}
               required={draft.gamePlatformChoiceRequired}
               disabled={!draft.gamePath}
-              onChange={(gamePlatform) => setDraft((d) => d && { ...d, gamePlatform, gamePlatformChoiceRequired: false })}
+              onChange={(gamePlatform) =>
+                setDraft((d) => d && { ...d, gamePlatform, gamePlatformChoiceRequired: false })
+              }
             />
           </div>
         </>
       )
       break
-    case "cache":
+    case 'cache':
       body = (
         <WizardPathStep
           title={t`Cache path`}
@@ -322,7 +373,7 @@ export function SetupWizard() {
         />
       )
       break
-    case "mod":
+    case 'mod':
       body = (
         <>
           <WizardPathStep
@@ -340,7 +391,7 @@ export function SetupWizard() {
         </>
       )
       break
-    case "language":
+    case 'language':
       body = (
         <>
           <div className="mb-1.5 text-[22px] font-bold text-text">
@@ -349,7 +400,11 @@ export function SetupWizard() {
           <div className="mb-[18px] text-[14px] leading-[1.55] text-text-2">
             <Trans>Sets the in-game text language mods will target.</Trans>
           </div>
-          <Select items={LANGUAGE_ITEMS} value={draft.language} onValueChange={(language) => language && setDraft((d) => d && { ...d, language })}>
+          <Select
+            items={LANGUAGE_ITEMS}
+            value={draft.language}
+            onValueChange={(language) => language && setDraft((d) => d && { ...d, language })}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -364,15 +419,19 @@ export function SetupWizard() {
         </>
       )
       break
-    case "done":
+    case 'done':
       body = (
         <>
-          <div className="mb-[18px] flex h-[52px] w-[52px] items-center justify-center rounded-full bg-success text-[24px] font-bold text-white">✓</div>
+          <div className="mb-[18px] flex h-[52px] w-[52px] items-center justify-center rounded-full bg-success text-[24px] font-bold text-white">
+            ✓
+          </div>
           <div className="mb-2.5 text-[26px] font-bold text-text">
             <Trans>You're all set</Trans>
           </div>
           <div className="text-[15px] leading-[1.65] text-text-2">
-            <Trans>Your paths and language are saved. You can revisit this wizard any time from Settings.</Trans>
+            <Trans>
+              Your paths and language are saved. You can revisit this wizard any time from Settings.
+            </Trans>
           </div>
         </>
       )
@@ -380,18 +439,27 @@ export function SetupWizard() {
   }
 
   return (
-    <DialogPrimitive.Root open={wizard.open} onOpenChange={(open) => !open && dismissable && closeWizard()} modal>
+    <DialogPrimitive.Root
+      open={wizard.open}
+      onOpenChange={(open) => !open && dismissable && closeWizard()}
+      modal
+    >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Popup className="fixed inset-0 z-120 flex flex-col overflow-hidden bg-app-bg text-text outline-none animate-fade-in">
           <div className="flex items-center justify-between px-10 py-6">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent text-[11px] font-bold text-accent-foreground">SMF</div>
+              <div className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent text-[11px] font-bold text-accent-foreground">
+                SMF
+              </div>
               <DialogPrimitive.Title className="text-[14px] font-bold text-text">
                 <Trans>Setup wizard</Trans>
               </DialogPrimitive.Title>
             </div>
             {dismissable && (
-              <button onClick={closeWizard} className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md text-text-2 hover:bg-surface-hover">
+              <button
+                onClick={closeWizard}
+                className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md text-text-2 hover:bg-surface-hover"
+              >
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
@@ -399,7 +467,13 @@ export function SetupWizard() {
 
           <div className="mx-auto flex w-full max-w-[520px] gap-1.5 px-10">
             {WIZARD_STEPS.map((key, i) => (
-              <div key={key} className={cn("h-1 flex-1 rounded-full", i <= wizard.step ? "bg-accent" : "bg-border")} />
+              <div
+                key={key}
+                className={cn(
+                  'h-1 flex-1 rounded-full',
+                  i <= wizard.step ? 'bg-accent' : 'bg-border'
+                )}
+              />
             ))}
           </div>
 
@@ -408,7 +482,13 @@ export function SetupWizard() {
           </div>
 
           <div className="mx-auto flex w-full max-w-[520px] items-center justify-between px-10 py-6">
-            <button onClick={wizardBack} className={cn("text-[13.5px] font-semibold text-text-2", wizard.step === 0 && "invisible")}>
+            <button
+              onClick={wizardBack}
+              className={cn(
+                'text-[13.5px] font-semibold text-text-2',
+                wizard.step === 0 && 'invisible'
+              )}
+            >
               <Trans>Back</Trans>
             </button>
             <Button onClick={handleNext} disabled={committing}>
