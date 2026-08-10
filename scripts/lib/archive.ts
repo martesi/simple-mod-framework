@@ -1,99 +1,60 @@
-import { copyFile, mkdir } from "node:fs/promises"
+import { copyFile } from "node:fs/promises"
 import { join } from "node:path"
+import { pipe } from "fp-ts/function"
+import * as TE from "fp-ts/TaskEither"
 import { downloadFile, type FetchOptions } from "./download"
-import { copyFileAtomically, findFile, pathExists } from "./files"
+import { copyFileAtomically, ensureDirectory, findFile, pathExists } from "./files"
+import { scriptError, tryScript, type ScriptError } from "./effects"
 import { findExecutable, runProcess } from "./process"
 import { withTemporaryDirectory } from "./temp"
 
 export type ArchiveFormat = "zip" | "sevenZip"
-
-export interface ArchiveFileSpecification {
-	sourceName: string
-	destinationName?: string
-}
-
-export interface ArchiveSpecification {
-	archiveName: string
-	archiveUrl: string
-	format: ArchiveFormat
-	files: readonly ArchiveFileSpecification[]
-	missingFileMessage: (fileName: string) => string
-}
-
+export interface ArchiveFileSpecification { sourceName: string; destinationName?: string }
+export interface ArchiveSpecification { archiveName: string; archiveUrl: string; format: ArchiveFormat; files: readonly ArchiveFileSpecification[]; missingFileMessage: (fileName: string) => string }
 export type EnsureResult = "already downloaded" | "downloaded"
 
-function quotePowerShellLiteral(value: string): string {
-	return `'${value.replaceAll("'", "''")}'`
+const quotePowerShellLiteral = (value: string): string => `'${value.replaceAll("'", "''")}'`
+
+export function extractArchive(archivePath: string, destinationDirectory: string, format: ArchiveFormat, sevenZip?: string): TE.TaskEither<ScriptError, void> {
+	return pipe(
+		ensureDirectory(destinationDirectory),
+		TE.chain(() => {
+			if (format === "sevenZip") return sevenZip ? runProcess(sevenZip, ["x", archivePath, `-o${destinationDirectory}`, "-y"]) : TE.left(scriptError("extract archive", "A 7-Zip executable is required to extract this archive", { path: archivePath }))
+			if (process.platform === "win32") return runProcess("powershell", ["-NoProfile", "-Command", `Expand-Archive -LiteralPath ${quotePowerShellLiteral(archivePath)} -DestinationPath ${quotePowerShellLiteral(destinationDirectory)} -Force`])
+				return pipe(findExecutable(["unzip"], ["-v"]), TE.chain(unzip => {
+					if (unzip) return runProcess(unzip, ["-o", archivePath, "-d", destinationDirectory])
+					return pipe(findExecutable(["7zz", "7z", "7za"], ["i"]), TE.chain(native => native
+						? runProcess(native, ["x", archivePath, `-o${destinationDirectory}`, "-y"])
+						: TE.left(scriptError("extract archive", 'no "unzip", "7zz", "7z", or "7za" found on PATH to extract an upstream release archive - install one or run this from `nix develop .#e2e`', { path: archivePath }))))
+				}))
+		})
+	)
 }
 
-export async function extractArchive(archivePath: string, destinationDirectory: string, format: ArchiveFormat, sevenZip?: string): Promise<void> {
-	await mkdir(destinationDirectory, { recursive: true })
+export const extractSevenZipArchive = (archivePath: string, destinationDirectory: string, sevenZip: string) => extractArchive(archivePath, destinationDirectory, "sevenZip", sevenZip)
 
-	if (format === "sevenZip") {
-		if (!sevenZip) throw new Error("A 7-Zip executable is required to extract this archive")
-		await runProcess(sevenZip, ["x", archivePath, `-o${destinationDirectory}`, "-y"])
-		return
-	}
-
-	if (process.platform === "win32") {
-		await runProcess("powershell", [
-			"-NoProfile",
-			"-Command",
-			`Expand-Archive -LiteralPath ${quotePowerShellLiteral(archivePath)} -DestinationPath ${quotePowerShellLiteral(destinationDirectory)} -Force`
-		])
-		return
-	}
-
-	const unzip = await findExecutable(["unzip"], ["-v"])
-	if (unzip) {
-		await runProcess(unzip, ["-o", archivePath, "-d", destinationDirectory])
-		return
-	}
-
-	const nativeSevenZip = await findExecutable(["7zz", "7z", "7za"], ["i"])
-	if (!nativeSevenZip) {
-		throw new Error('no "unzip", "7zz", "7z", or "7za" found on PATH to extract an upstream release archive - install one or run this from `nix develop .#e2e`')
-	}
-	await runProcess(nativeSevenZip, ["x", archivePath, `-o${destinationDirectory}`, "-y"])
-}
-
-export async function extractSevenZipArchive(archivePath: string, destinationDirectory: string, sevenZip: string): Promise<void> {
-	await extractArchive(archivePath, destinationDirectory, "sevenZip", sevenZip)
-}
-
-export async function ensureArchiveFiles(
-	specification: ArchiveSpecification,
-	destinationDirectory: string,
-	options: FetchOptions = {}
-): Promise<EnsureResult> {
-	const destinations = specification.files.map((file) => join(destinationDirectory, file.destinationName ?? file.sourceName))
-	const present = await Promise.all(destinations.map((destination) => pathExists(destination)))
-	if (present.every(Boolean)) return "already downloaded"
-
-	return withTemporaryDirectory("smf-archive", async (temporaryDirectory): Promise<EnsureResult> => {
-		const archivePath = join(temporaryDirectory, specification.archiveName)
-		const extractionDirectory = join(temporaryDirectory, "extracted")
-		const stagedDirectory = join(temporaryDirectory, "staged")
-
-		await downloadFile(specification.archiveUrl, archivePath, options)
-		await extractArchive(archivePath, extractionDirectory, specification.format)
-		await mkdir(stagedDirectory, { recursive: true })
-
-		const stagedFiles: string[] = []
-		for (const file of specification.files) {
-			const found = await findFile(extractionDirectory, file.sourceName)
-			if (!found) throw new Error(specification.missingFileMessage(file.sourceName))
-
-			const stagedPath = join(stagedDirectory, file.destinationName ?? file.sourceName)
-			await copyFile(found, stagedPath)
-			stagedFiles.push(stagedPath)
-		}
-
-		// Extraction and discovery complete before any target is touched. Each final file is then
-		// replaced from the staged copy so a failed download/extraction cannot leave a new partial file.
-		for (let index = 0; index < stagedFiles.length; index += 1) {
-			await copyFileAtomically(stagedFiles[index], destinations[index])
-		}
-		return "downloaded"
-	})
+export function ensureArchiveFiles(specification: ArchiveSpecification, destinationDirectory: string, options: FetchOptions = {}): TE.TaskEither<ScriptError, EnsureResult> {
+	const destinations = specification.files.map(file => join(destinationDirectory, file.destinationName ?? file.sourceName))
+	const stageMember = (temporaryDirectory: string, extractionDirectory: string, file: ArchiveFileSpecification) => pipe(
+		findFile(extractionDirectory, file.sourceName),
+		TE.chain(found => found
+			? pipe(tryScript("stage archive member", () => copyFile(found, join(temporaryDirectory, file.destinationName ?? file.sourceName)), { path: found }), TE.map(() => join(temporaryDirectory, file.destinationName ?? file.sourceName)))
+			: TE.left(scriptError("stage archive member", specification.missingFileMessage(file.sourceName), { path: extractionDirectory })))
+	)
+	return pipe(
+		TE.sequenceArray(destinations.map(pathExists)),
+		TE.chain(present => present.every(Boolean) ? TE.right<ScriptError, EnsureResult>("already downloaded") : withTemporaryDirectory("smf-archive", temporaryDirectory => {
+			const archivePath = join(temporaryDirectory, specification.archiveName)
+			const extractionDirectory = join(temporaryDirectory, "extracted")
+			const stagedDirectory = join(temporaryDirectory, "staged")
+			return pipe(
+				downloadFile(specification.archiveUrl, archivePath, options),
+				TE.chain(() => extractArchive(archivePath, extractionDirectory, specification.format)),
+				TE.chain(() => ensureDirectory(stagedDirectory)),
+				TE.chain(() => TE.sequenceArray(specification.files.map(file => stageMember(stagedDirectory, extractionDirectory, file)))),
+				TE.chain(stagedFiles => TE.sequenceArray(stagedFiles.map((stagedFile, index) => copyFileAtomically(stagedFile, destinations[index])))),
+				TE.map(() => "downloaded" as EnsureResult)
+			)
+		}))
+	)
 }

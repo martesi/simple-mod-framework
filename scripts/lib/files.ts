@@ -1,75 +1,68 @@
 import { randomUUID } from "node:crypto"
 import { copyFile, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, join } from "node:path"
+import { pipe } from "fp-ts/function"
+import * as TE from "fp-ts/TaskEither"
+import { tryScript, type ScriptError } from "./effects"
 
-export async function pathExists(filePath: string): Promise<boolean> {
-	return Bun.file(filePath).exists()
+export function pathExists(filePath: string): TE.TaskEither<ScriptError, boolean> {
+	return tryScript("check path", () => Bun.file(filePath).exists(), { path: filePath })
 }
 
-export async function ensureDirectory(directory: string): Promise<void> {
-	await mkdir(directory, { recursive: true })
+export function ensureDirectory(directory: string): TE.TaskEither<ScriptError, void> {
+	return tryScript("create directory", () => mkdir(directory, { recursive: true }).then(() => undefined), { path: directory })
 }
 
-export async function removePath(filePath: string): Promise<void> {
-	await rm(filePath, { recursive: true, force: true })
+export function removePath(filePath: string): TE.TaskEither<ScriptError, void> {
+	return tryScript("remove path", () => rm(filePath, { recursive: true, force: true }), { path: filePath })
 }
 
-export async function cleanupTemporaryPath(filePath: string): Promise<void> {
-	try {
-		await removePath(filePath)
-	} catch {
-		// Temporary cleanup is best effort and must not hide the operation's real error.
+export function cleanupTemporaryPath(filePath: string): TE.TaskEither<never, void> {
+	return async () => {
+		try { await removePath(filePath)(); } catch { /* cleanup is best effort */ }
+		return { _tag: "Right", right: undefined }
 	}
 }
 
-export async function createTemporaryPath(directory: string, prefix: string): Promise<string> {
-	await ensureDirectory(directory)
-	return join(directory, `.${prefix}-${randomUUID()}.tmp`)
+export function createTemporaryPath(directory: string, prefix: string): TE.TaskEither<ScriptError, string> {
+	return pipe(ensureDirectory(directory), TE.map(() => join(directory, `.${prefix}-${randomUUID()}.tmp`)))
 }
 
-export async function moveFileAtomically(source: string, destination: string): Promise<void> {
-	try {
-		await rename(source, destination)
-	} catch (error) {
-		const code = error && typeof error === "object" && "code" in error ? error.code : undefined
-		if (code !== "EEXIST" && code !== "EPERM") throw error
-
-		await removePath(destination)
-		await rename(source, destination)
-	}
+export function moveFileAtomically(source: string, destination: string): TE.TaskEither<ScriptError, void> {
+	return tryScript("atomically move file", async () => {
+		try { await rename(source, destination) } catch (error) {
+			const code = error && typeof error === "object" && "code" in error ? error.code : undefined
+			if (code !== "EEXIST" && code !== "EPERM") throw error
+			await rm(destination, { recursive: true, force: true }); await rename(source, destination)
+		}
+	}, { path: destination })
 }
 
-export async function copyFileAtomically(source: string, destination: string): Promise<void> {
-	const temporaryPath = await createTemporaryPath(dirname(destination), basename(destination))
-	try {
-		await copyFile(source, temporaryPath)
-		await moveFileAtomically(temporaryPath, destination)
-	} finally {
-		await cleanupTemporaryPath(temporaryPath)
-	}
+export function copyFileAtomically(source: string, destination: string): TE.TaskEither<ScriptError, void> {
+	return TE.bracket(
+		createTemporaryPath(dirname(destination), basename(destination)),
+		(temporaryPath) => pipe(tryScript("copy file", () => copyFile(source, temporaryPath), { path: source }), TE.chain(() => moveFileAtomically(temporaryPath, destination))),
+		(temporaryPath) => cleanupTemporaryPath(temporaryPath)
+	)
 }
 
-export async function writeFileAtomically(destination: string, contents: string): Promise<void> {
-	const temporaryPath = await createTemporaryPath(dirname(destination), basename(destination))
-	try {
-		await writeFile(temporaryPath, contents)
-		await moveFileAtomically(temporaryPath, destination)
-	} finally {
-		await cleanupTemporaryPath(temporaryPath)
-	}
+export function writeFileAtomically(destination: string, contents: string): TE.TaskEither<ScriptError, void> {
+	return TE.bracket(
+		createTemporaryPath(dirname(destination), basename(destination)),
+		(temporaryPath) => pipe(tryScript("write file", () => writeFile(temporaryPath, contents), { path: destination }), TE.chain(() => moveFileAtomically(temporaryPath, destination))),
+		(temporaryPath) => cleanupTemporaryPath(temporaryPath)
+	)
 }
 
 /** Find a file by basename without depending on an upstream archive's folder layout. */
-export async function findFile(directory: string, name: string): Promise<string | null> {
-	const entries = await readdir(directory, { withFileTypes: true })
-	for (const entry of entries) {
-		const entryPath = join(directory, entry.name)
-		if (entry.isDirectory()) {
-			const found = await findFile(entryPath, name)
-			if (found) return found
-		} else if (entry.name.toLowerCase() === name.toLowerCase()) {
-			return entryPath
+export function findFile(directory: string, name: string): TE.TaskEither<ScriptError, string | null> {
+	return tryScript("find file", async () => {
+		const entries = await readdir(directory, { withFileTypes: true })
+		for (const entry of entries) {
+			const entryPath = join(directory, entry.name)
+			if (entry.isDirectory()) { const found = await findFile(entryPath, name)(); if (found._tag === "Right" && found.right) return found.right }
+			else if (entry.name.toLowerCase() === name.toLowerCase()) return entryPath
 		}
-	}
-	return null
+		return null
+	}, { path: directory })
 }

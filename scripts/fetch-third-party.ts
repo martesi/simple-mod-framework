@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import { ensureArchiveFiles, type ArchiveSpecification, type EnsureResult, extractSevenZipArchive } from "./lib/archive"
 import { errorMessage, errorStack } from "./lib/errors"
+import { requireTask, tryScript } from "./lib/effects"
 import { downloadFile, fetchJson, type FetchOptions } from "./lib/download"
 import { copyFileAtomically, ensureDirectory, findFile, pathExists } from "./lib/files"
 import { findExecutable } from "./lib/process"
@@ -93,35 +94,35 @@ const xdeltaArchive: ArchiveSpecification = {
 
 async function ensureQuickEntityRs(): Promise<EnsureResult> {
 	const target = join(destinationDirectory, "quickentity-rs.exe")
-	if (await pathExists(target)) return "already downloaded"
+	if (await requireTask(pathExists(target))) return "already downloaded"
 
-	await downloadFile("https://github.com/atampy25/quickentity-rs/releases/latest/download/quickentity-rs.exe", target, downloadOptions)
+	await requireTask(downloadFile("https://github.com/atampy25/quickentity-rs/releases/latest/download/quickentity-rs.exe", target, downloadOptions))
 	return "downloaded"
 }
 
 async function ensureQuickEntity3(): Promise<EnsureResult> {
 	const target = join(destinationDirectory, "quickentity-3.exe")
-	if (await pathExists(target)) return "already downloaded"
+	if (await requireTask(pathExists(target))) return "already downloaded"
 
 	// The 3.0 release's executable is named quickentity-rs.exe upstream, but the app keeps a
 	// separate filename because it selects the 3.0 and 3.1 command-line behaviors independently.
-	await downloadFile("https://github.com/atampy25/quickentity-rs/releases/download/3.0/quickentity-rs.exe", target, downloadOptions)
+	await requireTask(downloadFile("https://github.com/atampy25/quickentity-rs/releases/download/3.0/quickentity-rs.exe", target, downloadOptions))
 	return "downloaded"
 }
 
 async function ensureArchive(specification: ArchiveSpecification): Promise<EnsureResult> {
-	return ensureArchiveFiles(specification, destinationDirectory, downloadOptions)
+	return requireTask(ensureArchiveFiles(specification, destinationDirectory, downloadOptions))
 }
 
 async function findNativeSevenZipCli(): Promise<string | null> {
-	return findExecutable(["7zz", "7z", "7za"], ["i"])
+	return requireTask(findExecutable(["7zz", "7z", "7za"], ["i"]))
 }
 
 async function ensureSevenZip(): Promise<EnsureResult> {
 	const target = join(destinationDirectory, "7z.exe")
-	if (await pathExists(target)) return "already downloaded"
+	if (await requireTask(pathExists(target))) return "already downloaded"
 
-	return withTemporaryDirectory("smf-7z", async (temporaryDirectory): Promise<EnsureResult> => {
+	return requireTask(withTemporaryDirectory("smf-7z", (temporaryDirectory) => tryScript("ensure 7-Zip", async () => {
 		const archivePath = join(temporaryDirectory, "7z-extra.7z")
 		const bootstrapPath = join(temporaryDirectory, "7zr.exe")
 		const extractionDirectory = join(temporaryDirectory, "extracted")
@@ -134,13 +135,9 @@ async function ensureSevenZip(): Promise<EnsureResult> {
 		// Linux uses a native 7-Zip executable already on PATH instead.
 		const bootstrapDownload =
 			process.platform === "win32"
-				? downloadFile("https://github.com/ip7z/7zip/releases/latest/download/7zr.exe", bootstrapPath, downloadOptions)
+				? requireTask(downloadFile("https://github.com/ip7z/7zip/releases/latest/download/7zr.exe", bootstrapPath, downloadOptions))
 				: Promise.resolve()
-		bootstrapDownload.catch(() => {})
-
-		const releasePromise = fetchJson<GitHubRelease>("https://api.github.com/repos/ip7z/7zip/releases/latest", githubApiOptions)
-		releasePromise.catch(() => {})
-
+		const releasePromise = requireTask(fetchJson<GitHubRelease>("https://api.github.com/repos/ip7z/7zip/releases/latest", githubApiOptions))
 		const release = await releasePromise
 		const assets = release.assets ?? []
 		const assetNames = assets.map((asset) => asset.name)
@@ -153,17 +150,17 @@ async function ensureSevenZip(): Promise<EnsureResult> {
 		}
 		if (debug) debugLog(`matched asset ${asset.name} -> ${asset.browser_download_url}`)
 
-		await Promise.all([bootstrapDownload, downloadFile(asset.browser_download_url, archivePath, downloadOptions)])
+		await Promise.all([bootstrapDownload, requireTask(downloadFile(asset.browser_download_url, archivePath, downloadOptions))])
 		const extractor = process.platform === "win32" ? bootstrapPath : nativeSevenZip
 		if (!extractor) throw new Error("No 7-Zip extractor is available")
 		if (debug) debugLog(`extracting with ${process.platform === "win32" ? `bootstrap ${bootstrapPath}` : `native ${extractor}`}`)
-		await extractSevenZipArchive(archivePath, extractionDirectory, extractor)
+		await requireTask(extractSevenZipArchive(archivePath, extractionDirectory, extractor))
 
 		// The Extra package contains both a top-level 32-bit executable and x64/7za.exe. Native
 		// Linux Wine installations may be 64-bit-only, so select x64 there.
 		let found: string | null = null
 		try {
-			found = await findFile(process.platform === "win32" ? extractionDirectory : join(extractionDirectory, "x64"), "7za.exe")
+			found = await requireTask(findFile(process.platform === "win32" ? extractionDirectory : join(extractionDirectory, "x64"), "7za.exe"))
 		} catch {
 			// A missing x64 directory is reported by the common layout error below.
 		}
@@ -173,9 +170,9 @@ async function ensureSevenZip(): Promise<EnsureResult> {
 
 		// Always store the binary under the name expected by the application. On non-Windows the
 		// app's Wine interop layer decides how to execute it later.
-		await copyFileAtomically(found, target)
+		await requireTask(copyFileAtomically(found, target))
 		return "downloaded"
-	})
+	}, { path: target }))).then(result => result as EnsureResult)
 }
 
 type SetupTask = () => Promise<EnsureResult>
@@ -193,7 +190,7 @@ async function task(label: string, placeHint: string, operation: SetupTask): Pro
 }
 
 async function main(): Promise<void> {
-	await ensureDirectory(destinationDirectory)
+	await requireTask(ensureDirectory(destinationDirectory))
 	if (debug) debugLog(`SMF_DEBUG on - platform=${process.platform}, bun=${Bun.version}`)
 
 	// These release-backed tools have independent sources and destinations. Keep them concurrent;

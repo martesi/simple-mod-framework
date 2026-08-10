@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import { extractArchive } from "./lib/archive"
 import { errorMessage } from "./lib/errors"
+import { requireTask } from "./lib/effects"
 import { downloadFile } from "./lib/download"
 import { ensureDirectory, pathExists, removePath, writeFileAtomically } from "./lib/files"
 import { withTemporaryDirectory } from "./lib/temp"
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
 	const version = packageInfo.version
 	if (!version) throw new Error(`Could not determine the installed Electron version from ${electronPackageJson}`)
 
-	const [markerExists, executableExists] = await Promise.all([pathExists(versionMarker), pathExists(electronExecutable)])
+	const [markerExists, executableExists] = await Promise.all([requireTask(pathExists(versionMarker)), requireTask(pathExists(electronExecutable))])
 	const markerVersion = markerExists ? (await readFile(versionMarker, "utf8")).trim() : undefined
 	if (markerExists && markerVersion === version && executableExists) {
 		console.log(`.win-electron-dev/ already has Electron v${version}, skipping.`)
@@ -44,22 +45,22 @@ async function main(): Promise<void> {
 
 	await withTemporaryDirectory(".win-electron-dev", async (workDirectory) => {
 		const zipPath = join(workDirectory, zipName)
-		if (await pathExists(cachedZip)) {
+		if (await requireTask(pathExists(cachedZip))) {
 			console.log(`Extracting cached ${zipName}...`)
-			await extractArchive(cachedZip, join(workDirectory, "output"), "zip")
+			await requireTask(extractArchive(cachedZip, join(workDirectory, "output"), "zip"))
 		} else {
 			console.log(`Downloading ${zipName} (not in ~/.cache/electron/)...`)
-			await downloadFile(`https://github.com/electron/electron/releases/download/v${version}/${zipName}`, zipPath, downloadOptions)
-			await extractArchive(zipPath, join(workDirectory, "output"), "zip")
+			await requireTask(downloadFile(`https://github.com/electron/electron/releases/download/v${version}/${zipName}`, zipPath, downloadOptions))
+			await requireTask(extractArchive(zipPath, join(workDirectory, "output"), "zip"))
 		}
 
 		const stagedOutput = join(workDirectory, "output")
 		const stagedExecutable = join(stagedOutput, "electron.exe")
-		if (!(await pathExists(stagedExecutable))) {
+		if (!(await requireTask(pathExists(stagedExecutable)))) {
 			throw new Error(`Extracted ${zipName} did not contain electron.exe`)
 		}
 		await chmod(stagedExecutable, 0o755)
-		await writeFileAtomically(join(stagedOutput, ".version"), version)
+		await requireTask(writeFileAtomically(join(stagedOutput, ".version"), version))
 
 		// The complete directory is ready before the old cache is removed, so a failed fetch or
 		// extraction leaves the previous cache available for a later retry.
